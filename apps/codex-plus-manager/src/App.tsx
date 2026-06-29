@@ -64,6 +64,8 @@ import {
   serializeModelWindowRows,
   type ModelWindowRow,
 } from "./model-windows";
+import { LeishenBalancePanel } from "./components/LeishenBalancePanel";
+import { LeishenSetupPanel } from "./components/LeishenSetupPanel";
 
 type Status = "ok" | "failed" | "not_implemented" | "not_checked" | string;
 
@@ -2408,6 +2410,14 @@ function OverviewScreen({
           </div>
         </CardContent>
       </Panel>
+      <div className="grid two leishen-status-panels">
+        <Panel className="leishen-panel-card">
+          <LeishenSetupPanel />
+        </Panel>
+        <Panel className="leishen-panel-card">
+          <LeishenBalancePanel />
+        </Panel>
+      </div>
       <Panel>
         <CardHead title="健康检查" detail="概览只展示关键问题，具体配置在对应页面处理" />
         <CardContent>
