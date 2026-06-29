@@ -30,6 +30,7 @@ pub struct UpdateCheck {
     pub release_summary: String,
     pub asset_name: Option<String>,
     pub asset_url: Option<String>,
+    pub asset_sha256: Option<String>,
     pub update_available: bool,
 }
 
@@ -53,10 +54,22 @@ pub fn parse_version_tag(value: &str) -> anyhow::Result<Vec<u64>> {
     if digits.is_empty() {
         anyhow::bail!("Invalid version tag: {value}");
     }
-    digits
+    let mut segments = digits
         .split('.')
         .map(|part| part.parse::<u64>().map_err(Into::into))
-        .collect()
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    if let Some(suffix) = normalized.get(digits.len()..) {
+        if let Some(leishen_suffix) = suffix.strip_prefix("-leishen.") {
+            let suffix_digits = leishen_suffix
+                .chars()
+                .take_while(|ch| ch.is_ascii_digit())
+                .collect::<String>();
+            if !suffix_digits.is_empty() {
+                segments.push(suffix_digits.parse()?);
+            }
+        }
+    }
+    Ok(segments)
 }
 
 pub fn is_newer_version(candidate: &str, current: &str) -> anyhow::Result<bool> {
@@ -151,12 +164,29 @@ pub fn release_from_latest_json_payload(payload: &Value) -> anyhow::Result<Relea
 }
 
 fn asset_sha256(asset: &Value) -> Option<String> {
-    asset
+    if let Some(sha256) = asset
         .get("sha256")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+    {
+        return Some(sha256);
+    }
+    asset
+        .get("digest")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .and_then(|digest| {
+            let (algorithm, value) = digest.split_once(':')?;
+            if algorithm.eq_ignore_ascii_case("sha256") {
+                let value = value.trim();
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+            None
+        })
 }
 
 fn select_update_asset_with_sha256(
@@ -219,6 +249,7 @@ pub async fn check_for_update(current_version: &str) -> anyhow::Result<UpdateChe
         release_summary: release.body,
         asset_name: release.asset_name,
         asset_url: release.asset_url,
+        asset_sha256: release.asset_sha256,
         update_available,
     })
 }
@@ -389,5 +420,22 @@ pub fn launch_installer(path: &Path) -> anyhow::Result<()> {
     {
         let _ = path;
         anyhow::bail!("当前平台不支持启动安装包")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn asset_sha256_accepts_github_digest_prefix() {
+        assert_eq!(
+            asset_sha256(&json!({
+                "digest": "sha256: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824 "
+            }))
+            .as_deref(),
+            Some("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824")
+        );
     }
 }

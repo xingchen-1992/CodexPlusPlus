@@ -39,6 +39,11 @@ fn leishen_version_comparison_uses_numeric_segments_before_suffix() {
 }
 
 #[test]
+fn leishen_version_comparison_uses_suffix_increment_for_same_base() {
+    assert!(is_newer_version("v1.0.0-leishen.2", "v1.0.0-leishen.1").unwrap());
+}
+
+#[test]
 fn github_payload_selects_platform_installer() {
     let release = release_from_github_payload(&json!({
         "tag_name": "v1.0.9",
@@ -66,6 +71,38 @@ fn github_payload_selects_platform_installer() {
         );
     } else {
         assert_eq!(release.asset_name.as_deref(), None);
+    }
+}
+
+#[test]
+fn github_payload_accepts_sha256_digest_field() {
+    let windows_sha = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+    let macos_sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    let release = release_from_github_payload(&json!({
+        "tag_name": "v1.0.9",
+        "html_url": "https://github.com/BigPizzaV3/CodexPlusPlus/releases/tag/v1.0.9",
+        "body": "fixes",
+        "assets": [
+            {
+                "name": "CodexPlusPlus_1.0.9_x64-setup.exe",
+                "browser_download_url": "https://example.test/setup.exe",
+                "digest": format!("sha256:{windows_sha}")
+            },
+            {
+                "name": "CodexPlusPlus_1.0.9_x64.dmg",
+                "browser_download_url": "https://example.test/app.dmg",
+                "digest": format!("sha256:{macos_sha}")
+            }
+        ]
+    }))
+    .unwrap();
+
+    if cfg!(windows) {
+        assert_eq!(release.asset_sha256.as_deref(), Some(windows_sha));
+    } else if cfg!(target_os = "macos") {
+        assert_eq!(release.asset_sha256.as_deref(), Some(macos_sha));
+    } else {
+        assert_eq!(release.asset_sha256.as_deref(), None);
     }
 }
 

@@ -503,6 +503,7 @@ type UpdateResult = CommandResult<{
   releaseSummary?: string;
   assetName?: string | null;
   assetUrl?: string | null;
+  assetSha256?: string | null;
   updateAvailable?: boolean;
   installedPath?: string;
   progress?: number;
@@ -1241,7 +1242,7 @@ export function App() {
     if (result) {
       setUpdate(result);
       if (!silent || result.updateAvailable) {
-        showNotice("GitHub Release 检查", result.message, result.status);
+        showNotice("雷神更新检查", result.message, result.status);
       }
     }
   };
@@ -1255,6 +1256,7 @@ export function App() {
             body: update.releaseSummary ?? "",
             asset_name: update.assetName,
             asset_url: update.assetUrl,
+            asset_sha256: update.assetSha256 ?? null,
           }
         : null;
     const result = await run(() => call<UpdateResult>("perform_update", { release }));
@@ -3369,14 +3371,14 @@ function AboutScreen({
           <div className="metric-list">
             <Metric label="Codex++ 版本" value={overview?.current_version ?? update?.currentVersion ?? "-"} />
             <Metric label="Codex 版本" value={overview?.codex_version ?? "未检测到"} />
-            <Metric label="项目地址" value="github.com/BigPizzaV3/CodexPlusPlus" />
+            <Metric label="项目地址" value="ls-qihang.cn/tools/codex-plus" />
           </div>
           <Toolbar>
-            <Button onClick={() => void actions.openExternalUrl("https://github.com/BigPizzaV3/CodexPlusPlus")} variant="secondary">
+            <Button onClick={() => void actions.openExternalUrl("https://ls-qihang.cn/tools/codex-plus")} variant="secondary">
               <ExternalLink className="h-4 w-4" />
               打开项目主页
             </Button>
-            <Button onClick={() => void actions.openExternalUrl("https://github.com/BigPizzaV3/CodexPlusPlus/issues")} variant="secondary">
+            <Button onClick={() => void actions.openExternalUrl("https://ls-qihang.cn/tools/codex-plus/feedback")} variant="secondary">
               <ExternalLink className="h-4 w-4" />
               反馈问题
             </Button>
@@ -3392,7 +3394,7 @@ function AboutScreen({
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title="GitHub Release 更新" detail={`当前版本 ${overview?.current_version ?? update?.currentVersion ?? "-"}`} />
+        <CardHead title="雷神更新通道" detail={`当前版本 ${overview?.current_version ?? update?.currentVersion ?? "-"}`} />
         <CardContent>
           <div className="metric-list">
             <Metric label="状态" value={update?.status ?? "not_checked"} />
@@ -3400,7 +3402,7 @@ function AboutScreen({
             <Metric label="资源" value={update?.assetName ?? "-"} />
             <Metric label="进度" value={`${update?.progress ?? 0}%`} />
           </div>
-          <Textarea className="log-view" readOnly value={update?.releaseSummary || update?.message || "尚未检查 GitHub Release；更新会下载并启动安装包。"} />
+          <Textarea className="log-view" readOnly value={update?.releaseSummary || update?.message || "尚未检查雷神更新通道；更新会下载并启动安装包。"} />
           <Toolbar>
             <Button onClick={() => void actions.checkUpdate()}>检查更新</Button>
             <Button variant="secondary" onClick={() => void actions.performUpdate()}>下载并运行安装包</Button>
@@ -5128,7 +5130,7 @@ function routeSubtitle(route: Route) {
     userScripts: "内置和用户自定义脚本清单",
     recommendations: "赞助商推荐与普通推荐",
     maintenance: "入口安装、修复、Watcher 与手动启动",
-    about: "版本信息、项目链接、GitHub Release 更新、日志与诊断",
+    about: "版本信息、项目链接、雷神更新、日志与诊断",
     settings: "主题、命令包装器和启动参数",
   };
   return subtitles[route];

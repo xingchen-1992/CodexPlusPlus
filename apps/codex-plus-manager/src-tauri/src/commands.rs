@@ -1440,30 +1440,40 @@ pub async fn check_update() -> CommandResult<Value> {
                 } else {
                     "当前已是最新版本。".to_string()
                 },
-                payload: json!({
-                    "currentVersion": update.current_version,
-                    "latestVersion": update.latest_version,
-                    "releaseSummary": update.release_summary,
-                    "assetName": update.asset_name,
-                    "assetUrl": update.asset_url,
-                    "updateAvailable": update.update_available,
-                    "progress": 0
-                }),
+                payload: update_check_payload(update),
             }
         }
         Err(error) => failed(
             &format!("检查更新失败：{error}"),
-            json!({
-                "currentVersion": codex_plus_core::version::VERSION,
-                "latestVersion": Value::Null,
-                "releaseSummary": "",
-                "assetName": Value::Null,
-                "assetUrl": Value::Null,
-                "updateAvailable": false,
-                "progress": 0
-            }),
+            failed_update_check_payload(),
         ),
     }
+}
+
+fn update_check_payload(update: codex_plus_core::update::UpdateCheck) -> Value {
+    json!({
+        "currentVersion": update.current_version,
+        "latestVersion": update.latest_version,
+        "releaseSummary": update.release_summary,
+        "assetName": update.asset_name,
+        "assetUrl": update.asset_url,
+        "assetSha256": update.asset_sha256,
+        "updateAvailable": update.update_available,
+        "progress": 0
+    })
+}
+
+fn failed_update_check_payload() -> Value {
+    json!({
+        "currentVersion": codex_plus_core::version::VERSION,
+        "latestVersion": Value::Null,
+        "releaseSummary": "",
+        "assetName": Value::Null,
+        "assetUrl": Value::Null,
+        "assetSha256": Value::Null,
+        "updateAvailable": false,
+        "progress": 0
+    })
 }
 
 #[tauri::command]
@@ -1475,6 +1485,12 @@ pub async fn perform_update(
             "请先检查更新并选择可下载的 Release asset。",
             json!({
                 "currentVersion": codex_plus_core::version::VERSION,
+                "latestVersion": Value::Null,
+                "releaseSummary": "",
+                "assetName": Value::Null,
+                "assetUrl": Value::Null,
+                "assetSha256": Value::Null,
+                "updateAvailable": false,
                 "progress": 0
             }),
         );
@@ -1487,6 +1503,9 @@ pub async fn perform_update(
                 "currentVersion": codex_plus_core::version::VERSION,
                 "latestVersion": result.release.version,
                 "releaseSummary": result.release.body,
+                "assetName": result.release.asset_name,
+                "assetUrl": result.release.asset_url,
+                "assetSha256": result.release.asset_sha256,
                 "installedPath": result.installer_path.to_string_lossy(),
                 "launched": result.launched,
                 "progress": 100
@@ -1498,6 +1517,9 @@ pub async fn perform_update(
                 "currentVersion": codex_plus_core::version::VERSION,
                 "latestVersion": release.version,
                 "releaseSummary": release.body,
+                "assetName": release.asset_name,
+                "assetUrl": release.asset_url,
+                "assetSha256": release.asset_sha256,
                 "progress": 0
             }),
         ),
@@ -2957,6 +2979,27 @@ mod tests {
 
         assert_eq!(result.status, "failed");
         assert!(result.message.contains("请先检查更新"));
+        assert!(result.payload["assetSha256"].is_null());
+    }
+
+    #[test]
+    fn check_update_payload_preserves_asset_sha256() {
+        let payload = update_check_payload(codex_plus_core::update::UpdateCheck {
+            current_version: "1.0.0-leishen.1".to_string(),
+            latest_version: Some("v1.0.0-leishen.2".to_string()),
+            release_summary: "雷神版更新".to_string(),
+            asset_name: Some("CodexPlusLeishen-1.0.0-leishen.2-windows-x64-setup.exe".to_string()),
+            asset_url: Some("https://ls-qihang.cn/tools/codex-plus/CodexPlusLeishen-1.0.0-leishen.2-windows-x64-setup.exe".to_string()),
+            asset_sha256: Some(
+                "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824".to_string(),
+            ),
+            update_available: true,
+        });
+
+        assert_eq!(
+            payload["assetSha256"],
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
     }
 
     #[test]
