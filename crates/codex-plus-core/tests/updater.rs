@@ -6,7 +6,7 @@ use codex_plus_core::update::{
 use serde_json::json;
 
 #[test]
-fn default_update_source_uses_leishen_latest_json() {
+fn default_update_source_uses_taiying_latest_json() {
     assert_eq!(
         DEFAULT_LATEST_JSON_URL,
         "https://ls-qihang.cn/tools/codex-plus/latest.json"
@@ -16,7 +16,7 @@ fn default_update_source_uses_leishen_latest_json() {
             .to_ascii_lowercase()
             .contains("github")
     );
-    assert_eq!(DEFAULT_REPOSITORY, "Leishen/CodexPlusLeishen");
+    assert_eq!(DEFAULT_REPOSITORY, "Taiying/CodexPlusTaiying");
 }
 
 #[test]
@@ -34,13 +34,13 @@ fn version_comparison_uses_numeric_segments() {
 }
 
 #[test]
-fn leishen_version_comparison_uses_numeric_segments_before_suffix() {
-    assert!(is_newer_version("v1.0.1-leishen.1", "v1.0.0-leishen.1").unwrap());
+fn taiying_version_comparison_uses_numeric_segments_before_suffix() {
+    assert!(is_newer_version("v1.0.1-taiying.1", "v1.0.0-taiying.1").unwrap());
 }
 
 #[test]
-fn leishen_version_comparison_uses_suffix_increment_for_same_base() {
-    assert!(is_newer_version("v1.0.0-leishen.2", "v1.0.0-leishen.1").unwrap());
+fn taiying_version_comparison_uses_suffix_increment_for_same_base() {
+    assert!(is_newer_version("v1.0.0-taiying.2", "v1.0.0-taiying.1").unwrap());
 }
 
 #[test]
@@ -111,18 +111,18 @@ fn latest_json_payload_stores_selected_asset_sha256() {
     let windows_sha = "2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824";
     let macos_sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
     let release = release_from_latest_json_payload(&json!({
-        "version": "v1.0.1-leishen.1",
-        "url": "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-leishen.1",
-        "body": "雷神版更新",
+        "version": "v1.0.1-taiying.1",
+        "url": "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-taiying.1",
+        "body": "泰盈定制版更新",
         "assets": [
             {
-                "name": "CodexPlusLeishen-1.0.1-leishen.1-windows-x64-setup.exe",
-                "url": "https://ls-qihang.cn/tools/codex-plus/CodexPlusLeishen-1.0.1-leishen.1-windows-x64-setup.exe",
+                "name": "CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe",
+                "url": "https://ls-qihang.cn/tools/codex-plus/CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe",
                 "sha256": windows_sha
             },
             {
-                "name": "CodexPlusLeishen-1.0.1-leishen.1-macos-x64.dmg",
-                "url": "https://ls-qihang.cn/tools/codex-plus/CodexPlusLeishen-1.0.1-leishen.1-macos-x64.dmg",
+                "name": "CodexPlusTaiying-1.0.1-taiying.1-macos-x64.dmg",
+                "url": "https://ls-qihang.cn/tools/codex-plus/CodexPlusTaiying-1.0.1-taiying.1-macos-x64.dmg",
                 "sha256": macos_sha
             }
         ]
@@ -170,18 +170,18 @@ fn latest_json_payload_selects_platform_installer_without_github_api_shape() {
 }
 
 #[test]
-fn asset_selection_accepts_leishen_style_desktop_artifacts() {
+fn asset_selection_accepts_taiying_style_desktop_artifacts() {
     let assets = vec![
         (
-            "CodexPlusLeishen-1.0.1-leishen.1-windows-x64-setup.exe".to_string(),
+            "CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe".to_string(),
             "https://ls-qihang.cn/tools/codex-plus/windows-setup.exe".to_string(),
         ),
         (
-            "CodexPlusLeishen-1.0.1-leishen.1-macos-arm64.dmg".to_string(),
+            "CodexPlusTaiying-1.0.1-taiying.1-macos-arm64.dmg".to_string(),
             "https://ls-qihang.cn/tools/codex-plus/macos-arm64.dmg".to_string(),
         ),
         (
-            "CodexPlusLeishen-1.0.1-leishen.1-macos-x64.dmg".to_string(),
+            "CodexPlusTaiying-1.0.1-taiying.1-macos-x64.dmg".to_string(),
             "https://ls-qihang.cn/tools/codex-plus/macos-x64.dmg".to_string(),
         ),
     ];
@@ -190,13 +190,13 @@ fn asset_selection_accepts_leishen_style_desktop_artifacts() {
         let selected = select_update_asset(&assets).unwrap();
         assert_eq!(
             selected.name,
-            "CodexPlusLeishen-1.0.1-leishen.1-windows-x64-setup.exe"
+            "CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe"
         );
     } else if cfg!(target_os = "macos") {
         let selected = select_update_asset(&assets).unwrap();
         let expected = match std::env::consts::ARCH {
-            "x86_64" => "CodexPlusLeishen-1.0.1-leishen.1-macos-x64.dmg",
-            "aarch64" => "CodexPlusLeishen-1.0.1-leishen.1-macos-arm64.dmg",
+            "x86_64" => "CodexPlusTaiying-1.0.1-taiying.1-macos-x64.dmg",
+            "aarch64" => "CodexPlusTaiying-1.0.1-taiying.1-macos-arm64.dmg",
             other => panic!("unexpected target arch in test: {other}"),
         };
         assert_eq!(selected.name, expected);
@@ -299,9 +299,9 @@ fn download_asset_to_writes_bytes() {
 #[test]
 fn validate_asset_sha256_accepts_uppercase_manifest_hash() {
     let release = Release {
-        version: "v1.0.1-leishen.1".to_string(),
-        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-leishen.1".to_string(),
-        body: "雷神版更新".to_string(),
+        version: "v1.0.1-taiying.1".to_string(),
+        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-taiying.1".to_string(),
+        body: "泰盈定制版更新".to_string(),
         asset_name: Some("pkg.zip".to_string()),
         asset_url: Some("https://ls-qihang.cn/tools/codex-plus/pkg.zip".to_string()),
         asset_sha256: Some(
@@ -315,9 +315,9 @@ fn validate_asset_sha256_accepts_uppercase_manifest_hash() {
 #[test]
 fn validate_asset_sha256_rejects_missing_manifest_hash() {
     let release = Release {
-        version: "v1.0.1-leishen.1".to_string(),
-        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-leishen.1".to_string(),
-        body: "雷神版更新".to_string(),
+        version: "v1.0.1-taiying.1".to_string(),
+        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-taiying.1".to_string(),
+        body: "泰盈定制版更新".to_string(),
         asset_name: Some("pkg.zip".to_string()),
         asset_url: Some("https://ls-qihang.cn/tools/codex-plus/pkg.zip".to_string()),
         asset_sha256: None,
@@ -333,9 +333,9 @@ fn validate_asset_sha256_rejects_missing_manifest_hash() {
 #[test]
 fn validate_asset_sha256_rejects_mismatch() {
     let release = Release {
-        version: "v1.0.1-leishen.1".to_string(),
-        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-leishen.1".to_string(),
-        body: "雷神版更新".to_string(),
+        version: "v1.0.1-taiying.1".to_string(),
+        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-taiying.1".to_string(),
+        body: "泰盈定制版更新".to_string(),
         asset_name: Some("pkg.zip".to_string()),
         asset_url: Some("https://ls-qihang.cn/tools/codex-plus/pkg.zip".to_string()),
         asset_sha256: Some(

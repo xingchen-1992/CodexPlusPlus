@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DIST="$ROOT/dist/macos"
 STAGE="$DIST/stage"
 BINARY_DIR="${BINARY_DIR:-$ROOT/target/release}"
-DMG="$DIST/CodexPlusLeishen-${VERSION}-macos-${ARCH}.dmg"
+DMG="$DIST/CodexPlusTaiying-${VERSION}-macos-${ARCH}.dmg"
 ICON_SOURCE="$ROOT/apps/codex-plus-manager/src-tauri/icons/icon.png"
 ICON_NAME="codex-plus-plus.icns"
 ICON_ICNS="$DIST/$ICON_NAME"
@@ -118,16 +118,16 @@ verify_app() {
 }
 
 prepare_icon
-create_app "Codex++ 雷神版" "CodexPlusPlus" "$BINARY_DIR/codex-plus-plus" "cn.ls-qihang.codexplusplus" "true"
-create_app "Codex++ 雷神版管理工具" "CodexPlusPlusManager" "$BINARY_DIR/codex-plus-plus-manager" "cn.ls-qihang.codexplusplus.manager" "false"
+create_app "Codex++ 泰盈定制版" "CodexPlusPlus" "$BINARY_DIR/codex-plus-plus" "cn.ls-qihang.codexplusplus" "true"
+create_app "Codex++ 泰盈定制版管理工具" "CodexPlusPlusManager" "$BINARY_DIR/codex-plus-plus-manager" "cn.ls-qihang.codexplusplus.manager" "false"
 
-sign_app "$STAGE/Codex++ 雷神版.app"
-sign_app "$STAGE/Codex++ 雷神版管理工具.app"
+sign_app "$STAGE/Codex++ 泰盈定制版.app"
+sign_app "$STAGE/Codex++ 泰盈定制版管理工具.app"
 
-verify_app "$STAGE/Codex++ 雷神版.app"
-verify_app "$STAGE/Codex++ 雷神版管理工具.app"
+verify_app "$STAGE/Codex++ 泰盈定制版.app"
+verify_app "$STAGE/Codex++ 泰盈定制版管理工具.app"
 
 ln -s /Applications "$STAGE/Applications"
 
-hdiutil create -volname "Codex++ 雷神版" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+hdiutil create -volname "Codex++ 泰盈定制版" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 echo "$DMG"

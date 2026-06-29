@@ -15,8 +15,11 @@ fn windows_entrypoint_plan_contains_silent_and_manager_entrypoints() {
 
     let plan = build_windows_entrypoint_plan(&options);
 
-    assert!(plan.silent_shortcut.ends_with("Codex++ 雷神版.lnk"));
-    assert!(plan.manager_shortcut.ends_with("Codex++ 雷神版管理工具.lnk"));
+    assert!(plan.silent_shortcut.ends_with("Codex++ 泰盈定制版.lnk"));
+    assert!(
+        plan.manager_shortcut
+            .ends_with("Codex++ 泰盈定制版管理工具.lnk")
+    );
     assert_eq!(plan.launcher_path, "C:/Tools/codex-plus-plus.exe");
     assert_eq!(plan.manager_path, "C:/Tools/codex-plus-plus-manager.exe");
     assert_eq!(plan.silent_icon_path, "C:/Tools/codex-plus-plus.exe");
@@ -24,8 +27,8 @@ fn windows_entrypoint_plan_contains_silent_and_manager_entrypoints() {
         plan.manager_icon_path,
         "C:/Tools/codex-plus-plus-manager.exe"
     );
-    assert_eq!(plan.uninstall_key, "CodexPlusLeishen");
-    assert_eq!(plan.legacy_uninstall_key, "CodexPlusLeishenLegacy");
+    assert_eq!(plan.uninstall_key, "CodexPlusTaiying");
+    assert_eq!(plan.legacy_uninstall_key, "CodexPlusTaiyingLegacy");
     assert_eq!(
         plan.uninstaller_path.replace('\\', "/"),
         "C:/Tools/uninstall.exe"
@@ -55,8 +58,11 @@ fn windows_entrypoint_plan_can_request_owned_data_removal_without_shell_script()
 
     let plan = build_windows_entrypoint_plan(&options);
 
-    assert!(plan.silent_shortcut.ends_with("Codex++ 雷神版.lnk"));
-    assert!(plan.manager_shortcut.ends_with("Codex++ 雷神版管理工具.lnk"));
+    assert!(plan.silent_shortcut.ends_with("Codex++ 泰盈定制版.lnk"));
+    assert!(
+        plan.manager_shortcut
+            .ends_with("Codex++ 泰盈定制版管理工具.lnk")
+    );
     assert!(plan.remove_owned_data);
 }
 
@@ -72,16 +78,28 @@ fn macos_bundle_metadata_contains_silent_and_manager_apps() {
     let silent = build_macos_app_bundle(&options, false);
     let manager = build_macos_app_bundle(&options, true);
 
-    assert!(silent.app_path.ends_with("Codex++ 雷神版.app"));
-    assert!(manager.app_path.ends_with("Codex++ 雷神版管理工具.app"));
-    assert!(silent.info_plist.contains("<string>Codex++ 雷神版</string>"));
+    assert!(silent.app_path.ends_with("Codex++ 泰盈定制版.app"));
+    assert!(manager.app_path.ends_with("Codex++ 泰盈定制版管理工具.app"));
+    assert!(
+        silent
+            .info_plist
+            .contains("<string>Codex++ 泰盈定制版</string>")
+    );
     assert!(
         manager
             .info_plist
-            .contains("<string>Codex++ 雷神版管理工具</string>")
+            .contains("<string>Codex++ 泰盈定制版管理工具</string>")
     );
-    assert!(silent.info_plist.contains("<string>cn.ls-qihang.codexplusplus</string>"));
-    assert!(manager.info_plist.contains("<string>cn.ls-qihang.codexplusplus.manager</string>"));
+    assert!(
+        silent
+            .info_plist
+            .contains("<string>cn.ls-qihang.codexplusplus</string>")
+    );
+    assert!(
+        manager
+            .info_plist
+            .contains("<string>cn.ls-qihang.codexplusplus.manager</string>")
+    );
     assert_eq!(
         silent.binary_target_name.as_deref(),
         Some("codex-plus-plus")
@@ -102,11 +120,11 @@ fn macos_bundle_metadata_contains_silent_and_manager_apps() {
 fn installer_exports_expected_two_entrypoint_names() {
     assert_eq!(
         shortcut_names(),
-        ("Codex++ 雷神版.lnk", "Codex++ 雷神版管理工具.lnk")
+        ("Codex++ 泰盈定制版.lnk", "Codex++ 泰盈定制版管理工具.lnk")
     );
     assert_eq!(
         app_bundle_names(),
-        ("Codex++ 雷神版.app", "Codex++ 雷神版管理工具.app")
+        ("Codex++ 泰盈定制版.app", "Codex++ 泰盈定制版管理工具.app")
     );
 }
 
@@ -121,19 +139,21 @@ fn macos_dmg_includes_applications_shortcut_for_drag_install() {
 #[test]
 fn companion_binary_path_resolves_macos_silent_app_next_to_manager_app() {
     let manager_exe = std::path::Path::new(
-        "/Applications/Codex++ 雷神版管理工具.app/Contents/MacOS/CodexPlusPlusManager",
+        "/Applications/Codex++ 泰盈定制版管理工具.app/Contents/MacOS/CodexPlusPlusManager",
     );
 
     let companion = companion_binary_path_from_exe(manager_exe, SILENT_BINARY);
 
     assert_eq!(
         companion,
-        std::path::PathBuf::from("/Applications/Codex++ 雷神版.app/Contents/MacOS/CodexPlusPlus")
+        std::path::PathBuf::from(
+            "/Applications/Codex++ 泰盈定制版.app/Contents/MacOS/CodexPlusPlus"
+        )
     );
     assert_ne!(
         companion,
         std::path::PathBuf::from(
-            "/Applications/Codex++ 雷神版管理工具.app/Contents/MacOS/codex-plus-plus"
+            "/Applications/Codex++ 泰盈定制版管理工具.app/Contents/MacOS/codex-plus-plus"
         )
     );
 }
@@ -141,7 +161,7 @@ fn companion_binary_path_resolves_macos_silent_app_next_to_manager_app() {
 #[test]
 fn companion_binary_path_resolves_macos_manager_app_next_to_silent_app() {
     let silent_exe =
-        std::path::Path::new("/Applications/Codex++ 雷神版.app/Contents/MacOS/CodexPlusPlus");
+        std::path::Path::new("/Applications/Codex++ 泰盈定制版.app/Contents/MacOS/CodexPlusPlus");
 
     let companion =
         companion_binary_path_from_exe(silent_exe, codex_plus_core::install::MANAGER_BINARY);
@@ -149,7 +169,7 @@ fn companion_binary_path_resolves_macos_manager_app_next_to_silent_app() {
     assert_eq!(
         companion,
         std::path::PathBuf::from(
-            "/Applications/Codex++ 雷神版管理工具.app/Contents/MacOS/CodexPlusPlusManager"
+            "/Applications/Codex++ 泰盈定制版管理工具.app/Contents/MacOS/CodexPlusPlusManager"
         )
     );
 }
@@ -158,9 +178,12 @@ fn companion_binary_path_resolves_macos_manager_app_next_to_silent_app() {
 fn macos_bundle_does_not_wrap_the_bundle_executable_in_itself() {
     let options = InstallOptions {
         install_root: Some("/Applications".into()),
-        launcher_path: Some("/Applications/Codex++ 雷神版.app/Contents/MacOS/CodexPlusPlus".into()),
+        launcher_path: Some(
+            "/Applications/Codex++ 泰盈定制版.app/Contents/MacOS/CodexPlusPlus".into(),
+        ),
         manager_path: Some(
-            "/Applications/Codex++ 雷神版管理工具.app/Contents/MacOS/CodexPlusPlusManager".into(),
+            "/Applications/Codex++ 泰盈定制版管理工具.app/Contents/MacOS/CodexPlusPlusManager"
+                .into(),
         ),
         remove_owned_data: false,
     };
@@ -171,13 +194,13 @@ fn macos_bundle_does_not_wrap_the_bundle_executable_in_itself() {
     assert_eq!(
         silent.binary_source,
         Some(std::path::PathBuf::from(
-            "/Applications/Codex++ 雷神版.app/Contents/MacOS/CodexPlusPlus"
+            "/Applications/Codex++ 泰盈定制版.app/Contents/MacOS/CodexPlusPlus"
         ))
     );
     assert_eq!(
         manager.binary_source,
         Some(std::path::PathBuf::from(
-            "/Applications/Codex++ 雷神版管理工具.app/Contents/MacOS/CodexPlusPlusManager"
+            "/Applications/Codex++ 泰盈定制版管理工具.app/Contents/MacOS/CodexPlusPlusManager"
         ))
     );
     assert!(silent.launch_script.contains("$DIR/codex-plus-plus"));
@@ -189,7 +212,7 @@ fn macos_bundle_does_not_wrap_the_bundle_executable_in_itself() {
 }
 
 #[test]
-fn installer_sources_use_leishen_branding() {
+fn installer_sources_use_taiying_branding() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let install_mod =
         std::fs::read_to_string(manifest_dir.join("src/install/mod.rs")).expect("read install mod");
@@ -198,12 +221,15 @@ fn installer_sources_use_leishen_branding() {
     let macos_src = std::fs::read_to_string(manifest_dir.join("src/install/macos.rs"))
         .expect("read macOS install source");
 
-    assert!(install_mod.contains("pub const SILENT_NAME: &str = \"Codex++ 雷神版\";"));
-    assert!(install_mod.contains("pub const MANAGER_NAME: &str = \"Codex++ 雷神版管理工具\";"));
-    assert!(windows_src.contains("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexPlusLeishen"));
-    assert!(windows_src.contains("Software\\Classes\\codexplusleishen"));
-    assert!(windows_src.contains("uninstall_key: \"CodexPlusLeishen\".to_string()"));
-    assert!(windows_src.contains("legacy_uninstall_key: \"CodexPlusLeishenLegacy\".to_string()"));
+    assert!(install_mod.contains("pub const SILENT_NAME: &str = \"Codex++ 泰盈定制版\";"));
+    assert!(install_mod.contains("pub const MANAGER_NAME: &str = \"Codex++ 泰盈定制版管理工具\";"));
+    assert!(
+        windows_src
+            .contains("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexPlusTaiying")
+    );
+    assert!(windows_src.contains("Software\\Classes\\codexplustaiying"));
+    assert!(windows_src.contains("uninstall_key: \"CodexPlusTaiying\".to_string()"));
+    assert!(windows_src.contains("legacy_uninstall_key: \"CodexPlusTaiyingLegacy\".to_string()"));
     assert!(windows_src.contains("(\"DisplayName\", SILENT_NAME.to_string())"));
     assert!(windows_src.contains("(\"Publisher\", super::INSTALL_PUBLISHER.to_string())"));
     assert!(macos_src.contains("MACOS_BUNDLE_ID_BASE"));

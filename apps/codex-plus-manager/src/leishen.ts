@@ -41,3 +41,9 @@ export async function fetchLeishenBalance(apiKey: string): Promise<CommandResult
     request: { apiKey },
   });
 }
+
+export async function configureTaiyingApiKey(apiKey: string): Promise<CommandResult<Record<string, unknown>>> {
+  return invoke<CommandResult<Record<string, unknown>>>("configure_taiying_api_key", {
+    request: { apiKey },
+  });
+}

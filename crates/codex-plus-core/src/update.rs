@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-pub const DEFAULT_REPOSITORY: &str = "Leishen/CodexPlusLeishen";
+pub const DEFAULT_REPOSITORY: &str = "Taiying/CodexPlusTaiying";
 pub const DEFAULT_LATEST_JSON_URL: &str = "https://ls-qihang.cn/tools/codex-plus/latest.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,13 +59,16 @@ pub fn parse_version_tag(value: &str) -> anyhow::Result<Vec<u64>> {
         .map(|part| part.parse::<u64>().map_err(Into::into))
         .collect::<anyhow::Result<Vec<_>>>()?;
     if let Some(suffix) = normalized.get(digits.len()..) {
-        if let Some(leishen_suffix) = suffix.strip_prefix("-leishen.") {
-            let suffix_digits = leishen_suffix
-                .chars()
-                .take_while(|ch| ch.is_ascii_digit())
-                .collect::<String>();
-            if !suffix_digits.is_empty() {
-                segments.push(suffix_digits.parse()?);
+        for prefix in ["-taiying.", "-leishen."] {
+            if let Some(edition_suffix) = suffix.strip_prefix(prefix) {
+                let suffix_digits = edition_suffix
+                    .chars()
+                    .take_while(|ch| ch.is_ascii_digit())
+                    .collect::<String>();
+                if !suffix_digits.is_empty() {
+                    segments.push(suffix_digits.parse()?);
+                }
+                break;
             }
         }
     }

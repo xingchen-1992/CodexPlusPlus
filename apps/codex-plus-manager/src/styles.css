@@ -343,6 +343,33 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.subscription-center-panel {
+  min-height: calc(100vh - 128px);
+}
+
+.subscription-center-content {
+  display: grid;
+  gap: 12px;
+  min-height: calc(100vh - 230px);
+}
+
+.subscription-center-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+}
+
+.subscription-center-frame {
+  width: 100%;
+  min-height: min(760px, calc(100vh - 280px));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--background));
+}
+
 .panel {
   padding: 0;
   border-color: hsl(var(--border));

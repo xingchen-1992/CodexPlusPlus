@@ -324,6 +324,12 @@ pub struct LeishenBalanceRequest {
     pub api_key: String,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaiyingApiKeyConfigureRequest {
+    pub api_key: String,
+}
+
 #[tauri::command]
 pub fn backend_version() -> CommandResult<VersionPayload> {
     ok(
@@ -374,6 +380,144 @@ pub async fn leishen_balance(
             &error.to_string(),
             fallback_leishen_balance(&request.api_key),
         ),
+    }
+}
+
+#[tauri::command]
+pub fn configure_taiying_api_key(request: TaiyingApiKeyConfigureRequest) -> CommandResult<Value> {
+    const TAIYING_RELAY_ID: &str = "taiying";
+    const TAIYING_RELAY_NAME: &str = "泰盈 AI";
+    const TAIYING_BASE_URL: &str = "https://ls-qihang.cn/openai";
+
+    let api_key = request.api_key.trim().to_string();
+    if api_key.is_empty() {
+        return failed("API Key 不能为空。", json!({}));
+    }
+
+    let store = SettingsStore::default();
+    let mut settings = store.load().unwrap_or_default();
+    let already_configured_settings = settings.relay_profiles_enabled
+        && settings.active_relay_id == TAIYING_RELAY_ID
+        && settings.relay_profiles.iter().any(|profile| {
+            profile.id == TAIYING_RELAY_ID
+                && profile.base_url.trim_end_matches('/') == TAIYING_BASE_URL
+                && profile.api_key == api_key
+        });
+
+    if !already_configured_settings {
+        let mut profile = codex_plus_core::settings::RelayProfile::default();
+        profile.id = TAIYING_RELAY_ID.to_string();
+        profile.name = TAIYING_RELAY_NAME.to_string();
+        profile.model = "gpt-5.4".to_string();
+        profile.base_url = TAIYING_BASE_URL.to_string();
+        profile.upstream_base_url = TAIYING_BASE_URL.to_string();
+        profile.api_key = api_key.clone();
+        profile.protocol = codex_plus_core::settings::RelayProtocol::Responses;
+        profile.relay_mode = codex_plus_core::settings::RelayMode::PureApi;
+        profile.official_mix_api_key = false;
+        profile.test_model = "gpt-5.4-mini".to_string();
+        profile.use_common_config = true;
+        profile.context_selection_initialized = true;
+
+        let mut profiles = std::mem::take(&mut settings.relay_profiles)
+            .into_iter()
+            .filter(|profile| profile.id != TAIYING_RELAY_ID)
+            .collect::<Vec<_>>();
+        profiles.insert(0, profile);
+        settings.relay_profiles = profiles;
+        settings.active_relay_id = TAIYING_RELAY_ID.to_string();
+        settings.relay_profiles_enabled = true;
+        settings.launch_mode = codex_plus_core::settings::LaunchMode::Patch;
+        settings.relay_base_url = TAIYING_BASE_URL.to_string();
+        settings.relay_api_key = api_key.clone();
+        settings.relay_test_model = "gpt-5.4-mini".to_string();
+        settings.cli_wrapper_enabled = true;
+        settings.cli_wrapper_base_url = TAIYING_BASE_URL.to_string();
+        settings.cli_wrapper_api_key = api_key.clone();
+        settings.cli_wrapper_api_key_env = codex_plus_core::settings::default_api_key_env();
+
+        if let Err(error) = store.save(&settings) {
+            return failed(&format!("保存泰盈配置失败：{error}"), json!({}));
+        }
+    }
+
+    let home = codex_plus_core::relay_config::default_codex_home_dir();
+    let before_status = codex_plus_core::relay_config::relay_status_from_home(&home);
+    let applied = !already_configured_settings || !before_status.configured;
+    let apply_result = if applied {
+        match codex_plus_core::relay_config::apply_pure_api_config_to_home_with_protocol(
+            &home,
+            TAIYING_BASE_URL,
+            &api_key,
+            codex_plus_core::settings::RelayProtocol::Responses,
+            codex_plus_core::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT,
+        ) {
+            Ok(result) => Some(result),
+            Err(error) => {
+                let status = codex_plus_core::relay_config::relay_status_from_home(&home);
+                return failed(
+                    &format!("写入 Codex 配置失败：{error}"),
+                    json!({
+                        "configured": status.configured,
+                        "applied": false,
+                        "entrypointsInstalled": false,
+                    }),
+                );
+            }
+        }
+    } else {
+        None
+    };
+
+    let _ = codex_plus_core::cli_wrapper::ensure_cli_wrapper(&settings);
+
+    let entrypoints_before = install::inspect_entrypoints();
+    let entrypoints_needed = !entrypoints_before.silent_shortcut.installed
+        || !entrypoints_before.management_shortcut.installed;
+    let entrypoints = if entrypoints_needed {
+        install::install_entrypoints()
+    } else {
+        InstallActionResult {
+            status: "ok".to_string(),
+            message: "入口已存在。".to_string(),
+            silent_shortcut: entrypoints_before.silent_shortcut,
+            management_shortcut: entrypoints_before.management_shortcut,
+        }
+    };
+
+    let status = codex_plus_core::relay_config::relay_status_from_home(&home);
+    if !status.configured {
+        return failed(
+            "泰盈配置已保存，但 Codex config.toml/auth.json 尚未完整写入。",
+            json!({
+                "configured": false,
+                "applied": applied,
+                "entrypointsInstalled": entrypoints.status == "ok",
+                "entrypointsMessage": entrypoints.message,
+            }),
+        );
+    }
+
+    let entrypoints_ok = entrypoints.status == "ok";
+    let message = if applied {
+        "泰盈 API Key 已写入 Codex 配置。"
+    } else {
+        "泰盈 API Key 已配置，本次只刷新额度。"
+    };
+    let payload = json!({
+        "configured": true,
+        "applied": applied,
+        "entrypointsInstalled": entrypoints_ok,
+        "entrypointsMessage": entrypoints.message,
+        "backupPath": apply_result.and_then(|result| result.backup_path),
+    });
+    if entrypoints_ok {
+        ok(message, payload)
+    } else {
+        failed(
+            &format!("{message} 但入口安装失败：{}", entrypoints.message),
+            payload,
+        )
     }
 }
 
@@ -3090,11 +3234,11 @@ mod tests {
     #[test]
     fn check_update_payload_preserves_asset_sha256() {
         let payload = update_check_payload(codex_plus_core::update::UpdateCheck {
-            current_version: "1.0.0-leishen.1".to_string(),
-            latest_version: Some("v1.0.0-leishen.2".to_string()),
-            release_summary: "雷神版更新".to_string(),
-            asset_name: Some("CodexPlusLeishen-1.0.0-leishen.2-windows-x64-setup.exe".to_string()),
-            asset_url: Some("https://ls-qihang.cn/tools/codex-plus/CodexPlusLeishen-1.0.0-leishen.2-windows-x64-setup.exe".to_string()),
+            current_version: "1.0.0-taiying.0".to_string(),
+            latest_version: Some("v1.0.1-taiying.1".to_string()),
+            release_summary: "泰盈定制版更新".to_string(),
+            asset_name: Some("CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe".to_string()),
+            asset_url: Some("https://ls-qihang.cn/tools/codex-plus/CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe".to_string()),
             asset_sha256: Some(
                 "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824".to_string(),
             ),

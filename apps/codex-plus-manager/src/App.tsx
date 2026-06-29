@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   CircleArrowUp,
   Copy,
+  CreditCard,
   Download,
   Edit3,
   GripVertical,
@@ -66,6 +67,7 @@ import {
 } from "./model-windows";
 import { LeishenBalancePanel } from "./components/LeishenBalancePanel";
 import { LeishenSetupPanel } from "./components/LeishenSetupPanel";
+import { configureTaiyingApiKey, fetchLeishenBalance } from "./leishen";
 
 type Status = "ok" | "failed" | "not_implemented" | "not_checked" | string;
 
@@ -244,6 +246,9 @@ type RelayMode = "official" | "mixedApi" | "pureApi" | "aggregate";
 const PROTOCOL_PROXY_BASE_URL = "http://127.0.0.1:57321/v1";
 const CHAT_UPSTREAM_BASE_URL_KEY = "codex_plus_chat_base_url";
 const SCRIPT_MARKET_REPOSITORY_URL = "https://ls-qihang.cn/tools/codex-plus/script-market";
+const SUBSCRIPTION_CENTER_URL = "https://ls-qihang.cn/user-next/console/subscription";
+const SUBSCRIPTION_CENTER_EMBED_URL = `${SUBSCRIPTION_CENTER_URL}?desktop=codex-plus-taiying`;
+const SUBSCRIPTION_CENTER_ORIGIN = "https://ls-qihang.cn";
 const LOCAL_MOBILE_RELAY_URL = "ws://127.0.0.1:57323";
 const PUBLIC_MOBILE_RELAY_URL = "";
 
@@ -602,11 +607,12 @@ type StartupResult = CommandResult<{
   showUpdate: boolean;
 }>;
 
-type Route = "overview" | "relay" | "mobileControl" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "recommendations" | "maintenance" | "about" | "settings";
+type Route = "overview" | "subscription" | "relay" | "mobileControl" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "recommendations" | "maintenance" | "about" | "settings";
 type Theme = "dark" | "light";
 
 const routes: Array<{ id: Route; label: string; icon: LucideIcon; badge?: string }> = [
   { id: "overview", label: "概览", icon: LayoutDashboard },
+  { id: "subscription", label: "订阅中心", icon: CreditCard },
   { id: "relay", label: "供应商配置", icon: KeyRound },
   { id: "mobileControl", label: "手机控制", icon: MessageCircle, badge: "测试版" },
   { id: "sessions", label: "会话管理", icon: MessageCircle },
@@ -1243,7 +1249,7 @@ export function App() {
     if (result) {
       setUpdate(result);
       if (!silent || result.updateAvailable) {
-        showNotice("雷神更新检查", result.message, result.status);
+        showNotice("泰盈更新检查", result.message, result.status);
       }
     }
   };
@@ -1850,6 +1856,7 @@ export function App() {
       copyLogs: () => copyText(logs?.text ?? "", "日志已复制。"),
       copyDiagnostics: () => copyText(diagnostics?.report ?? "", "诊断报告已复制。"),
       goLogs: () => navigate("about"),
+      goSubscriptionCenter: () => navigate("subscription"),
       checkHealth: async () => {
         await refreshOverview(true);
         await refreshRelay(true);
@@ -1944,6 +1951,7 @@ export function App() {
               actions={actions}
             />
           ) : null}
+          {route === "subscription" ? <SubscriptionCenterScreen actions={actions} /> : null}
           {route === "relay" ? (
             <RelayScreen
               settings={settings}
@@ -2118,6 +2126,7 @@ type Actions = {
   copyLogs: () => Promise<void>;
   copyDiagnostics: () => Promise<void>;
   goLogs: () => Promise<void>;
+  goSubscriptionCenter: () => Promise<void>;
   installWatcher: () => Promise<void>;
   uninstallWatcher: () => Promise<void>;
   enableWatcher: () => Promise<void>;
@@ -2389,7 +2398,7 @@ function OverviewScreen({
             codexReady={Boolean(overview?.codex_version || overview?.codex_app.status === "found")}
             onInstallCodex={() => void actions.installEntrypoints()}
             onOpenCodex={() => void actions.launch()}
-            onOpenSubscription={() => void actions.openExternalUrl("https://ls-qihang.cn/user-next/console/subscription")}
+            onOpenSubscription={() => void actions.goSubscriptionCenter()}
           />
         </Panel>
       </div>
@@ -2945,7 +2954,7 @@ function UserScriptsScreen({ settings, market, actions }: { settings: SettingsRe
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title="市场脚本" detail={market?.market.updatedAt ? `清单更新时间：${market.market.updatedAt}` : "从 Leishen 远端清单加载"} />
+        <CardHead title="市场脚本" detail={market?.market.updatedAt ? `清单更新时间：${market.market.updatedAt}` : "从 泰盈远端清单加载"} />
         <CardContent>
           {marketScripts.length ? (
             <div className="script-market-grid">
@@ -3183,12 +3192,12 @@ function RecommendationsScreen({ ads, actions }: { ads: AdsResult | null; action
   return (
     <>
       <Panel>
-        <CardHead title="推荐内容" detail="与 Codex 内插件菜单使用同一个 Leishen 远端推荐源" />
+        <CardHead title="推荐内容" detail="与 Codex 内插件菜单使用同一个 泰盈远端推荐源" />
         <CardContent>
           <div className="recommend-hero">
             <div>
               <strong>{ads ? `已加载 ${items.length} 条推荐` : "尚未加载推荐内容"}</strong>
-              <span>内容来自 Leishen Codex Plus 推荐清单，分为赞助商推荐和普通推荐。</span>
+              <span>内容来自 泰盈 Codex Plus 推荐清单，分为赞助商推荐和普通推荐。</span>
             </div>
             <Button onClick={() => void actions.refreshAds()}>
               <RefreshCw className="h-4 w-4" />
@@ -3210,6 +3219,88 @@ function RecommendationsScreen({ ads, actions }: { ads: AdsResult | null; action
         </CardContent>
       </Panel>
     </>
+  );
+}
+
+type SubscriptionBridgeMessage = {
+  source: string;
+  type: string;
+  apiKey: string;
+  reason?: string;
+};
+
+function subscriptionBridgeMessage(data: unknown): SubscriptionBridgeMessage | null {
+  if (!data || typeof data !== "object") return null;
+  const payload = data as Partial<SubscriptionBridgeMessage>;
+  if (payload.source !== "taiying-subscription-center" || payload.type !== "taiying:api-key-ready") return null;
+  const apiKey = typeof payload.apiKey === "string" ? payload.apiKey.trim() : "";
+  if (!apiKey) return null;
+  return {
+    source: payload.source,
+    type: payload.type,
+    apiKey,
+    reason: typeof payload.reason === "string" ? payload.reason : undefined,
+  };
+}
+
+function SubscriptionCenterScreen({ actions }: { actions: Actions }) {
+  const [bridgeMessage, setBridgeMessage] = useState("购买完成后会自动同步 API Key 到本机 Codex 配置。");
+  const lastBridgeSyncRef = useRef("");
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== SUBSCRIPTION_CENTER_ORIGIN) return;
+      const payload = subscriptionBridgeMessage(event.data);
+      if (!payload) return;
+      const syncKey = `${payload.apiKey}:${payload.reason || ""}`;
+      if (lastBridgeSyncRef.current === syncKey) return;
+      lastBridgeSyncRef.current = syncKey;
+
+      void (async () => {
+        try {
+          setBridgeMessage("收到订阅中心 API Key，正在写入本机 Codex 配置...");
+          const configureResult = await configureTaiyingApiKey(payload.apiKey);
+          if (configureResult.status !== "ok") {
+            throw new Error(configureResult.message || "本机 Codex 配置失败");
+          }
+
+          const balanceResult = await fetchLeishenBalance(payload.apiKey);
+          const balanceMessage =
+            balanceResult.status === "ok"
+              ? `本机配置完成，额度已刷新：${balanceResult.topupBalance.valueText}`
+              : `本机配置完成，额度稍后可在概览页刷新。`;
+          setBridgeMessage(balanceMessage);
+          await actions.showMessage("订阅中心", balanceMessage, "ok");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "订阅中心同步失败";
+          setBridgeMessage(message);
+          await actions.showMessage("订阅中心", message, "failed");
+        }
+      })();
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [actions]);
+
+  return (
+    <Panel className="subscription-center-panel">
+      <CardHead title="订阅中心" detail={bridgeMessage} />
+      <CardContent className="subscription-center-content">
+        <div className="subscription-center-toolbar">
+          <span>只使用泰盈订阅入口，不展示其它第三方平台。</span>
+          <Button onClick={() => void actions.openExternalUrl(SUBSCRIPTION_CENTER_URL)} type="button" variant="secondary">
+            <ExternalLink className="h-4 w-4" />
+            浏览器打开
+          </Button>
+        </div>
+        <iframe
+          className="subscription-center-frame"
+          src={SUBSCRIPTION_CENTER_EMBED_URL}
+          title="订阅中心"
+        />
+      </CardContent>
+    </Panel>
   );
 }
 
@@ -3369,7 +3460,7 @@ function AboutScreen({
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title="雷神更新通道" detail={`当前版本 ${overview?.current_version ?? update?.currentVersion ?? "-"}`} />
+        <CardHead title="泰盈更新通道" detail={`当前版本 ${overview?.current_version ?? update?.currentVersion ?? "-"}`} />
         <CardContent>
           <div className="metric-list">
             <Metric label="状态" value={update?.status ?? "not_checked"} />
@@ -3377,7 +3468,7 @@ function AboutScreen({
             <Metric label="资源" value={update?.assetName ?? "-"} />
             <Metric label="进度" value={`${update?.progress ?? 0}%`} />
           </div>
-          <Textarea className="log-view" readOnly value={update?.releaseSummary || update?.message || "尚未检查雷神更新通道；更新会下载并启动安装包。"} />
+          <Textarea className="log-view" readOnly value={update?.releaseSummary || update?.message || "尚未检查泰盈更新通道；更新会下载并启动安装包。"} />
           <Toolbar>
             <Button onClick={() => void actions.checkUpdate()}>检查更新</Button>
             <Button variant="secondary" onClick={() => void actions.performUpdate()}>下载并运行安装包</Button>
@@ -5096,6 +5187,7 @@ function routeTitle(route: Route) {
 function routeSubtitle(route: Route) {
   const subtitles: Record<Route, string> = {
     overview: "检查问题、启动与快速修复",
+    subscription: "购买总量包、生成 API Key 并回到概览刷新额度",
     relay: "管理 API 供应商、协议、Key 与配置文件",
     mobileControl: "配置手机控制 relay、房间密钥和服务器状态",
     sessions: "查看、删除和修复 Codex 本地会话",
@@ -5105,7 +5197,7 @@ function routeSubtitle(route: Route) {
     userScripts: "内置和用户自定义脚本清单",
     recommendations: "赞助商推荐与普通推荐",
     maintenance: "入口安装、修复、Watcher 与手动启动",
-    about: "版本信息、项目链接、雷神更新、日志与诊断",
+    about: "版本信息、项目链接、泰盈更新、日志与诊断",
     settings: "主题、命令包装器和启动参数",
   };
   return subtitles[route];

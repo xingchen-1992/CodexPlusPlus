@@ -32,11 +32,11 @@ fn manager_uses_single_instance_guard_before_starting_tauri() {
 }
 
 #[test]
-fn manager_queues_codexplusleishen_provider_urls_for_confirmation_on_startup() {
+fn manager_queues_codexplustaiying_provider_urls_for_confirmation_on_startup() {
     let main_rs = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"))
         .expect("read manager main.rs");
 
-    assert!(main_rs.contains("codexplusleishen://"));
+    assert!(main_rs.contains("codexplustaiying://"));
     assert!(main_rs.contains("provider_import::save_pending_provider_import_from_url"));
     assert!(!main_rs.contains("provider_import::import_provider_from_url"));
     assert!(main_rs.contains("manager.provider_import_url.pending"));
@@ -86,7 +86,7 @@ fn windows_binaries_request_administrator_privileges() {
 }
 
 #[test]
-fn windows_installer_uses_leishen_setup_filename() {
+fn windows_installer_uses_taiying_setup_filename() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let windows_installer = manifest_dir
         .parent()
@@ -97,29 +97,47 @@ fn windows_installer_uses_leishen_setup_filename() {
     let windows_installer =
         std::fs::read_to_string(&windows_installer).expect("read windows installer");
 
+    assert!(windows_installer.contains("CodexPlusTaiying-${VERSION}-windows-x64-setup.exe"));
+    assert!(windows_installer.contains("Name \"Codex++ 泰盈定制版\""));
+    assert!(
+        windows_installer.contains("InstallDir \"$LOCALAPPDATA\\Programs\\Codex++ 泰盈定制版\"")
+    );
+    assert!(windows_installer.contains("SetOutPath \"$INSTDIR\\app\""));
+    assert!(
+        windows_installer
+            .contains("InstallDirRegKey HKCU \"Software\\CodexPlusTaiying\" \"InstallDir\"")
+    );
     assert!(windows_installer.contains(
-        "CodexPlusLeishen-${VERSION}-windows-x64-setup.exe"
+        "CreateShortcut \"$INSTDIR\\Codex++ 泰盈定制版管理工具.lnk\" \"$INSTDIR\\app\\codex-plus-plus-manager.exe\""
     ));
-    assert!(windows_installer.contains("Name \"Codex++ 雷神版\""));
-    assert!(windows_installer.contains("InstallDir \"$LOCALAPPDATA\\Programs\\Codex++ 雷神版\""));
+    assert!(windows_installer.contains("Section \"创建桌面快捷方式\""));
+    assert!(windows_installer.contains("CreateShortcut \"$DESKTOP\\Codex++ 泰盈定制版.lnk\""));
+    assert!(
+        windows_installer.contains("CreateShortcut \"$DESKTOP\\Codex++ 泰盈定制版管理工具.lnk\"")
+    );
+    assert!(windows_installer.contains("!define MUI_FINISHPAGE_RUN_FUNCTION LaunchInstalledApps"));
+    assert!(
+        windows_installer
+            .contains("ExecShell \"open\" \"$INSTDIR\\app\\codex-plus-plus-manager.exe\"")
+    );
+    assert!(
+        windows_installer.contains("ExecShell \"open\" \"$INSTDIR\\app\\codex-plus-plus.exe\"")
+    );
+    assert!(
+        windows_installer.contains(
+            "WriteRegStr HKCU \"Software\\CodexPlusTaiying\" \"InstallDir\" \"$INSTDIR\""
+        )
+    );
     assert!(windows_installer.contains(
-        "InstallDirRegKey HKCU \"Software\\CodexPlusLeishen\" \"InstallDir\""
+        "WriteRegStr HKCU \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexPlusTaiying\" \"DisplayName\" \"Codex++ 泰盈定制版\""
     ));
-    assert!(windows_installer.contains("CreateShortcut \"$DESKTOP\\Codex++ 雷神版.lnk\""));
-    assert!(windows_installer.contains("CreateShortcut \"$DESKTOP\\Codex++ 雷神版管理工具.lnk\""));
     assert!(windows_installer.contains(
-        "WriteRegStr HKCU \"Software\\CodexPlusLeishen\" \"InstallDir\" \"$INSTDIR\""
-    ));
-    assert!(windows_installer.contains(
-        "WriteRegStr HKCU \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexPlusLeishen\" \"DisplayName\" \"Codex++ 雷神版\""
-    ));
-    assert!(windows_installer.contains(
-        "WriteRegStr HKCU \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexPlusLeishen\" \"Publisher\" \"雷神启航\""
+        "WriteRegStr HKCU \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexPlusTaiying\" \"Publisher\" \"泰盈\""
     ));
 }
 
 #[test]
-fn windows_entrypoints_register_codexplusleishen_url_protocol() {
+fn windows_entrypoints_register_codexplustaiying_url_protocol() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let windows_install = manifest_dir
         .parent()
@@ -130,7 +148,7 @@ fn windows_entrypoints_register_codexplusleishen_url_protocol() {
     let windows_install =
         std::fs::read_to_string(&windows_install).expect("read windows install source");
 
-    assert!(windows_install.contains("Software\\Classes\\codexplusleishen"));
+    assert!(windows_install.contains("Software\\Classes\\codexplustaiying"));
     assert!(windows_install.contains("URL Protocol"));
     assert!(windows_install.contains("%1"));
 }
@@ -147,7 +165,7 @@ fn manager_launch_button_spawns_silent_launcher_binary() {
 }
 
 #[test]
-fn leishen_macos_packager_hides_silent_launcher_but_not_manager_and_uses_dmg_filename() {
+fn taiying_macos_packager_hides_silent_launcher_but_not_manager_and_uses_dmg_filename() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let packager = manifest_dir
         .parent()
@@ -160,18 +178,18 @@ fn leishen_macos_packager_hides_silent_launcher_but_not_manager_and_uses_dmg_fil
     assert!(script.contains("<key>LSUIElement</key>"));
     assert!(script.contains("ARCH=\"${2:-$(uname -m)}\""));
     assert!(script.contains("BINARY_DIR=\"${BINARY_DIR:-$ROOT/target/release}\""));
-    assert!(script.contains("CodexPlusLeishen-${VERSION}-macos-${ARCH}.dmg"));
+    assert!(script.contains("CodexPlusTaiying-${VERSION}-macos-${ARCH}.dmg"));
     assert!(script.contains(
-        "create_app \"Codex++ 雷神版\" \"CodexPlusPlus\" \"$BINARY_DIR/codex-plus-plus\" \"cn.ls-qihang.codexplusplus\" \"true\""
+        "create_app \"Codex++ 泰盈定制版\" \"CodexPlusPlus\" \"$BINARY_DIR/codex-plus-plus\" \"cn.ls-qihang.codexplusplus\" \"true\""
     ));
     assert!(script.contains(
-        "create_app \"Codex++ 雷神版管理工具\" \"CodexPlusPlusManager\" \"$BINARY_DIR/codex-plus-plus-manager\" \"cn.ls-qihang.codexplusplus.manager\" \"false\""
+        "create_app \"Codex++ 泰盈定制版管理工具\" \"CodexPlusPlusManager\" \"$BINARY_DIR/codex-plus-plus-manager\" \"cn.ls-qihang.codexplusplus.manager\" \"false\""
     ));
-    assert!(script.contains("hdiutil create -volname \"Codex++ 雷神版\""));
+    assert!(script.contains("hdiutil create -volname \"Codex++ 泰盈定制版\""));
 }
 
 #[test]
-fn github_release_workflow_builds_separate_leishen_macos_x64_and_arm64_dmgs() {
+fn github_release_workflow_builds_separate_taiying_macos_x64_and_arm64_dmgs() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let workflow = manifest_dir
         .parent()
@@ -188,8 +206,8 @@ fn github_release_workflow_builds_separate_leishen_macos_x64_and_arm64_dmgs() {
     assert!(workflow.contains("package-dmg.sh \"$VERSION\" \"${{ matrix.arch }}\""));
     assert!(workflow.contains("target/${{ matrix.target }}/release"));
     assert!(workflow.contains("files: dist/macos/*.dmg"));
-    assert!(workflow.contains("dist/macos/stage/Codex++ 雷神版.app"));
-    assert!(workflow.contains("dist/macos/stage/Codex++ 雷神版管理工具.app"));
+    assert!(workflow.contains("dist/macos/stage/Codex++ 泰盈定制版.app"));
+    assert!(workflow.contains("dist/macos/stage/Codex++ 泰盈定制版管理工具.app"));
     assert!(!workflow.contains("CodexPlusPlus-${VERSION}-macos-${ARCH}.dmg"));
 }
 
@@ -210,7 +228,7 @@ fn github_release_workflow_uploads_static_latest_json() {
 }
 
 #[test]
-fn github_pr_build_artifacts_use_leishen_names() {
+fn github_pr_build_artifacts_use_taiying_names() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let workflow = manifest_dir
         .parent()
@@ -220,11 +238,11 @@ fn github_pr_build_artifacts_use_leishen_names() {
         .join(".github/workflows/pr-build.yml");
     let workflow = std::fs::read_to_string(&workflow).expect("read PR build workflow");
 
-    assert!(workflow.contains("codex-plus-leishen-windows-binaries"));
-    assert!(workflow.contains("codex-plus-leishen-windows-installer"));
-    assert!(workflow.contains("codex-plus-leishen-macos-${{ matrix.arch }}-dmg"));
-    assert!(workflow.contains("dist/macos/stage/Codex++ 雷神版.app"));
-    assert!(workflow.contains("dist/macos/stage/Codex++ 雷神版管理工具.app"));
+    assert!(workflow.contains("codex-plus-taiying-windows-binaries"));
+    assert!(workflow.contains("codex-plus-taiying-windows-installer"));
+    assert!(workflow.contains("codex-plus-taiying-macos-${{ matrix.arch }}-dmg"));
+    assert!(workflow.contains("dist/macos/stage/Codex++ 泰盈定制版.app"));
+    assert!(workflow.contains("dist/macos/stage/Codex++ 泰盈定制版管理工具.app"));
     assert!(!workflow.contains("codex-plus-plus-windows-installer"));
     assert!(!workflow.contains("codex-plus-plus-macos-${{ matrix.arch }}-dmg"));
 }
@@ -298,10 +316,12 @@ fn relay_context_management_is_global_not_supplier_scoped() {
 }
 
 #[test]
-fn manager_window_and_relay_detail_header_stay_usable_with_leishen_title() {
+fn manager_window_and_relay_detail_header_stay_usable_with_taiying_title() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let app_tsx = manifest_dir.parent().unwrap().join("src/App.tsx");
     let app_tsx = std::fs::read_to_string(&app_tsx).expect("read manager App.tsx");
+    let main_tsx = manifest_dir.parent().unwrap().join("src/main.tsx");
+    let main_tsx = std::fs::read_to_string(&main_tsx).expect("read manager main.tsx");
     let styles = manifest_dir.parent().unwrap().join("src/styles.css");
     let styles = std::fs::read_to_string(&styles).expect("read manager styles.css");
     let lib_rs =
@@ -317,12 +337,13 @@ fn manager_window_and_relay_detail_header_stay_usable_with_leishen_title() {
     assert!(styles.contains("margin: 0"));
     assert!(lib_rs.contains(".inner_size(1180.0, 820.0)"));
     assert!(lib_rs.contains(".min_inner_size(960.0, 720.0)"));
-    assert!(lib_rs.contains(".visible(false)"));
+    assert!(lib_rs.contains(".visible(true)"));
+    assert!(!lib_rs.contains("is_minimized()"));
     assert!(lib_rs.contains(".background_color(tauri::window::Color(24, 24, 24, 255))"));
-    assert!(lib_rs.contains(".title(\"Codex++ 雷神版管理工具\")"));
-    assert!(app_tsx.contains("currentWindow.show()"));
-    assert!(tauri_conf.contains("\"productName\": \"Codex++ 雷神版管理工具\""));
-    assert!(tauri_conf.contains("\"title\": \"Codex++ 雷神版管理工具\""));
+    assert!(lib_rs.contains(".title(\"Codex++ 泰盈定制版管理工具\")"));
+    assert!(main_tsx.contains("currentWindow.show()"));
+    assert!(tauri_conf.contains("\"productName\": \"Codex++ 泰盈定制版管理工具\""));
+    assert!(tauri_conf.contains("\"title\": \"Codex++ 泰盈定制版管理工具\""));
     assert!(tauri_conf.contains("\"width\": 1180"));
     assert!(tauri_conf.contains("\"height\": 820"));
     assert!(tauri_conf.contains("\"minWidth\": 960"));
@@ -342,11 +363,16 @@ fn overview_moves_subscription_and_codex_actions_into_balance_card() {
 
     assert!(!app_tsx.contains("Leishen 中转服务"));
     assert!(!app_tsx.contains("打开订阅中心"));
-    assert!(app_tsx.contains("codexReady={Boolean(overview?.codex_version || overview?.codex_app.status === \"found\")}"));
-    assert!(app_tsx.contains("onOpenSubscription={() => void actions.openExternalUrl(\"https://ls-qihang.cn/user-next/console/subscription\")}"));
+    assert!(app_tsx.contains(
+        "codexReady={Boolean(overview?.codex_version || overview?.codex_app.status === \"found\")}"
+    ));
+    assert!(app_tsx.contains("id: \"subscription\", label: \"订阅中心\""));
+    assert!(app_tsx.contains("onOpenSubscription={() => void actions.goSubscriptionCenter()}"));
+    assert!(app_tsx.contains("function SubscriptionCenterScreen"));
+    assert!(app_tsx.contains("src={SUBSCRIPTION_CENTER_EMBED_URL}"));
     assert!(app_tsx.contains("onInstallCodex={() => void actions.installEntrypoints()}"));
     assert!(app_tsx.contains("onOpenCodex={() => void actions.launch()}"));
-    assert!(balance_panel.contains("购买套餐"));
+    assert!(balance_panel.contains("订阅中心"));
     assert!(balance_panel.contains("打开 Codex"));
     assert!(balance_panel.contains("安装 Codex"));
 }
@@ -363,13 +389,13 @@ fn relay_preview_deduplicates_root_keys_when_merging_common_config() {
 }
 
 #[test]
-fn provider_presets_only_include_leishen_and_openai() {
+fn provider_presets_only_include_taiying_and_openai() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let presets = manifest_dir.parent().unwrap().join("src/presets.ts");
     let presets = std::fs::read_to_string(&presets).expect("read manager presets.ts");
 
     assert!(presets.contains("id: \"leishen\""));
-    assert!(presets.contains("name: \"Leishen AI\""));
+    assert!(presets.contains("name: \"泰盈 AI\""));
     assert!(presets.contains("category: \"aggregator\""));
     assert!(presets.contains("baseUrl: \"https://ls-qihang.cn/openai\""));
     assert!(presets.contains("id: \"openai\""));

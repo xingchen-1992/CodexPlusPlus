@@ -44,7 +44,7 @@ export function LeishenSetupPanel() {
     <CardContent className="leishen-panel-content">
       <div className="leishen-panel-head">
         <div>
-          <span className="eyebrow">Leishen 环境</span>
+          <span className="eyebrow">泰盈环境</span>
           <h3>环境配置</h3>
           <p>检查 Node.js、npm 和 Codex CLI，后续一键安装入口会从这里继续扩展。</p>
         </div>

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-import { fetchLeishenBalance, type LeishenBalance } from "../leishen";
+import { configureTaiyingApiKey, fetchLeishenBalance, type LeishenBalance } from "../leishen";
 
 type LeishenBalancePanelProps = {
   codexReady: boolean;
@@ -47,9 +47,16 @@ export function LeishenBalancePanel({
     }
     setBusy(true);
     try {
+      setMessage("正在配置本机 Codex 环境...");
+      const configureResult = await configureTaiyingApiKey(normalized);
+      if (configureResult.status !== "ok") {
+        throw new Error(configureResult.message || "本机 Codex 环境配置失败");
+      }
+      setMessage("本机配置完成，正在刷新额度...");
       const result = await fetchLeishenBalance(normalized);
       setBalance(result);
-      setMessage(result.message || (result.status === "ok" ? "额度刷新完成" : "额度暂时无法刷新"));
+      const balanceMessage = result.message || (result.status === "ok" ? "额度刷新完成" : "额度暂时无法刷新");
+      setMessage(`${balanceMessage}；${configureResult.message}`);
     } catch (error) {
       setBalance(null);
       setMessage(error instanceof Error ? error.message : "额度暂时无法刷新");
@@ -62,7 +69,7 @@ export function LeishenBalancePanel({
     <CardContent className="leishen-panel-content">
       <div className="leishen-panel-head">
         <div>
-          <span className="eyebrow">Leishen 订阅</span>
+          <span className="eyebrow">泰盈订阅</span>
           <h3>账户额度</h3>
           <p>只读取当前 API Key 的套餐状态、已用美金和总量包余额，不暴露完整密钥。</p>
         </div>
@@ -96,7 +103,7 @@ export function LeishenBalancePanel({
       <div className="leishen-balance-actions">
         <Button onClick={onOpenSubscription} type="button" variant="secondary">
           <ExternalLink className="h-4 w-4" />
-          购买套餐
+          订阅中心
         </Button>
         <Button onClick={codexReady ? onOpenCodex : onInstallCodex} type="button" variant="secondary">
           {codexReady ? <Rocket className="h-4 w-4" /> : <Download className="h-4 w-4" />}

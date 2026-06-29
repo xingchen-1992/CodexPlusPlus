@@ -6,10 +6,10 @@ use super::{
 };
 
 const UNINSTALL_SUBKEY: &str =
-    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexPlusLeishen";
+    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexPlusTaiying";
 const LEGACY_UNINSTALL_SUBKEY: &str =
-    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexPlusLeishenLegacy";
-const URL_PROTOCOL_SUBKEY: &str = r"Software\Classes\codexplusleishen";
+    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexPlusTaiyingLegacy";
+const URL_PROTOCOL_SUBKEY: &str = r"Software\Classes\codexplustaiying";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsEntrypointPlan {
@@ -42,7 +42,10 @@ pub fn build_windows_entrypoint_plan(options: &InstallOptions) -> WindowsEntrypo
     let uninstall_command = format!("\"{}\"", uninstaller_path.to_string_lossy());
     let quiet_uninstall_command = format!("{uninstall_command} /S");
     WindowsEntrypointPlan {
-        silent_shortcut: install_root.join(format!("{SILENT_NAME}.lnk")).to_string_lossy().to_string(),
+        silent_shortcut: install_root
+            .join(format!("{SILENT_NAME}.lnk"))
+            .to_string_lossy()
+            .to_string(),
         manager_shortcut: install_root
             .join(format!("{MANAGER_NAME}.lnk"))
             .to_string_lossy()
@@ -56,8 +59,8 @@ pub fn build_windows_entrypoint_plan(options: &InstallOptions) -> WindowsEntrypo
         uninstaller_path: uninstaller_path.to_string_lossy().to_string(),
         uninstall_command,
         quiet_uninstall_command,
-        uninstall_key: "CodexPlusLeishen".to_string(),
-        legacy_uninstall_key: "CodexPlusLeishenLegacy".to_string(),
+        uninstall_key: "CodexPlusTaiying".to_string(),
+        legacy_uninstall_key: "CodexPlusTaiyingLegacy".to_string(),
         remove_owned_data: options.remove_owned_data,
     }
 }
@@ -160,7 +163,7 @@ fn register_url_protocol(manager_path: &str) -> anyhow::Result<()> {
     crate::windows_integration::set_current_user_string_value(
         URL_PROTOCOL_SUBKEY,
         "",
-        "URL:Codex++ 雷神版 Import Protocol",
+        "URL:Codex++ 泰盈定制版 Import Protocol",
     )?;
     crate::windows_integration::set_current_user_string_value(
         URL_PROTOCOL_SUBKEY,

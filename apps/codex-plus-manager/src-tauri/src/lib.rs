@@ -34,11 +34,11 @@ pub fn run() {
             };
             let main_window =
                 tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
-                    .title("Codex++ 雷神版管理工具")
+                    .title("Codex++ 泰盈定制版管理工具")
                     .inner_size(1180.0, 820.0)
                     .min_inner_size(960.0, 720.0)
                     .background_color(tauri::window::Color(24, 24, 24, 255))
-                    .visible(false)
+                    .visible(true)
                     .build()?;
             install_tray(app)?;
             register_main_window_events(main_window, app.handle().clone());
@@ -49,6 +49,7 @@ pub fn run() {
             commands::startup_options,
             commands::leishen_setup_status,
             commands::leishen_balance,
+            commands::configure_taiying_api_key,
             commands::load_overview,
             commands::launch_codex_plus,
             commands::restart_codex_plus,
@@ -168,14 +169,7 @@ fn register_main_window_events<R: tauri::Runtime>(
     let event_window = window.clone();
     let dialog_window = window.clone();
     let dialog_app_handle = app_handle.clone();
-    let minimized_window = event_window.clone();
-
     event_window.on_window_event(move |event| match event {
-        WindowEvent::Resized(_) => {
-            if matches!(minimized_window.is_minimized(), Ok(true)) {
-                let _ = minimized_window.hide();
-            }
-        }
         WindowEvent::CloseRequested { api, .. } => {
             if APP_EXITING.load(Ordering::SeqCst) {
                 return;

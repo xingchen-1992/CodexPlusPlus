@@ -68,7 +68,7 @@ async fn fetch_desktop_summary_with_timeout(
     );
     let api_key = api_key.trim().to_string();
     let request = async move {
-        let response = crate::http_client::proxied_client("CodexPlusLeishen")?
+        let response = crate::http_client::proxied_client("CodexPlusTaiying")?
             .get(url)
             .bearer_auth(api_key)
             .send()
