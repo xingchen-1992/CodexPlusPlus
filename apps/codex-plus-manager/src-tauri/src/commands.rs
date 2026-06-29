@@ -3007,7 +3007,7 @@ fn read_command_version(command: &str, arg: &str) -> Option<String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(codex_plus_core::windows_integration::CREATE_NO_WINDOW);
+        command.creation_flags(codex_plus_core::windows_create_no_window());
     }
     command
         .arg(arg)

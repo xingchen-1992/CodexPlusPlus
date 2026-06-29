@@ -176,7 +176,7 @@ fn overview_and_environment_checks_do_not_flash_console_windows() {
     let app_paths = std::fs::read_to_string(app_paths).expect("read app_paths.rs");
 
     assert!(commands_rs.contains("fn read_command_version(command: &str, arg: &str)"));
-    assert!(commands_rs.contains("codex_plus_core::windows_integration::CREATE_NO_WINDOW"));
+    assert!(commands_rs.contains("codex_plus_core::windows_create_no_window()"));
     assert!(commands_rs.contains("command.creation_flags"));
     assert!(app_paths.contains("fn find_latest_codex_app_dir_from_appx_package()"));
     assert!(app_paths.contains("crate::windows_integration::CREATE_NO_WINDOW"));
