@@ -1356,7 +1356,18 @@ export function App() {
     if (result) {
       setUpdate(result);
       if (!silent) {
-        showNotice("泰盈更新检查", result.message, result.status);
+        if (result.updateAvailable === true) {
+          const versionText = result.latestVersion ? ` ${result.latestVersion}` : "";
+          const confirmed = await confirmAction(
+            "发现可用更新",
+            `发现可用更新${versionText}，是否现在更新？`,
+            "更新",
+            "稍后",
+          );
+          if (confirmed) await performUpdate(result);
+        } else {
+          showNotice("泰盈更新检查", result.message, result.status);
+        }
       } else if (result.updateAvailable === true) {
         showNotice("发现可用更新", "可在概览右上角点击“更新版本”安装。", "ok");
       }
@@ -1365,16 +1376,16 @@ export function App() {
     return null;
   };
 
-  const performUpdate = async () => {
+  const performUpdate = async (targetUpdate: UpdateResult | null = update) => {
     const release =
-      update?.latestVersion && update.assetName && update.assetUrl
+      targetUpdate?.latestVersion && targetUpdate.assetName && targetUpdate.assetUrl
         ? {
-            version: update.latestVersion,
+            version: targetUpdate.latestVersion,
             url: "",
-            body: update.releaseSummary ?? "",
-            asset_name: update.assetName,
-            asset_url: update.assetUrl,
-            asset_sha256: update.assetSha256 ?? null,
+            body: targetUpdate.releaseSummary ?? "",
+            asset_name: targetUpdate.assetName,
+            asset_url: targetUpdate.assetUrl,
+            asset_sha256: targetUpdate.assetSha256 ?? null,
           }
         : null;
     const result = await run(() => call<UpdateResult>("perform_update", { release }));
@@ -2212,7 +2223,7 @@ type Actions = {
   uninstallEntrypoints: () => Promise<void>;
   repairShortcuts: () => Promise<void>;
   checkUpdate: (silent?: boolean) => Promise<UpdateResult | null>;
-  performUpdate: () => Promise<void>;
+  performUpdate: (targetUpdate?: UpdateResult | null) => Promise<void>;
   saveTaiyingApiKey: (apiKey: string, options?: TaiyingSyncOptions) => Promise<TaiyingSyncResult>;
   openNodeInstaller: () => Promise<void>;
   installCodexCliEnvironment: () => Promise<void>;
@@ -3600,11 +3611,6 @@ function AboutScreen({
           <Textarea className="log-view" readOnly value={update?.releaseSummary || update?.message || "尚未检查泰盈更新通道；更新会下载并启动安装包。"} />
           <Toolbar>
             <Button onClick={() => void actions.checkUpdate()}>检查更新</Button>
-            {update?.updateAvailable === true ? (
-              <Button variant="secondary" onClick={() => void actions.performUpdate()}>
-                更新
-              </Button>
-            ) : null}
           </Toolbar>
         </CardContent>
       </Panel>

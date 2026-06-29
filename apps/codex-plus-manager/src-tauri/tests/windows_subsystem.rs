@@ -221,7 +221,9 @@ fn update_install_button_is_named_update_and_only_shown_when_available() {
     .expect("read App.tsx");
 
     assert!(app_tsx.contains("if (!silent) {"));
-    assert!(app_tsx.contains("showNotice(\"泰盈更新检查\", result.message, result.status);"));
+    assert!(app_tsx.contains("const confirmed = await confirmAction("));
+    assert!(app_tsx.contains("\"发现可用更新\""));
+    assert!(app_tsx.contains("if (confirmed) await performUpdate(result);"));
     assert!(app_tsx.contains("showNotice(\"发现可用更新\""));
     assert!(app_tsx.contains("className=\"topbar-update-version\""));
     assert!(app_tsx.contains("update?.updateAvailable === true ? ("));
@@ -452,6 +454,8 @@ fn overview_moves_subscription_and_codex_actions_into_balance_card() {
     assert!(balance_panel.contains("购买额度"));
     assert!(balance_panel.contains("打开 Codex"));
     assert!(balance_panel.contains("安装 Codex"));
+    assert!(balance_panel.contains("placeholder=\"粘贴sk-\""));
+    assert!(!balance_panel.contains("placeholder=\"粘贴 cr_... 或 sk-...\""));
     assert!(!balance_panel.contains("泰盈订阅"));
     assert!(balance_panel.contains("className=\"leishen-balance-action-open\""));
     assert!(balance_panel.contains("className=\"leishen-balance-action-refresh\""));

@@ -60,7 +60,7 @@ export function LeishenBalancePanel({
           <div className="leishen-key-input">
             <Input
               onChange={(event) => onApiKeyChange(event.target.value)}
-              placeholder="粘贴 cr_... 或 sk-..."
+              placeholder="粘贴sk-"
               type={showApiKey ? "text" : "password"}
               value={apiKey}
             />
