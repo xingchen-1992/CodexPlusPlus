@@ -1230,7 +1230,7 @@ export function App() {
     const result = await run(() => call<UpdateResult>("check_update"));
     if (result) {
       setUpdate(result);
-      if (!silent || result.updateAvailable) {
+      if (!silent) {
         showNotice("泰盈更新检查", result.message, result.status);
       }
     }
@@ -1924,13 +1924,7 @@ export function App() {
               actions={actions}
             />
           ) : null}
-          <div
-            aria-hidden={route !== "subscription"}
-            className="subscription-center-route"
-            style={{ display: route === "subscription" ? "contents" : "none" }}
-          >
-            <SubscriptionCenterScreen actions={actions} />
-          </div>
+          {route === "subscription" ? <SubscriptionCenterScreen actions={actions} /> : null}
           {route === "relay" ? (
             <RelayScreen
               settings={settings}
@@ -3411,7 +3405,11 @@ function AboutScreen({
           <Textarea className="log-view" readOnly value={update?.releaseSummary || update?.message || "尚未检查泰盈更新通道；更新会下载并启动安装包。"} />
           <Toolbar>
             <Button onClick={() => void actions.checkUpdate()}>检查更新</Button>
-            <Button variant="secondary" onClick={() => void actions.performUpdate()}>下载并运行安装包</Button>
+            {update?.updateAvailable === true ? (
+              <Button variant="secondary" onClick={() => void actions.performUpdate()}>
+                更新
+              </Button>
+            ) : null}
           </Toolbar>
         </CardContent>
       </Panel>

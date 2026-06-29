@@ -2979,12 +2979,17 @@ fn load_overview_payload() -> (
     Option<LaunchStatus>,
 ) {
     let settings = SettingsStore::default().load().unwrap_or_default();
+    let mut entrypoints = install::inspect_entrypoints();
+    if !entrypoints.silent_shortcut.installed || !entrypoints.management_shortcut.installed {
+        let _ = install::repair_shortcuts();
+        entrypoints = install::inspect_entrypoints();
+    }
     (
         codex_plus_core::app_paths::resolve_codex_app_dir_with_saved(
             None,
             Some(settings.codex_app_path.as_str()),
         ),
-        install::inspect_entrypoints(),
+        entrypoints,
         StatusStore::default().load_latest().unwrap_or(None),
     )
 }
@@ -2998,7 +3003,13 @@ fn load_leishen_setup_status() -> LeishenSetupStatus {
 }
 
 fn read_command_version(command: &str, arg: &str) -> Option<String> {
-    std::process::Command::new(command)
+    let mut command = std::process::Command::new(command);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(codex_plus_core::windows_integration::CREATE_NO_WINDOW);
+    }
+    command
         .arg(arg)
         .output()
         .ok()

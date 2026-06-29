@@ -44,7 +44,11 @@ pub fn find_latest_codex_app_dir_default() -> Option<PathBuf> {
 
 #[cfg(windows)]
 fn find_latest_codex_app_dir_from_appx_package() -> Option<PathBuf> {
-    let output = Command::new("powershell")
+    use std::os::windows::process::CommandExt;
+
+    let mut command = Command::new("powershell");
+    command.creation_flags(crate::windows_integration::CREATE_NO_WINDOW);
+    let output = command
         .args([
             "-NoProfile",
             "-ExecutionPolicy",

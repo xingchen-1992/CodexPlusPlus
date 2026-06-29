@@ -163,6 +163,72 @@ fn manager_launch_button_spawns_silent_launcher_binary() {
 }
 
 #[test]
+fn overview_and_environment_checks_do_not_flash_console_windows() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let commands_rs =
+        std::fs::read_to_string(manifest_dir.join("src/commands.rs")).expect("read commands.rs");
+    let app_paths = manifest_dir
+        .parent()
+        .and_then(std::path::Path::parent)
+        .and_then(std::path::Path::parent)
+        .unwrap()
+        .join("crates/codex-plus-core/src/app_paths.rs");
+    let app_paths = std::fs::read_to_string(app_paths).expect("read app_paths.rs");
+
+    assert!(commands_rs.contains("fn read_command_version(command: &str, arg: &str)"));
+    assert!(commands_rs.contains("codex_plus_core::windows_integration::CREATE_NO_WINDOW"));
+    assert!(commands_rs.contains("command.creation_flags"));
+    assert!(app_paths.contains("fn find_latest_codex_app_dir_from_appx_package()"));
+    assert!(app_paths.contains("crate::windows_integration::CREATE_NO_WINDOW"));
+    assert!(app_paths.contains("command.creation_flags"));
+}
+
+#[test]
+fn overview_silently_repairs_missing_entrypoints_before_reporting_health() {
+    let commands_rs =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/commands.rs"))
+            .expect("read manager commands.rs");
+
+    assert!(commands_rs.contains("let mut entrypoints = install::inspect_entrypoints();"));
+    assert!(commands_rs.contains("let _ = install::repair_shortcuts();"));
+    assert!(commands_rs.contains("entrypoints = install::inspect_entrypoints();"));
+}
+
+#[test]
+fn subscription_center_is_only_mounted_on_subscription_route() {
+    let app_tsx = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("src/App.tsx"),
+    )
+    .expect("read App.tsx");
+
+    assert!(app_tsx.contains(
+        "{route === \"subscription\" ? <SubscriptionCenterScreen actions={actions} /> : null}"
+    ));
+    assert!(!app_tsx.contains("subscription-center-route"));
+}
+
+#[test]
+fn update_install_button_is_named_update_and_only_shown_when_available() {
+    let app_tsx = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("src/App.tsx"),
+    )
+    .expect("read App.tsx");
+
+    assert!(app_tsx.contains("if (!silent) {"));
+    assert!(app_tsx.contains("showNotice(\"泰盈更新检查\", result.message, result.status);"));
+    assert!(!app_tsx.contains("!silent || result.updateAvailable"));
+    assert!(app_tsx.contains("update?.updateAvailable === true ? ("));
+    assert!(app_tsx.contains("更新"));
+    assert!(!app_tsx.contains(">下载并运行安装包</Button>"));
+}
+
+#[test]
 fn taiying_macos_packager_hides_silent_launcher_but_not_manager_and_uses_dmg_filename() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let packager = manifest_dir
@@ -368,8 +434,11 @@ fn overview_moves_subscription_and_codex_actions_into_balance_card() {
     assert!(app_tsx.contains("onOpenSubscription={() => void actions.goSubscriptionCenter()}"));
     assert!(app_tsx.contains("function SubscriptionCenterScreen"));
     assert!(app_tsx.contains("src={SUBSCRIPTION_CENTER_EMBED_URL}"));
-    assert!(app_tsx.contains("subscription-center-route"));
-    assert!(app_tsx.contains("route === \"subscription\" ? \"contents\" : \"none\""));
+    assert!(app_tsx.contains(
+        "{route === \"subscription\" ? <SubscriptionCenterScreen actions={actions} /> : null}"
+    ));
+    assert!(!app_tsx.contains("subscription-center-route"));
+    assert!(!app_tsx.contains("route === \"subscription\" ? \"contents\" : \"none\""));
     assert!(app_tsx.contains("const [frameLoaded, setFrameLoaded] = useState(false);"));
     assert!(app_tsx.contains("onLoad={() => setFrameLoaded(true)}"));
     assert!(!app_tsx.contains("浏览器打开"));
