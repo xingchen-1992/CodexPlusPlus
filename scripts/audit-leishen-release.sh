@@ -24,6 +24,8 @@ forbidden_patterns=(
   "aihub2api.cloud"
   "maolaoapi.com"
   "unity2.ai"
+  "discord.gg"
+  "t.me/CodexPlusPlus"
 )
 
 for pattern in "${forbidden_patterns[@]}"; do
