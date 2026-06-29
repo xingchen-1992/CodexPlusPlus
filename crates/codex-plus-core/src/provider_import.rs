@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn parses_codexplusplus_provider_url() {
-        let url = "codexplusplus://v1/import/provider?resource=provider&name=Leishen%20AI&baseUrl=https%3A%2F%2Fls-qihang.cn%2Fopenai&apiKey=sk-test&wireApi=responses&relayMode=pureApi&configContents=bW9kZWxfcHJvdmlkZXIgPSAiQ29kZXhQbHVzUGx1cyIK&authContents=eyJPUEVOQUlfQVBJX0tFWSI6InNrLXRlc3QifQo%3D";
+        let url = "codexplusleishen://v1/import/provider?resource=provider&name=Leishen%20AI&baseUrl=https%3A%2F%2Fls-qihang.cn%2Fopenai&apiKey=sk-test&wireApi=responses&relayMode=pureApi&configContents=bW9kZWxfcHJvdmlkZXIgPSAiQ29kZXhQbHVzUGx1cyIK&authContents=eyJPUEVOQUlfQVBJX0tFWSI6InNrLXRlc3QifQo%3D";
 
         let request = request_from_url(url).unwrap();
 

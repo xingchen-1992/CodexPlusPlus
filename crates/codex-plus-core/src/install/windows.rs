@@ -5,10 +5,11 @@ use super::{
     install_root_or_default, option_or_current_exe,
 };
 
-const UNINSTALL_SUBKEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexPlusPlus";
+const UNINSTALL_SUBKEY: &str =
+    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexPlusLeishen";
 const LEGACY_UNINSTALL_SUBKEY: &str =
-    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Codex++";
-const URL_PROTOCOL_SUBKEY: &str = r"Software\Classes\codexplusplus";
+    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexPlusLeishenLegacy";
+const URL_PROTOCOL_SUBKEY: &str = r"Software\Classes\codexplusleishen";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsEntrypointPlan {
@@ -41,12 +42,9 @@ pub fn build_windows_entrypoint_plan(options: &InstallOptions) -> WindowsEntrypo
     let uninstall_command = format!("\"{}\"", uninstaller_path.to_string_lossy());
     let quiet_uninstall_command = format!("{uninstall_command} /S");
     WindowsEntrypointPlan {
-        silent_shortcut: install_root
-            .join("Codex++.lnk")
-            .to_string_lossy()
-            .to_string(),
+        silent_shortcut: install_root.join(format!("{SILENT_NAME}.lnk")).to_string_lossy().to_string(),
         manager_shortcut: install_root
-            .join("Codex++ 管理工具.lnk")
+            .join(format!("{MANAGER_NAME}.lnk"))
             .to_string_lossy()
             .to_string(),
         install_root: install_root.to_string_lossy().to_string(),
@@ -58,8 +56,8 @@ pub fn build_windows_entrypoint_plan(options: &InstallOptions) -> WindowsEntrypo
         uninstaller_path: uninstaller_path.to_string_lossy().to_string(),
         uninstall_command,
         quiet_uninstall_command,
-        uninstall_key: "CodexPlusPlus".to_string(),
-        legacy_uninstall_key: "Codex++".to_string(),
+        uninstall_key: "CodexPlusLeishen".to_string(),
+        legacy_uninstall_key: "CodexPlusLeishenLegacy".to_string(),
         remove_owned_data: options.remove_owned_data,
     }
 }
@@ -144,9 +142,9 @@ fn write_uninstall_registration(plan: &WindowsEntrypointPlan) -> anyhow::Result<
         .to_string_lossy()
         .to_string();
     for (name, value) in [
-        ("DisplayName", "Codex++".to_string()),
+        ("DisplayName", SILENT_NAME.to_string()),
         ("DisplayVersion", crate::version::VERSION.to_string()),
-        ("Publisher", "BigPizzaV3".to_string()),
+        ("Publisher", super::INSTALL_PUBLISHER.to_string()),
         ("DisplayIcon", plan.manager_icon_path.clone()),
         ("InstallLocation", install_location),
         ("UninstallString", plan.uninstall_command.clone()),
@@ -162,7 +160,7 @@ fn register_url_protocol(manager_path: &str) -> anyhow::Result<()> {
     crate::windows_integration::set_current_user_string_value(
         URL_PROTOCOL_SUBKEY,
         "",
-        "URL:Codex++ Import Protocol",
+        "URL:Codex++ 雷神版 Import Protocol",
     )?;
     crate::windows_integration::set_current_user_string_value(
         URL_PROTOCOL_SUBKEY,

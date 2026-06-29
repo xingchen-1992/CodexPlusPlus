@@ -2,7 +2,7 @@
 
 fn main() {
     for arg in std::env::args() {
-        if arg.starts_with("codexplusplus://") {
+        if arg.starts_with("codexplusleishen://") {
             match codex_plus_core::provider_import::save_pending_provider_import_from_url(&arg) {
                 Ok(request) => {
                     let _ = codex_plus_core::diagnostic_log::append_diagnostic_log(

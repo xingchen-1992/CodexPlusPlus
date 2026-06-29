@@ -5,8 +5,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use super::{
-    InstallOptions, MANAGER_BINARY, MANAGER_NAME, MacosAppBundle, SILENT_BINARY, SILENT_NAME,
-    install_root_or_default, option_or_current_exe,
+    InstallOptions, MACOS_BUNDLE_ID_BASE, MANAGER_BINARY, MANAGER_NAME, MacosAppBundle,
+    SILENT_BINARY, SILENT_NAME, install_root_or_default, option_or_current_exe,
 };
 
 pub fn build_app_bundle(options: &InstallOptions, manager: bool) -> MacosAppBundle {
@@ -168,7 +168,7 @@ fn info_plist(display_name: &str, executable_name: &str, identifier_suffix: &str
   <key>CFBundleDisplayName</key>
   <string>{display_name}</string>
   <key>CFBundleIdentifier</key>
-  <string>com.bigpizzav3.codexplusplus{identifier_suffix}</string>
+  <string>{MACOS_BUNDLE_ID_BASE}{identifier_suffix}</string>
   <key>CFBundleVersion</key>
   <string>{version}</string>
   <key>CFBundleShortVersionString</key>

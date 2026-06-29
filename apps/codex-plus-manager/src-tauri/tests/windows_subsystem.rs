@@ -32,11 +32,11 @@ fn manager_uses_single_instance_guard_before_starting_tauri() {
 }
 
 #[test]
-fn manager_queues_codexplusplus_provider_urls_for_confirmation_on_startup() {
+fn manager_queues_codexplusleishen_provider_urls_for_confirmation_on_startup() {
     let main_rs = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"))
         .expect("read manager main.rs");
 
-    assert!(main_rs.contains("codexplusplus://"));
+    assert!(main_rs.contains("codexplusleishen://"));
     assert!(main_rs.contains("provider_import::save_pending_provider_import_from_url"));
     assert!(!main_rs.contains("provider_import::import_provider_from_url"));
     assert!(main_rs.contains("manager.provider_import_url.pending"));
@@ -86,7 +86,40 @@ fn windows_binaries_request_administrator_privileges() {
 }
 
 #[test]
-fn windows_entrypoints_register_codexplusplus_url_protocol() {
+fn windows_installer_uses_leishen_setup_filename() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let windows_installer = manifest_dir
+        .parent()
+        .and_then(std::path::Path::parent)
+        .and_then(std::path::Path::parent)
+        .unwrap()
+        .join("scripts/installer/windows/CodexPlusPlus.nsi");
+    let windows_installer =
+        std::fs::read_to_string(&windows_installer).expect("read windows installer");
+
+    assert!(windows_installer.contains(
+        "CodexPlusLeishen-${VERSION}-windows-x64-setup.exe"
+    ));
+    assert!(windows_installer.contains("Name \"Codex++ 雷神版\""));
+    assert!(windows_installer.contains("InstallDir \"$LOCALAPPDATA\\Programs\\Codex++ 雷神版\""));
+    assert!(windows_installer.contains(
+        "InstallDirRegKey HKCU \"Software\\CodexPlusLeishen\" \"InstallDir\""
+    ));
+    assert!(windows_installer.contains("CreateShortcut \"$DESKTOP\\Codex++ 雷神版.lnk\""));
+    assert!(windows_installer.contains("CreateShortcut \"$DESKTOP\\Codex++ 雷神版管理工具.lnk\""));
+    assert!(windows_installer.contains(
+        "WriteRegStr HKCU \"Software\\CodexPlusLeishen\" \"InstallDir\" \"$INSTDIR\""
+    ));
+    assert!(windows_installer.contains(
+        "WriteRegStr HKCU \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexPlusLeishen\" \"DisplayName\" \"Codex++ 雷神版\""
+    ));
+    assert!(windows_installer.contains(
+        "WriteRegStr HKCU \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexPlusLeishen\" \"Publisher\" \"雷神启航\""
+    ));
+}
+
+#[test]
+fn windows_entrypoints_register_codexplusleishen_url_protocol() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let windows_install = manifest_dir
         .parent()
@@ -97,7 +130,7 @@ fn windows_entrypoints_register_codexplusplus_url_protocol() {
     let windows_install =
         std::fs::read_to_string(&windows_install).expect("read windows install source");
 
-    assert!(windows_install.contains("Software\\Classes\\codexplusplus"));
+    assert!(windows_install.contains("Software\\Classes\\codexplusleishen"));
     assert!(windows_install.contains("URL Protocol"));
     assert!(windows_install.contains("%1"));
 }
@@ -114,7 +147,7 @@ fn manager_launch_button_spawns_silent_launcher_binary() {
 }
 
 #[test]
-fn macos_packager_hides_silent_launcher_but_not_manager() {
+fn leishen_macos_packager_hides_silent_launcher_but_not_manager_and_uses_dmg_filename() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let packager = manifest_dir
         .parent()
@@ -127,17 +160,18 @@ fn macos_packager_hides_silent_launcher_but_not_manager() {
     assert!(script.contains("<key>LSUIElement</key>"));
     assert!(script.contains("ARCH=\"${2:-$(uname -m)}\""));
     assert!(script.contains("BINARY_DIR=\"${BINARY_DIR:-$ROOT/target/release}\""));
-    assert!(script.contains("CodexPlusPlus-${VERSION}-macos-${ARCH}.dmg"));
+    assert!(script.contains("CodexPlusLeishen-${VERSION}-macos-${ARCH}.dmg"));
     assert!(script.contains(
-        "create_app \"Codex++\" \"CodexPlusPlus\" \"$BINARY_DIR/codex-plus-plus\" \"com.bigpizzav3.codexplusplus\" \"true\""
+        "create_app \"Codex++ 雷神版\" \"CodexPlusPlus\" \"$BINARY_DIR/codex-plus-plus\" \"cn.ls-qihang.codexplusplus\" \"true\""
     ));
     assert!(script.contains(
-        "create_app \"Codex++ 管理工具\" \"CodexPlusPlusManager\" \"$BINARY_DIR/codex-plus-plus-manager\" \"com.bigpizzav3.codexplusplus.manager\" \"false\""
+        "create_app \"Codex++ 雷神版管理工具\" \"CodexPlusPlusManager\" \"$BINARY_DIR/codex-plus-plus-manager\" \"cn.ls-qihang.codexplusplus.manager\" \"false\""
     ));
+    assert!(script.contains("hdiutil create -volname \"Codex++ 雷神版\""));
 }
 
 #[test]
-fn github_release_workflow_builds_separate_macos_x64_and_arm64_dmgs() {
+fn github_release_workflow_builds_separate_leishen_macos_x64_and_arm64_dmgs() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let workflow = manifest_dir
         .parent()
@@ -153,6 +187,10 @@ fn github_release_workflow_builds_separate_macos_x64_and_arm64_dmgs() {
     assert!(workflow.contains("aarch64-apple-darwin"));
     assert!(workflow.contains("package-dmg.sh \"$VERSION\" \"${{ matrix.arch }}\""));
     assert!(workflow.contains("target/${{ matrix.target }}/release"));
+    assert!(workflow.contains("files: dist/macos/*.dmg"));
+    assert!(workflow.contains("dist/macos/stage/Codex++ 雷神版.app"));
+    assert!(workflow.contains("dist/macos/stage/Codex++ 雷神版管理工具.app"));
+    assert!(!workflow.contains("CodexPlusPlus-${VERSION}-macos-${ARCH}.dmg"));
 }
 
 #[test]
@@ -169,6 +207,26 @@ fn github_release_workflow_uploads_static_latest_json() {
     assert!(workflow.contains("latest-json:"));
     assert!(workflow.contains("latest.json"));
     assert!(workflow.contains("gh release upload \"$TAG\" latest.json --clobber"));
+}
+
+#[test]
+fn github_pr_build_artifacts_use_leishen_names() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workflow = manifest_dir
+        .parent()
+        .and_then(std::path::Path::parent)
+        .and_then(std::path::Path::parent)
+        .unwrap()
+        .join(".github/workflows/pr-build.yml");
+    let workflow = std::fs::read_to_string(&workflow).expect("read PR build workflow");
+
+    assert!(workflow.contains("codex-plus-leishen-windows-binaries"));
+    assert!(workflow.contains("codex-plus-leishen-windows-installer"));
+    assert!(workflow.contains("codex-plus-leishen-macos-${{ matrix.arch }}-dmg"));
+    assert!(workflow.contains("dist/macos/stage/Codex++ 雷神版.app"));
+    assert!(workflow.contains("dist/macos/stage/Codex++ 雷神版管理工具.app"));
+    assert!(!workflow.contains("codex-plus-plus-windows-installer"));
+    assert!(!workflow.contains("codex-plus-plus-macos-${{ matrix.arch }}-dmg"));
 }
 
 #[test]
@@ -240,7 +298,7 @@ fn relay_context_management_is_global_not_supplier_scoped() {
 }
 
 #[test]
-fn manager_window_and_relay_detail_header_stay_usable() {
+fn manager_window_and_relay_detail_header_stay_usable_with_leishen_title() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let app_tsx = manifest_dir.parent().unwrap().join("src/App.tsx");
     let app_tsx = std::fs::read_to_string(&app_tsx).expect("read manager App.tsx");
@@ -259,6 +317,9 @@ fn manager_window_and_relay_detail_header_stay_usable() {
     assert!(styles.contains("margin: 0"));
     assert!(lib_rs.contains(".inner_size(1180.0, 820.0)"));
     assert!(lib_rs.contains(".min_inner_size(960.0, 720.0)"));
+    assert!(lib_rs.contains(".title(\"Codex++ 雷神版管理工具\")"));
+    assert!(tauri_conf.contains("\"productName\": \"Codex++ 雷神版管理工具\""));
+    assert!(tauri_conf.contains("\"title\": \"Codex++ 雷神版管理工具\""));
     assert!(tauri_conf.contains("\"width\": 1180"));
     assert!(tauri_conf.contains("\"height\": 820"));
     assert!(tauri_conf.contains("\"minWidth\": 960"));
@@ -277,13 +338,16 @@ fn relay_preview_deduplicates_root_keys_when_merging_common_config() {
 }
 
 #[test]
-fn provider_presets_include_runapi() {
+fn provider_presets_only_include_leishen_and_openai() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let presets = manifest_dir.parent().unwrap().join("src/presets.ts");
     let presets = std::fs::read_to_string(&presets).expect("read manager presets.ts");
 
-    assert!(presets.contains("id: \"runapi\""));
-    assert!(presets.contains("name: \"RunAPI\""));
+    assert!(presets.contains("id: \"leishen\""));
+    assert!(presets.contains("name: \"Leishen AI\""));
     assert!(presets.contains("category: \"aggregator\""));
-    assert!(presets.contains("baseUrl: \"https://runapi.co/v1\""));
+    assert!(presets.contains("baseUrl: \"https://ls-qihang.cn/openai\""));
+    assert!(presets.contains("id: \"openai\""));
+    assert!(presets.contains("name: \"OpenAI Official\""));
+    assert!(!presets.contains("id: \"runapi\""));
 }
