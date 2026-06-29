@@ -2,10 +2,10 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
-pub const DEFAULT_REPOSITORY: &str = "BigPizzaV3/CodexPlusPlus";
-pub const DEFAULT_LATEST_JSON_URL: &str =
-    "https://github.com/BigPizzaV3/CodexPlusPlus/releases/latest/download/latest.json";
+pub const DEFAULT_REPOSITORY: &str = "Leishen/CodexPlusLeishen";
+pub const DEFAULT_LATEST_JSON_URL: &str = "https://ls-qihang.cn/tools/codex-plus/latest.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReleaseAsset {
@@ -20,6 +20,7 @@ pub struct Release {
     pub body: String,
     pub asset_name: Option<String>,
     pub asset_url: Option<String>,
+    pub asset_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -82,10 +83,11 @@ pub fn release_from_github_payload(payload: &Value) -> anyhow::Result<Release> {
             Some((
                 asset.get("name")?.as_str()?.to_string(),
                 asset.get("browser_download_url")?.as_str()?.to_string(),
+                asset_sha256(asset),
             ))
         })
         .collect::<Vec<_>>();
-    let selected = select_update_asset(&assets);
+    let (selected, asset_sha256) = select_update_asset_with_sha256(&assets);
     Ok(Release {
         version,
         url: payload
@@ -100,6 +102,7 @@ pub fn release_from_github_payload(payload: &Value) -> anyhow::Result<Release> {
             .to_string(),
         asset_name: selected.as_ref().map(|asset| asset.name.clone()),
         asset_url: selected.map(|asset| asset.browser_download_url),
+        asset_sha256,
     })
 }
 
@@ -122,10 +125,10 @@ pub fn release_from_latest_json_payload(payload: &Value) -> anyhow::Result<Relea
                 .or_else(|| asset.get("browser_download_url"))?
                 .as_str()?
                 .to_string();
-            Some((name, url))
+            Some((name, url, asset_sha256(asset)))
         })
         .collect::<Vec<_>>();
-    let selected = select_update_asset(&assets);
+    let (selected, asset_sha256) = select_update_asset_with_sha256(&assets);
     Ok(Release {
         version,
         url: payload
@@ -143,7 +146,34 @@ pub fn release_from_latest_json_payload(payload: &Value) -> anyhow::Result<Relea
             .to_string(),
         asset_name: selected.as_ref().map(|asset| asset.name.clone()),
         asset_url: selected.map(|asset| asset.browser_download_url),
+        asset_sha256,
     })
+}
+
+fn asset_sha256(asset: &Value) -> Option<String> {
+    asset
+        .get("sha256")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn select_update_asset_with_sha256(
+    assets: &[(String, String, Option<String>)],
+) -> (Option<ReleaseAsset>, Option<String>) {
+    let selectable = assets
+        .iter()
+        .map(|(name, url, _)| (name.clone(), url.clone()))
+        .collect::<Vec<_>>();
+    let selected = select_update_asset(&selectable);
+    let asset_sha256 = selected.as_ref().and_then(|selected| {
+        assets
+            .iter()
+            .find(|(name, url, _)| name == &selected.name && url == &selected.browser_download_url)
+            .and_then(|(_, _, sha256)| sha256.clone())
+    });
+    (selected, asset_sha256)
 }
 
 pub fn select_update_asset(assets: &[(String, String)]) -> Option<ReleaseAsset> {
@@ -201,6 +231,7 @@ pub async fn perform_update(
         .asset_url
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("没有可下载的 Release asset"))?;
+    expected_asset_sha256(release)?;
     let bytes =
         crate::http_client::proxied_client(&format!("Codex++/{}", crate::version::VERSION))?
             .get(url)
@@ -209,6 +240,7 @@ pub async fn perform_update(
             .error_for_status()?
             .bytes()
             .await?;
+    validate_asset_sha256(release, &bytes)?;
     let installer_path = download_asset_to(release, &bytes, download_dir)?;
     launch_installer(&installer_path)?;
     Ok(UpdateInstall {
@@ -216,6 +248,24 @@ pub async fn perform_update(
         installer_path,
         launched: true,
     })
+}
+
+pub fn validate_asset_sha256(release: &Release, bytes: &[u8]) -> anyhow::Result<()> {
+    let expected = expected_asset_sha256(release)?;
+    let actual = format!("{:x}", Sha256::digest(bytes));
+    if !expected.eq_ignore_ascii_case(&actual) {
+        anyhow::bail!("更新包校验失败");
+    }
+    Ok(())
+}
+
+fn expected_asset_sha256(release: &Release) -> anyhow::Result<&str> {
+    release
+        .asset_sha256
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("更新清单缺少 sha256"))
 }
 
 pub fn download_asset_to(

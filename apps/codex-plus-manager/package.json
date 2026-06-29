@@ -1,6 +1,6 @@
 {
-  "name": "codex-plus-manager",
-  "version": "1.2.23",
+  "name": "codex-plus-leishen-manager",
+  "version": "1.0.0-leishen.1",
   "private": true,
   "type": "module",
   "scripts": {

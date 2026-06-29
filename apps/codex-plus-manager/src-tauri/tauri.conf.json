@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Codex++ Manager",
-  "version": "1.2.23",
-  "identifier": "com.bigpizzav3.codexplusplus.manager",
+  "productName": "Codex++ 雷神版管理工具",
+  "version": "1.0.0-leishen.1",
+  "identifier": "cn.ls-qihang.codexplusplus.manager",
   "build": {
     "beforeDevCommand": "npm run vite:dev",
     "beforeBuildCommand": "npm run vite:build",
