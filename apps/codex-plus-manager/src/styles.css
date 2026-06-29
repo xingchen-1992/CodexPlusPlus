@@ -407,30 +407,30 @@ body {
   letter-spacing: 0;
 }
 
-.jojocode-overview {
+.leishen-overview {
   border-color: hsl(var(--border));
   background: hsl(var(--card));
 }
 
-.light .jojocode-overview {
+.light .leishen-overview {
   background: hsl(var(--card));
 }
 
-.jojocode-overview-layout {
+.leishen-overview-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
 }
 
-.jojocode-overview-main {
+.leishen-overview-main {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
 }
 
-.jojocode-overview-mark {
+.leishen-overview-mark {
   display: grid;
   place-items: center;
   width: 42px;
@@ -441,25 +441,25 @@ body {
   color: hsl(var(--brand-accent));
 }
 
-.jojocode-overview h2 {
+.leishen-overview h2 {
   margin: 2px 0 4px;
   font-size: 20px;
   line-height: 1.25;
 }
 
-.jojocode-overview p {
+.leishen-overview p {
   margin: 0;
   color: hsl(var(--muted-foreground));
   line-height: 1.5;
 }
 
-.jojocode-overview-side {
+.leishen-overview-side {
   display: grid;
   justify-items: end;
   gap: 10px;
 }
 
-.jojocode-model-tags {
+.leishen-model-tags {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -467,7 +467,7 @@ body {
   max-width: 390px;
 }
 
-.jojocode-model-tags span {
+.leishen-model-tags span {
   border: 1px solid hsl(var(--brand-accent) / 0.28);
   border-radius: 999px;
   background: hsl(var(--background) / 0.5);

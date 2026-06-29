@@ -743,6 +743,14 @@ fn user_script_manager_tolerates_bad_config_fields_and_updates_atomically() {
 }
 
 #[test]
+fn script_market_default_index_uses_leishen_release_source() {
+    assert_eq!(
+        codex_plus_core::script_market::DEFAULT_MARKET_INDEX_URL,
+        "https://ls-qihang.cn/tools/codex-plus/script-market/index.json"
+    );
+}
+
+#[test]
 fn script_market_manifest_filters_invalid_entries() {
     let raw = serde_json::json!({
         "version": 1,

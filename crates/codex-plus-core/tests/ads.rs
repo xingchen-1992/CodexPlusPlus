@@ -8,13 +8,10 @@ use codex_plus_core::ads::{
 use serde_json::json;
 
 #[test]
-fn default_ad_urls_match_legacy_helper_sources() {
+fn default_ad_urls_use_leishen_release_source() {
     assert_eq!(
-        DEFAULT_AD_LIST_URLS,
-        [
-            "https://raw.githubusercontent.com/BigPizzaV3/Ad-List/main/ads.json",
-            "https://cdn.jsdelivr.net/gh/BigPizzaV3/Ad-List@main/ads.json",
-        ]
+        &DEFAULT_AD_LIST_URLS[..],
+        ["https://ls-qihang.cn/tools/codex-plus/ads.json"].as_slice()
     );
 }
 

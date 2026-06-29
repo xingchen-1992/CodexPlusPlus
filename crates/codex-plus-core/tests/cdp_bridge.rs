@@ -49,8 +49,9 @@ fn injection_script_prefixes_helper_url_and_sponsor_images() {
     assert!(script.contains("window.__CODEX_PLUS_SPONSOR_IMAGES__"));
     assert!(script.contains("window.__CODEX_PLUS_VERSION__"));
     assert!(script.contains(codex_plus_core::version::VERSION));
-    assert!(script.contains("https://discord.gg/y96kX7A76v"));
-    assert!(script.contains("data-codex-plus-discord"));
+    assert!(script.contains("https://ls-qihang.cn/tools/codex-plus"));
+    assert!(script.contains("https://ls-qihang.cn/user-next/console/subscription"));
+    assert!(!script.contains("github.com/BigPizzaV3/CodexPlusPlus"));
 }
 
 #[test]
@@ -105,7 +106,8 @@ fn injection_script_fetches_ads_without_bridge() {
     assert!(script.contains("directFetchCodexPlusAds"));
     assert!(script.contains("cacheBustCodexPlusAdUrl"));
     assert!(script.contains("Date.now()"));
-    assert!(script.contains("BigPizzaV3/Ad-List"));
+    assert!(script.contains("https://ls-qihang.cn/tools/codex-plus/ads.json"));
+    assert!(!script.contains("BigPizzaV3/Ad-List"));
     assert!(
         !script.contains("codexPlusAds = normalizeCodexPlusAds(await postJson(\"/ads\", {}));")
     );

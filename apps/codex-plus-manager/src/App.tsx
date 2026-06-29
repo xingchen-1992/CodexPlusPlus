@@ -241,13 +241,12 @@ type RelayProtocol = "responses" | "chatCompletions";
 type RelayMode = "official" | "mixedApi" | "pureApi" | "aggregate";
 const PROTOCOL_PROXY_BASE_URL = "http://127.0.0.1:57321/v1";
 const CHAT_UPSTREAM_BASE_URL_KEY = "codex_plus_chat_base_url";
-const SCRIPT_MARKET_REPOSITORY_URL = "https://github.com/BigPizzaV3/CodexPlusPlusScriptMarket";
+const SCRIPT_MARKET_REPOSITORY_URL = "https://ls-qihang.cn/tools/codex-plus/script-market";
 const LOCAL_MOBILE_RELAY_URL = "ws://127.0.0.1:57323";
-const PUBLIC_MOBILE_RELAY_URL = "ws://154.201.90.76:57323";
+const PUBLIC_MOBILE_RELAY_URL = "";
 
 const mobileRelayServers = [
   { id: "local", label: "本机测试", url: LOCAL_MOBILE_RELAY_URL, capacity: 100 },
-  { id: "public-154", label: "公共服务器 1", url: PUBLIC_MOBILE_RELAY_URL, capacity: 100 },
 ];
 
 const emptyContextSelection = (): RelayContextSelection => ({
@@ -2379,32 +2378,31 @@ function OverviewScreen({
   const health = healthItems(overview);
   return (
     <>
-      <Panel className="jojocode-overview">
+      <Panel className="leishen-overview">
         <CardContent>
-          <div className="jojocode-overview-layout">
-            <div className="jojocode-overview-main">
-              <div className="jojocode-overview-mark">
+          <div className="leishen-overview-layout">
+            <div className="leishen-overview-main">
+              <div className="leishen-overview-mark">
                 <Network className="h-5 w-5" />
               </div>
               <div>
-                <span className="eyebrow">官方中转站</span>
-                <h2>JOJO Code</h2>
+                <span className="eyebrow">Leishen 中转服务</span>
+                <h2>Leishen AI</h2>
                 <p>
-                  Codex++ 官方中转站，主打稳定接入和划算价格，支持 GPT-5.5、GPT-5.4、Claude Opus 4.8、Claude Opus 4.7、gpt-image-2 等模型与图像能力。
+                  通过雷神启航订阅中心接入 Codex Plus 中转服务；预设只提供 Leishen 入口，其他供应商可继续通过手动配置添加。
                 </p>
               </div>
             </div>
-            <div className="jojocode-overview-side">
-              <div className="jojocode-model-tags">
-                <span>GPT-5.5</span>
+            <div className="leishen-overview-side">
+              <div className="leishen-model-tags">
                 <span>GPT-5.4</span>
-                <span>Opus 4.8</span>
-                <span>Opus 4.7</span>
-                <span>gpt-image-2</span>
+                <span>Responses</span>
+                <span>订阅中心</span>
+                <span>手动供应商</span>
               </div>
-              <Button onClick={() => void actions.openExternalUrl("https://jojocode.com/")}>
+              <Button onClick={() => void actions.openExternalUrl("https://ls-qihang.cn/user-next/console/subscription")}>
                 <ExternalLink className="h-4 w-4" />
-                打开 JOJO Code
+                打开订阅中心
               </Button>
             </div>
           </div>
@@ -2952,7 +2950,7 @@ function UserScriptsScreen({ settings, market, actions }: { settings: SettingsRe
             </Button>
             <Button onClick={() => void actions.openExternalUrl(SCRIPT_MARKET_REPOSITORY_URL)} variant="secondary">
               <ExternalLink className="h-4 w-4" />
-              投稿
+              市场入口
             </Button>
             <Button onClick={() => void actions.refreshCurrent()} variant="secondary">
               <RefreshCw className="h-4 w-4" />
@@ -2962,7 +2960,7 @@ function UserScriptsScreen({ settings, market, actions }: { settings: SettingsRe
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title="市场脚本" detail={market?.market.updatedAt ? `清单更新时间：${market.market.updatedAt}` : "从 GitHub 静态清单加载"} />
+        <CardHead title="市场脚本" detail={market?.market.updatedAt ? `清单更新时间：${market.market.updatedAt}` : "从 Leishen 远端清单加载"} />
         <CardContent>
           {marketScripts.length ? (
             <div className="script-market-grid">
@@ -3200,12 +3198,12 @@ function RecommendationsScreen({ ads, actions }: { ads: AdsResult | null; action
   return (
     <>
       <Panel>
-        <CardHead title="推荐内容" detail="与 Codex 内插件菜单使用同一个远端广告源" />
+        <CardHead title="推荐内容" detail="与 Codex 内插件菜单使用同一个 Leishen 远端推荐源" />
         <CardContent>
           <div className="recommend-hero">
             <div>
               <strong>{ads ? `已加载 ${items.length} 条推荐` : "尚未加载推荐内容"}</strong>
-              <span>内容来自 BigPizzaV3/Ad-List，分为赞助商推荐和普通推荐。</span>
+              <span>内容来自 Leishen Codex Plus 推荐清单，分为赞助商推荐和普通推荐。</span>
             </div>
             <Button onClick={() => void actions.refreshAds()}>
               <RefreshCw className="h-4 w-4" />
