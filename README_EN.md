@@ -191,22 +191,11 @@ To return to the official login mode, use the clear API mode button in the Relay
 
 Enhancements are controlled in the manager. Enhancement injection is enabled by default. When disabled, Codex++ will not inject its menu or scripts.
 
-When relay injection mode is active, plugin marketplace unlock and forced plugin install are unnecessary, and the UI will say so. Other enhancements, including session delete, export, move, paste fix, recommendations, and user scripts, can still be used.
-
-## Recommendations
-
-Recommended content is loaded from:
-
-```text
-https://raw.githubusercontent.com/BigPizzaV3/Ad-List/main/ads.json
-https://cdn.jsdelivr.net/gh/BigPizzaV3/Ad-List@main/ads.json
-```
-
-Requests automatically append a `?v=timestamp` cache buster to avoid stale CDN content. Slow recommendation loading does not mark the backend connection as failed.
+When relay injection mode is active, plugin marketplace unlock and forced plugin install are unnecessary, and the UI will say so. Other enhancements, including session delete, export, move, paste fix, and user scripts, can still be used.
 
 ## Updates and Packages
 
-Codex++ publishes installers through GitHub Releases. Windows builds an NSIS installer, while macOS builds separate Intel x64 and Apple Silicon arm64 DMGs.
+Codex publishes update manifests and installers through the Taiying server. Windows builds an NSIS installer, while macOS builds separate Intel x64 and Apple Silicon arm64 DMGs.
 
 The manager's About page can check and start updates. When the silent launcher finds a new version, it opens the manager directly on the update prompt.
 
