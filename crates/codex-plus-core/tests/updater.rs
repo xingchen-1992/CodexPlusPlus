@@ -1,7 +1,7 @@
 use codex_plus_core::update::{
-    DEFAULT_LATEST_JSON_URL, DEFAULT_REPOSITORY, Release, download_asset_to, is_newer_version,
-    parse_version_tag, release_from_github_payload, release_from_latest_json_payload,
-    safe_asset_name, select_update_asset, validate_asset_sha256,
+    DEFAULT_LATEST_JSON_URL, Release, download_asset_to, is_newer_version, parse_version_tag,
+    release_from_github_payload, release_from_latest_json_payload, safe_asset_name,
+    select_update_asset, validate_asset_sha256,
 };
 use serde_json::json;
 
@@ -16,7 +16,6 @@ fn default_update_source_uses_taiying_latest_json() {
             .to_ascii_lowercase()
             .contains("github")
     );
-    assert_eq!(DEFAULT_REPOSITORY, "Taiying/CodexPlusTaiying");
 }
 
 #[test]

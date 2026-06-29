@@ -301,7 +301,6 @@ body {
   padding: 14px 20px;
   border-bottom: 1px solid hsl(var(--border));
   background: hsl(var(--shell-bg));
-  animation: topbar-enter var(--motion-normal) var(--motion-ease) both;
 }
 
 .topbar h1 {
@@ -330,8 +329,6 @@ body {
   overflow: auto;
   padding: 16px 20px 24px;
   scrollbar-gutter: stable;
-  animation: screen-enter 260ms var(--motion-ease) both;
-  will-change: opacity, transform;
 }
 
 .grid {
@@ -349,25 +346,15 @@ body {
 
 .subscription-center-content {
   display: grid;
-  gap: 12px;
-  min-height: calc(100vh - 230px);
-}
-
-.subscription-center-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: hsl(var(--muted-foreground));
-  font-size: 13px;
+  min-height: calc(100vh - 190px);
 }
 
 .subscription-center-frame {
   width: 100%;
-  min-height: min(760px, calc(100vh - 280px));
+  min-height: min(820px, calc(100vh - 210px));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  background: hsl(var(--background));
+  background: hsl(var(--shell-bg));
 }
 
 .panel {
@@ -544,8 +531,8 @@ body {
 }
 
 .leishen-balance-form {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
+  display: grid;
+  gap: 8px;
 }
 
 .leishen-key-field {
@@ -559,9 +546,24 @@ body {
 }
 
 .leishen-balance-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.leishen-balance-actions .button,
+.leishen-balance-actions button {
+  justify-content: center;
+  min-height: 38px;
+}
+
+.leishen-balance-action-open {
+  background: hsl(var(--brand-accent));
+  color: hsl(var(--primary-foreground));
+}
+
+.leishen-balance-action-open:hover {
+  background: hsl(var(--brand-accent) / 0.88);
 }
 
 .leishen-balance-metrics div {
@@ -2605,29 +2607,6 @@ body {
   }
 }
 
-@keyframes screen-enter {
-  from {
-    opacity: 0;
-    transform: translate3d(0, 10px, 0) scale(0.992);
-  }
-
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
-@keyframes topbar-enter {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 @keyframes relay-detail-enter {
   from {

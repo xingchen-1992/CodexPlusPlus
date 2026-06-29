@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-pub const DEFAULT_REPOSITORY: &str = "Taiying/CodexPlusTaiying";
 pub const DEFAULT_LATEST_JSON_URL: &str = "https://ls-qihang.cn/tools/codex-plus/latest.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -230,8 +229,7 @@ pub fn select_update_asset(assets: &[(String, String)]) -> Option<ReleaseAsset> 
 }
 
 pub async fn fetch_latest_release(latest_json_url: &str) -> anyhow::Result<Release> {
-    let client =
-        crate::http_client::proxied_client(&format!("Codex++/{}", crate::version::VERSION))?;
+    let client = crate::http_client::proxied_client(&format!("Codex/{}", crate::version::VERSION))?;
     let payload = client
         .get(latest_json_url)
         .header(reqwest::header::ACCEPT, "application/json")
@@ -266,14 +264,13 @@ pub async fn perform_update(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("没有可下载的 Release asset"))?;
     expected_asset_sha256(release)?;
-    let bytes =
-        crate::http_client::proxied_client(&format!("Codex++/{}", crate::version::VERSION))?
-            .get(url)
-            .send()
-            .await?
-            .error_for_status()?
-            .bytes()
-            .await?;
+    let bytes = crate::http_client::proxied_client(&format!("Codex/{}", crate::version::VERSION))?
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
     validate_asset_sha256(release, &bytes)?;
     let installer_path = download_asset_to(release, &bytes, download_dir)?;
     launch_installer(&installer_path)?;

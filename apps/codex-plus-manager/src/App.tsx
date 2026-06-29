@@ -515,21 +515,6 @@ type UpdateResult = CommandResult<{
   progress?: number;
 }>;
 
-type AdItem = {
-  id?: string;
-  type: "sponsor" | "normal" | string;
-  title: string;
-  description: string;
-  url: string;
-  highlights?: string[];
-  expires_at?: string;
-};
-
-type AdsResult = CommandResult<{
-  version: number;
-  ads: AdItem[];
-}>;
-
 type ScriptMarketItem = {
   id: string;
   name: string;
@@ -607,7 +592,7 @@ type StartupResult = CommandResult<{
   showUpdate: boolean;
 }>;
 
-type Route = "overview" | "subscription" | "relay" | "mobileControl" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "recommendations" | "maintenance" | "about" | "settings";
+type Route = "overview" | "subscription" | "relay" | "mobileControl" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "maintenance" | "about" | "settings";
 type Theme = "dark" | "light";
 
 const routes: Array<{ id: Route; label: string; icon: LucideIcon; badge?: string }> = [
@@ -620,7 +605,6 @@ const routes: Array<{ id: Route; label: string; icon: LucideIcon; badge?: string
   { id: "enhance", label: "Codex增强", icon: Hammer },
   { id: "zedRemote", label: "Zed 远程项目", icon: ExternalLink },
   { id: "userScripts", label: "脚本市场", icon: FileCode2 },
-  { id: "recommendations", label: "推荐内容", icon: ExternalLink },
   { id: "maintenance", label: "安装维护", icon: Wrench },
   { id: "about", label: "关于", icon: Info },
   { id: "settings", label: "设置", icon: Settings },
@@ -728,7 +712,6 @@ export function App() {
   const [diagnostics, setDiagnostics] = useState<DiagnosticsResult | null>(null);
   const [watcher, setWatcher] = useState<WatcherResult | null>(null);
   const [update, setUpdate] = useState<UpdateResult | null>(null);
-  const [ads, setAds] = useState<AdsResult | null>(null);
   const [scriptMarket, setScriptMarket] = useState<ScriptMarketResult | null>(null);
   const [launchForm, setLaunchForm] = useState({
     appPath: "",
@@ -903,7 +886,7 @@ export function App() {
     const result = await run(() => call<PendingProviderImportResult>("load_pending_provider_import"));
     if (result) {
       setPendingProviderImport(result.pending);
-      if (!silent && !isSuccessStatus(result.status)) showResultNotice("Codex++ 导入", result, { silentSuccess: true });
+      if (!silent && !isSuccessStatus(result.status)) showResultNotice("Codex 导入", result, { silentSuccess: true });
     }
     return result;
   };
@@ -914,7 +897,7 @@ export function App() {
       setPendingProviderImport(null);
       setSettings(result);
       setSettingsForm(normalizeSettings(result.settings));
-      showResultNotice("Codex++ 导入", result);
+      showResultNotice("Codex 导入", result);
       await refreshCcsProviders(true);
     }
   };
@@ -923,7 +906,7 @@ export function App() {
     const result = await run(() => call<PendingProviderImportResult>("dismiss_pending_provider_import"));
     if (result) {
       setPendingProviderImport(null);
-      showResultNotice("Codex++ 导入", result, { silentSuccess: true });
+      showResultNotice("Codex 导入", result, { silentSuccess: true });
     }
   };
 
@@ -1112,7 +1095,6 @@ export function App() {
       await refreshSettings(true);
       await refreshScriptMarket(true);
     }
-    if (next === "recommendations") await refreshAds(true);
     if (next === "about") {
       await refreshOverview(true);
       await refreshLogs(true);
@@ -1135,7 +1117,7 @@ export function App() {
   const restart = async () => {
     const result = await launchCommand("restart_codex_plus");
     if (result) {
-      showNotice("重启 Codex++", result.message, result.status);
+      showNotice("重启 Codex", result.message, result.status);
       await refreshOverview(true);
     }
   };
@@ -1309,14 +1291,6 @@ export function App() {
       setSettings(result);
       setSettingsForm(normalizeSettings(result.settings));
       showNotice("图片覆盖层", result.message, result.status);
-    }
-  };
-
-  const refreshAds = async (silent = false) => {
-    const result = await run(() => call<AdsResult>("load_ads"));
-    if (result) {
-      setAds(result);
-      if (!silent) showResultNotice("推荐内容", result, { silentSuccess: true });
     }
   };
 
@@ -1825,7 +1799,6 @@ export function App() {
       importCcsProviders,
       refreshLiveContextEntries,
       syncLiveContextEntries,
-      refreshAds,
       refreshScriptMarket,
       installMarketScript,
       setUserScriptEnabled,
@@ -1877,10 +1850,10 @@ export function App() {
     <div className={`shell ${theme}`}>
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">C++</div>
+          <div className="brand-mark">C</div>
           <div className="brand-copy">
             <div className="brand-title-row">
-              <div className="brand-title">Codex++</div>
+              <div className="brand-title">Codex</div>
               {hasUpdate ? (
                 <button
                   className="update-dot"
@@ -1920,7 +1893,7 @@ export function App() {
         </nav>
       </aside>
       <main className="workspace">
-        <header className="topbar" key={`topbar-${route}`}>
+        <header className="topbar">
           <div>
             <h1>{routeTitle(route)}</h1>
             <p>{routeSubtitle(route)}</p>
@@ -1934,16 +1907,16 @@ export function App() {
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
-            <Button onClick={() => void actions.restart()} title="重启 Codex++" variant="outline">
+            <Button onClick={() => void actions.restart()} title="重启 Codex" variant="outline">
               <Rocket className="h-4 w-4" />
-              重启 Codex++
+              重启 Codex
             </Button>
             <Button onClick={() => void actions.refreshCurrent()} size="icon" title="刷新当前页面" variant="outline">
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
         </header>
-        <section className="screen" key={route}>
+        <section className="screen">
           {route === "overview" ? (
             <OverviewScreen
               overview={overview}
@@ -1999,7 +1972,6 @@ export function App() {
             <ZedRemoteScreen projects={zedRemoteProjects} form={settingsForm} onFormChange={setSettingsForm} actions={actions} />
           ) : null}
           {route === "userScripts" ? <UserScriptsScreen settings={settings} market={scriptMarket} actions={actions} /> : null}
-          {route === "recommendations" ? <RecommendationsScreen ads={ads} actions={actions} /> : null}
           {route === "maintenance" ? (
             <MaintenanceScreen
               overview={overview}
@@ -2090,7 +2062,6 @@ type Actions = {
   importCcsProviders: () => Promise<void>;
   refreshLiveContextEntries: () => Promise<LiveContextEntriesResult | null>;
   syncLiveContextEntries: (settings: BackendSettings, silent?: boolean) => Promise<LiveContextEntriesResult | null>;
-  refreshAds: () => Promise<void>;
   refreshScriptMarket: () => Promise<void>;
   installMarketScript: (id: string) => Promise<void>;
   setUserScriptEnabled: (key: string, enabled: boolean) => Promise<void>;
@@ -2391,15 +2362,15 @@ function OverviewScreen({
     <>
       <div className="grid two leishen-status-panels">
         <Panel className="leishen-panel-card">
-          <LeishenSetupPanel />
-        </Panel>
-        <Panel className="leishen-panel-card">
           <LeishenBalancePanel
             codexReady={Boolean(overview?.codex_version || overview?.codex_app.status === "found")}
             onInstallCodex={() => void actions.installEntrypoints()}
             onOpenCodex={() => void actions.launch()}
             onOpenSubscription={() => void actions.goSubscriptionCenter()}
           />
+        </Panel>
+        <Panel className="leishen-panel-card">
+          <LeishenSetupPanel />
         </Panel>
       </div>
       <Panel>
@@ -2451,7 +2422,7 @@ function OverviewScreen({
           <Toolbar>
             <Button onClick={() => void actions.launch()}>
               <Rocket className="h-4 w-4" />
-              启动 Codex++
+              启动 Codex
             </Button>
             <Button variant="secondary" onClick={() => void actions.goLogs()}>
               打开关于
@@ -2739,10 +2710,10 @@ function EnhanceScreen({
             <FeatureToggle title="对话居中宽度" detail="把主对话和输入框限制到固定最大宽度，适合大屏阅读。" checked={form.codexAppConversationView} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppConversationView", value)} />
             <FeatureToggle title="切换对话保留位置" detail="切换 thread 时恢复上一次浏览位置。" checked={form.codexAppThreadScrollRestore} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppThreadScrollRestore", value)} />
             <FeatureToggle title="Zed Remote open" detail="远程 SSH 文件引用可直接用 Zed Remote Development 打开。" checked={form.codexAppZedRemoteOpen} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppZedRemoteOpen", value)} />
-            <FeatureToggle title="Zed 项目记录" detail="维护 Codex++ 自己的远程项目最近列表。" checked={form.zedRemoteProjectRegistryEnabled} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("zedRemoteProjectRegistryEnabled", value)} />
+            <FeatureToggle title="Zed 项目记录" detail="维护 Codex 自己的远程项目最近列表。" checked={form.zedRemoteProjectRegistryEnabled} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("zedRemoteProjectRegistryEnabled", value)} />
             <FeatureToggle title="同步 Zed settings" detail="高级选项，默认关闭；当前实现不主动改写 Zed settings。" checked={form.zedRemoteSyncToZedSettings} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("zedRemoteSyncToZedSettings", value)} />
             <FeatureToggle title="Upstream worktree" detail="从最新 upstream 分支创建 Git worktree。" checked={form.codexAppUpstreamWorktreeCreate} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppUpstreamWorktreeCreate", value)} />
-            <FeatureToggle title="原生菜单栏位置" detail="把 Codex++ 菜单插入 Codex 顶部原生菜单栏。" checked={form.codexAppNativeMenuPlacement} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppNativeMenuPlacement", value)} />
+            <FeatureToggle title="原生菜单栏位置" detail="把 Codex 菜单插入 Codex 顶部原生菜单栏。" checked={form.codexAppNativeMenuPlacement} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppNativeMenuPlacement", value)} />
             <FeatureToggle title="原生菜单汉化" detail="启动时通过本地主进程调试端口汉化 Codex 原生菜单；不修改安装包。需重启 Codex 才生效。" checked={form.codexAppNativeMenuLocalization} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppNativeMenuLocalization", value)} />
           </div>
           <div className="hint-line">
@@ -2809,7 +2780,7 @@ function ZedRemoteScreen({
   return (
     <>
       <Panel>
-        <CardHead title="Zed 远程项目" detail={`${allProjects.length} 个 Codex++ 可识别项目，默认策略：${zedStrategyLabel(form.zedRemoteOpenStrategy)}`} />
+        <CardHead title="Zed 远程项目" detail={`${allProjects.length} 个 Codex 可识别项目，默认策略：${zedStrategyLabel(form.zedRemoteOpenStrategy)}`} />
         <CardContent>
           <div className="metric-list">
             <Metric label="Current" value={String(currentProjects.length)} />
@@ -2837,7 +2808,7 @@ function ZedRemoteScreen({
               />
               <span>
                 <strong>记录最近打开</strong>
-                <small>保存到 Codex++ state，不改写 Zed settings。</small>
+                <small>保存到 Codex state，不改写 Zed settings。</small>
               </span>
             </label>
           </div>
@@ -3114,7 +3085,7 @@ function SessionsScreen({
             />
             <span>
               <strong>启动前自动修复历史会话</strong>
-              <small>开启后，通过 Codex++ 启动 Codex 前自动整理一次旧对话的归属标记。</small>
+              <small>开启后，通过 Codex 启动 Codex 前自动整理一次旧对话的归属标记。</small>
             </span>
           </label>
           <Toolbar>
@@ -3185,43 +3156,6 @@ function SessionsScreen({
   );
 }
 
-function RecommendationsScreen({ ads, actions }: { ads: AdsResult | null; actions: Actions }) {
-  const items = (ads?.ads ?? []).filter((ad) => !isExpiredAd(ad));
-  const sponsors = items.filter((ad) => ad.type === "sponsor");
-  const normal = items.filter((ad) => ad.type === "normal");
-  return (
-    <>
-      <Panel>
-        <CardHead title="推荐内容" detail="与 Codex 内插件菜单使用同一个 泰盈远端推荐源" />
-        <CardContent>
-          <div className="recommend-hero">
-            <div>
-              <strong>{ads ? `已加载 ${items.length} 条推荐` : "尚未加载推荐内容"}</strong>
-              <span>内容来自 泰盈 Codex Plus 推荐清单，分为赞助商推荐和普通推荐。</span>
-            </div>
-            <Button onClick={() => void actions.refreshAds()}>
-              <RefreshCw className="h-4 w-4" />
-              刷新推荐
-            </Button>
-          </div>
-        </CardContent>
-      </Panel>
-      <Panel>
-        <CardHead title="赞助商推荐" detail={`${sponsors.length} 条`} />
-        <CardContent>
-          <AdGrid actions={actions} ads={sponsors} empty="暂无赞助商推荐。" />
-        </CardContent>
-      </Panel>
-      <Panel>
-        <CardHead title="普通推荐" detail={`${normal.length} 条`} />
-        <CardContent>
-          <AdGrid actions={actions} ads={normal} empty="暂无普通推荐。" />
-        </CardContent>
-      </Panel>
-    </>
-  );
-}
-
 type SubscriptionBridgeMessage = {
   source: string;
   type: string;
@@ -3244,7 +3178,7 @@ function subscriptionBridgeMessage(data: unknown): SubscriptionBridgeMessage | n
 }
 
 function SubscriptionCenterScreen({ actions }: { actions: Actions }) {
-  const [bridgeMessage, setBridgeMessage] = useState("购买完成后会自动同步 API Key 到本机 Codex 配置。");
+  const [bridgeMessage, setBridgeMessage] = useState("选择总量包并完成付款。");
   const lastBridgeSyncRef = useRef("");
 
   useEffect(() => {
@@ -3287,13 +3221,6 @@ function SubscriptionCenterScreen({ actions }: { actions: Actions }) {
     <Panel className="subscription-center-panel">
       <CardHead title="订阅中心" detail={bridgeMessage} />
       <CardContent className="subscription-center-content">
-        <div className="subscription-center-toolbar">
-          <span>只使用泰盈订阅入口，不展示其它第三方平台。</span>
-          <Button onClick={() => void actions.openExternalUrl(SUBSCRIPTION_CENTER_URL)} type="button" variant="secondary">
-            <ExternalLink className="h-4 w-4" />
-            浏览器打开
-          </Button>
-        </div>
         <iframe
           className="subscription-center-frame"
           src={SUBSCRIPTION_CENTER_EMBED_URL}
@@ -3347,7 +3274,7 @@ function MaintenanceScreen({
         <CardContent>
           <label className="check-row">
             <input checked={removeOwnedData} onChange={(event) => onRemoveOwnedDataChange(event.currentTarget.checked)} type="checkbox" />
-            <span>卸载时移除 Codex++ 托管数据</span>
+            <span>卸载时移除 Codex 托管数据</span>
           </label>
           <Toolbar>
             <Button onClick={() => void actions.installEntrypoints()}>安装入口</Button>
@@ -3357,7 +3284,7 @@ function MaintenanceScreen({
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title="自动接管" detail="Watcher 用于保持 Codex++ 接管状态" />
+        <CardHead title="自动接管" detail="Watcher 用于保持 Codex 接管状态" />
         <CardContent>
           <Toolbar>
             <Button variant="secondary" onClick={() => void actions.installWatcher()}>安装 watcher</Button>
@@ -3413,7 +3340,7 @@ function MaintenanceScreen({
             </Field>
           </div>
           <Toolbar>
-            <Button onClick={() => void actions.launch()}>启动 Codex++</Button>
+            <Button onClick={() => void actions.launch()}>启动 Codex</Button>
             <Button variant="secondary" onClick={() => void actions.saveManualCodexAppPath()}>
               保存为默认路径
             </Button>
@@ -3440,10 +3367,10 @@ function AboutScreen({
   return (
     <>
       <Panel>
-        <CardHead title="关于 Codex++" detail="本地 Codex 增强、管理工具和安装包维护" />
+        <CardHead title="关于 Codex" detail="本地 Codex 增强、管理工具和安装包维护" />
         <CardContent>
           <div className="metric-list">
-            <Metric label="Codex++ 版本" value={overview?.current_version ?? update?.currentVersion ?? "-"} />
+            <Metric label="管理工具版本" value={overview?.current_version ?? update?.currentVersion ?? "-"} />
             <Metric label="Codex 版本" value={overview?.codex_version ?? "未检测到"} />
             <Metric label="项目地址" value="ls-qihang.cn/tools/codex-plus" />
           </div>
@@ -4292,7 +4219,7 @@ function RelayProfileEditor({
       {showApiFields && profile.protocol === "chatCompletions" ? (
         <div className="hint-line relay-protocol-hint">
           <MessageCircle className="h-4 w-4" />
-          <span>此上游会通过本地 127.0.0.1:57321 转成 Responses API，需要从 Codex++ 启动 Codex。</span>
+          <span>此上游会通过本地 127.0.0.1:57321 转成 Responses API，需要从 Codex 启动 Codex。</span>
         </div>
       ) : null}
       <div className="hint-line relay-protocol-hint">
@@ -5010,8 +4937,8 @@ function PendingProviderImportDialog({
       <div className="modal-card provider-import-modal">
         <div className="modal-head">
           <div>
-            <h2>导入 Codex++ 供应商</h2>
-            <p>检测到来自网页的供应商配置导入请求，确认后会写入本机 Codex++ 管理工具。</p>
+            <h2>导入 Codex 供应商</h2>
+            <p>检测到来自网页的供应商配置导入请求，确认后会写入本机 Codex 管理工具。</p>
           </div>
           <button className="toast-close" onClick={onDismiss} type="button">×</button>
         </div>
@@ -5147,39 +5074,6 @@ function ScriptRow({ script, actions }: { script: NonNullable<UserScriptInventor
   );
 }
 
-function AdGrid({ ads, empty, actions }: { ads: AdItem[]; empty: string; actions: Actions }) {
-  if (!ads.length) return <div className="empty">{empty}</div>;
-  return (
-    <div className="ad-grid">
-      {ads.map((ad) => (
-        <button className="ad-card" key={ad.id || `${ad.type}-${ad.title}`} onClick={() => void actions.openExternalUrl(ad.url)} type="button">
-          <div>
-            <strong>{ad.title}</strong>
-            <p>{ad.description}</p>
-          </div>
-          {ad.highlights?.length ? (
-            <div className="ad-tags">
-              {ad.highlights.map((item) => (
-                <span key={item}>{item}</span>
-              ))}
-            </div>
-          ) : null}
-          <span className="ad-link">
-            打开
-            <ExternalLink className="h-4 w-4" />
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function isExpiredAd(ad: AdItem) {
-  if (!ad.expires_at) return false;
-  const expiresAt = Date.parse(ad.expires_at);
-  return Number.isFinite(expiresAt) && expiresAt < Date.now();
-}
-
 function routeTitle(route: Route) {
   return routes.find((item) => item.id === route)?.label ?? "概览";
 }
@@ -5195,7 +5089,6 @@ function routeSubtitle(route: Route) {
     enhance: "会话删除、导出、项目移动和脚本能力",
     zedRemote: "管理 Codex SSH 项目并加入 Zed workspace",
     userScripts: "内置和用户自定义脚本清单",
-    recommendations: "赞助商推荐与普通推荐",
     maintenance: "入口安装、修复、Watcher 与手动启动",
     about: "版本信息、项目链接、泰盈更新、日志与诊断",
     settings: "主题、命令包装器和启动参数",
@@ -5853,7 +5746,7 @@ function healthItems(overview: OverviewResult | null) {
       title: "静默启动入口",
       status: overview?.silent_shortcut.status ?? "not_checked",
       ok: overview?.silent_shortcut.status === "installed",
-      detail: overview?.silent_shortcut.path || "缺少 Codex++ 静默启动快捷方式时可在安装维护页修复。",
+      detail: overview?.silent_shortcut.path || "缺少 Codex 静默启动快捷方式时可在安装维护页修复。",
     },
     {
       title: "管理工具入口",

@@ -750,7 +750,7 @@ fn create_backup(
             "createdAt": chrono::Utc::now().to_rfc3339(),
             "dbFiles": db_files,
             "changedSessionFiles": changes.len(),
-            "managedBy": "Codex++ provider sync"
+            "managedBy": "Codex provider sync"
         }))?,
     )?;
     Ok(backup_dir)
@@ -1100,7 +1100,11 @@ fn prune_backups(home: &Path) -> anyhow::Result<()> {
         let Ok(value) = serde_json::from_str::<Value>(&text) else {
             continue;
         };
-        if value.get("managedBy").and_then(Value::as_str) == Some("Codex++ provider sync") {
+        let managed_by = value.get("managedBy").and_then(Value::as_str);
+        if matches!(
+            managed_by,
+            Some("Codex provider sync") | Some("Codex++ provider sync")
+        ) {
             managed.push(path);
         }
     }

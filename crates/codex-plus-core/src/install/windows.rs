@@ -73,13 +73,13 @@ pub fn install_shortcuts(options: &InstallOptions) -> anyhow::Result<()> {
     create_entrypoint_shortcut(
         PathBuf::from(&plan.silent_shortcut),
         PathBuf::from(&plan.launcher_path),
-        "Launch Codex++ silently",
+        "Launch Codex silently",
         PathBuf::from(&plan.silent_icon_path),
     )?;
     create_entrypoint_shortcut(
         PathBuf::from(&plan.manager_shortcut),
         PathBuf::from(&plan.manager_path),
-        "Open Codex++ management tool",
+        "Open Codex management tool",
         PathBuf::from(&plan.manager_icon_path),
     )?;
     register_url_protocol(&plan.manager_path)?;
@@ -163,7 +163,7 @@ fn register_url_protocol(manager_path: &str) -> anyhow::Result<()> {
     crate::windows_integration::set_current_user_string_value(
         URL_PROTOCOL_SUBKEY,
         "",
-        "URL:Codex++ 泰盈定制版 Import Protocol",
+        "URL:Codex 泰盈定制版 Import Protocol",
     )?;
     crate::windows_integration::set_current_user_string_value(
         URL_PROTOCOL_SUBKEY,

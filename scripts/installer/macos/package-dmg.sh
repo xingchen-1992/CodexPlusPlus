@@ -118,16 +118,16 @@ verify_app() {
 }
 
 prepare_icon
-create_app "Codex++ 泰盈定制版" "CodexPlusPlus" "$BINARY_DIR/codex-plus-plus" "cn.ls-qihang.codexplusplus" "true"
-create_app "Codex++ 泰盈定制版管理工具" "CodexPlusPlusManager" "$BINARY_DIR/codex-plus-plus-manager" "cn.ls-qihang.codexplusplus.manager" "false"
+create_app "Codex 泰盈定制版" "CodexPlusPlus" "$BINARY_DIR/codex-plus-plus" "cn.ls-qihang.codexplusplus" "true"
+create_app "Codex 泰盈定制版管理工具" "CodexPlusPlusManager" "$BINARY_DIR/codex-plus-plus-manager" "cn.ls-qihang.codexplusplus.manager" "false"
 
-sign_app "$STAGE/Codex++ 泰盈定制版.app"
-sign_app "$STAGE/Codex++ 泰盈定制版管理工具.app"
+sign_app "$STAGE/Codex 泰盈定制版.app"
+sign_app "$STAGE/Codex 泰盈定制版管理工具.app"
 
-verify_app "$STAGE/Codex++ 泰盈定制版.app"
-verify_app "$STAGE/Codex++ 泰盈定制版管理工具.app"
+verify_app "$STAGE/Codex 泰盈定制版.app"
+verify_app "$STAGE/Codex 泰盈定制版管理工具.app"
 
 ln -s /Applications "$STAGE/Applications"
 
-hdiutil create -volname "Codex++ 泰盈定制版" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+hdiutil create -volname "Codex 泰盈定制版" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 echo "$DMG"

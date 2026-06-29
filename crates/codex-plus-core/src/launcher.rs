@@ -338,7 +338,7 @@ where
             } else {
                 let degraded = launch_status(
                     "running_degraded",
-                    "Codex launched; Codex++ enhancements are still waiting for the page bridge.",
+                    "Codex launched; enhancements are still waiting for the page bridge.",
                     debug_port,
                     helper_port,
                     &app_dir,
@@ -352,7 +352,7 @@ where
         if !settings.enhancements_enabled || !injection_degraded {
             let status = launch_status(
                 "running",
-                "Codex++ launcher ready",
+                "Codex launcher ready",
                 debug_port,
                 helper_port,
                 &app_dir,
@@ -1761,7 +1761,7 @@ async fn app_server_rpc_once(payload: Value) -> anyhow::Result<Value> {
             "id": init_id,
             "method": "initialize",
             "params": {
-                "clientInfo": {"name": "Codex++ Mobile Relay", "version": "1.0.0"},
+                "clientInfo": {"name": "Codex Mobile Relay", "version": "1.0.0"},
                 "capabilities": {"experimentalApi": true}
             }
         });
@@ -2165,7 +2165,7 @@ fn mobile_page_html(model_catalog_json: &str) -> String {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Codex++ Mobile</title>
+  <title>Codex Mobile</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -2255,7 +2255,7 @@ fn mobile_page_html(model_catalog_json: &str) -> String {
 <body>
   <div class="app">
     <header class="topbar">
-      <strong class="title">Codex++</strong>
+      <strong class="title">Codex</strong>
       <span id="status" class="status">正在连接 WebSocket...</span>
     </header>
     <main class="layout">
@@ -2331,7 +2331,7 @@ fn mobile_page_html(model_catalog_json: &str) -> String {
           socket.addEventListener("error", () => reject(new Error("WebSocket 连接失败")), { once: true });
         });
         await rpcRaw("initialize", {
-          clientInfo: { name: "Codex++ Mobile", version: "1.0.0" },
+          clientInfo: { name: "Codex Mobile", version: "1.0.0" },
           capabilities: { experimentalApi: true }
         });
         state.initialized = true;

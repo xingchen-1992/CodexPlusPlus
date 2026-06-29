@@ -1,6 +1,6 @@
 {
   "name": "codex-plus-taiying-manager",
-  "version": "1.0.1-taiying.1",
+  "version": "1.0.2-taiying.1",
   "private": true,
   "type": "module",
   "scripts": {

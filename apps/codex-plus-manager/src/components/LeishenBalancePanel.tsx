@@ -69,12 +69,11 @@ export function LeishenBalancePanel({
     <CardContent className="leishen-panel-content">
       <div className="leishen-panel-head">
         <div>
-          <span className="eyebrow">泰盈订阅</span>
           <h3>账户额度</h3>
           <p>只读取当前 API Key 的套餐状态、已用美金和总量包余额，不暴露完整密钥。</p>
         </div>
       </div>
-      <div className="form-row leishen-balance-form">
+      <div className="leishen-balance-form">
         <label className="field leishen-key-field">
           <span>API Key</span>
           <div className="leishen-key-input">
@@ -95,17 +94,17 @@ export function LeishenBalancePanel({
             </Button>
           </div>
         </label>
-        <Button disabled={busy} onClick={() => void refresh()} type="button">
+      </div>
+      <div className="leishen-balance-actions">
+        <Button className="leishen-balance-action-refresh" disabled={busy} onClick={() => void refresh()} type="button" variant="secondary">
           <RefreshCw className="h-4 w-4" />
           {busy ? "刷新中" : "刷新额度"}
         </Button>
-      </div>
-      <div className="leishen-balance-actions">
         <Button onClick={onOpenSubscription} type="button" variant="secondary">
           <ExternalLink className="h-4 w-4" />
-          订阅中心
+          购买额度
         </Button>
-        <Button onClick={codexReady ? onOpenCodex : onInstallCodex} type="button" variant="secondary">
+        <Button className="leishen-balance-action-open" onClick={codexReady ? onOpenCodex : onInstallCodex} type="button">
           {codexReady ? <Rocket className="h-4 w-4" /> : <Download className="h-4 w-4" />}
           {codexReady ? "打开 Codex" : "安装 Codex"}
         </Button>

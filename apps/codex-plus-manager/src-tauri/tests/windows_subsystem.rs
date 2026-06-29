@@ -98,22 +98,20 @@ fn windows_installer_uses_taiying_setup_filename() {
         std::fs::read_to_string(&windows_installer).expect("read windows installer");
 
     assert!(windows_installer.contains("CodexPlusTaiying-${VERSION}-windows-x64-setup.exe"));
-    assert!(windows_installer.contains("Name \"Codex++ 泰盈定制版\""));
-    assert!(
-        windows_installer.contains("InstallDir \"$LOCALAPPDATA\\Programs\\Codex++ 泰盈定制版\"")
-    );
+    assert!(windows_installer.contains("Name \"Codex 泰盈定制版\""));
+    assert!(windows_installer.contains("InstallDir \"$LOCALAPPDATA\\Programs\\Codex 泰盈定制版\""));
     assert!(windows_installer.contains("SetOutPath \"$INSTDIR\\app\""));
     assert!(
         windows_installer
             .contains("InstallDirRegKey HKCU \"Software\\CodexPlusTaiying\" \"InstallDir\"")
     );
     assert!(windows_installer.contains(
-        "CreateShortcut \"$INSTDIR\\Codex++ 泰盈定制版管理工具.lnk\" \"$INSTDIR\\app\\codex-plus-plus-manager.exe\""
+        "CreateShortcut \"$INSTDIR\\Codex 泰盈定制版管理工具.lnk\" \"$INSTDIR\\app\\codex-plus-plus-manager.exe\""
     ));
     assert!(windows_installer.contains("Section \"创建桌面快捷方式\""));
-    assert!(windows_installer.contains("CreateShortcut \"$DESKTOP\\Codex++ 泰盈定制版.lnk\""));
+    assert!(windows_installer.contains("CreateShortcut \"$DESKTOP\\Codex 泰盈定制版.lnk\""));
     assert!(
-        windows_installer.contains("CreateShortcut \"$DESKTOP\\Codex++ 泰盈定制版管理工具.lnk\"")
+        windows_installer.contains("CreateShortcut \"$DESKTOP\\Codex 泰盈定制版管理工具.lnk\"")
     );
     assert!(windows_installer.contains("!define MUI_FINISHPAGE_RUN_FUNCTION LaunchInstalledApps"));
     assert!(
@@ -129,7 +127,7 @@ fn windows_installer_uses_taiying_setup_filename() {
         )
     );
     assert!(windows_installer.contains(
-        "WriteRegStr HKCU \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexPlusTaiying\" \"DisplayName\" \"Codex++ 泰盈定制版\""
+        "WriteRegStr HKCU \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexPlusTaiying\" \"DisplayName\" \"Codex 泰盈定制版\""
     ));
     assert!(windows_installer.contains(
         "WriteRegStr HKCU \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexPlusTaiying\" \"Publisher\" \"泰盈\""
@@ -180,12 +178,12 @@ fn taiying_macos_packager_hides_silent_launcher_but_not_manager_and_uses_dmg_fil
     assert!(script.contains("BINARY_DIR=\"${BINARY_DIR:-$ROOT/target/release}\""));
     assert!(script.contains("CodexPlusTaiying-${VERSION}-macos-${ARCH}.dmg"));
     assert!(script.contains(
-        "create_app \"Codex++ 泰盈定制版\" \"CodexPlusPlus\" \"$BINARY_DIR/codex-plus-plus\" \"cn.ls-qihang.codexplusplus\" \"true\""
+        "create_app \"Codex 泰盈定制版\" \"CodexPlusPlus\" \"$BINARY_DIR/codex-plus-plus\" \"cn.ls-qihang.codexplusplus\" \"true\""
     ));
     assert!(script.contains(
-        "create_app \"Codex++ 泰盈定制版管理工具\" \"CodexPlusPlusManager\" \"$BINARY_DIR/codex-plus-plus-manager\" \"cn.ls-qihang.codexplusplus.manager\" \"false\""
+        "create_app \"Codex 泰盈定制版管理工具\" \"CodexPlusPlusManager\" \"$BINARY_DIR/codex-plus-plus-manager\" \"cn.ls-qihang.codexplusplus.manager\" \"false\""
     ));
-    assert!(script.contains("hdiutil create -volname \"Codex++ 泰盈定制版\""));
+    assert!(script.contains("hdiutil create -volname \"Codex 泰盈定制版\""));
 }
 
 #[test]
@@ -206,8 +204,8 @@ fn github_release_workflow_builds_separate_taiying_macos_x64_and_arm64_dmgs() {
     assert!(workflow.contains("package-dmg.sh \"$VERSION\" \"${{ matrix.arch }}\""));
     assert!(workflow.contains("target/${{ matrix.target }}/release"));
     assert!(workflow.contains("files: dist/macos/*.dmg"));
-    assert!(workflow.contains("dist/macos/stage/Codex++ 泰盈定制版.app"));
-    assert!(workflow.contains("dist/macos/stage/Codex++ 泰盈定制版管理工具.app"));
+    assert!(workflow.contains("dist/macos/stage/Codex 泰盈定制版.app"));
+    assert!(workflow.contains("dist/macos/stage/Codex 泰盈定制版管理工具.app"));
     assert!(!workflow.contains("CodexPlusPlus-${VERSION}-macos-${ARCH}.dmg"));
 }
 
@@ -241,8 +239,8 @@ fn github_pr_build_artifacts_use_taiying_names() {
     assert!(workflow.contains("codex-plus-taiying-windows-binaries"));
     assert!(workflow.contains("codex-plus-taiying-windows-installer"));
     assert!(workflow.contains("codex-plus-taiying-macos-${{ matrix.arch }}-dmg"));
-    assert!(workflow.contains("dist/macos/stage/Codex++ 泰盈定制版.app"));
-    assert!(workflow.contains("dist/macos/stage/Codex++ 泰盈定制版管理工具.app"));
+    assert!(workflow.contains("dist/macos/stage/Codex 泰盈定制版.app"));
+    assert!(workflow.contains("dist/macos/stage/Codex 泰盈定制版管理工具.app"));
     assert!(!workflow.contains("codex-plus-plus-windows-installer"));
     assert!(!workflow.contains("codex-plus-plus-macos-${{ matrix.arch }}-dmg"));
 }
@@ -340,10 +338,10 @@ fn manager_window_and_relay_detail_header_stay_usable_with_taiying_title() {
     assert!(lib_rs.contains(".visible(true)"));
     assert!(!lib_rs.contains("is_minimized()"));
     assert!(lib_rs.contains(".background_color(tauri::window::Color(24, 24, 24, 255))"));
-    assert!(lib_rs.contains(".title(\"Codex++ 泰盈定制版管理工具\")"));
+    assert!(lib_rs.contains(".title(\"Codex 泰盈定制版管理工具\")"));
     assert!(main_tsx.contains("currentWindow.show()"));
-    assert!(tauri_conf.contains("\"productName\": \"Codex++ 泰盈定制版管理工具\""));
-    assert!(tauri_conf.contains("\"title\": \"Codex++ 泰盈定制版管理工具\""));
+    assert!(tauri_conf.contains("\"productName\": \"Codex 泰盈定制版管理工具\""));
+    assert!(tauri_conf.contains("\"title\": \"Codex 泰盈定制版管理工具\""));
     assert!(tauri_conf.contains("\"width\": 1180"));
     assert!(tauri_conf.contains("\"height\": 820"));
     assert!(tauri_conf.contains("\"minWidth\": 960"));
@@ -370,11 +368,21 @@ fn overview_moves_subscription_and_codex_actions_into_balance_card() {
     assert!(app_tsx.contains("onOpenSubscription={() => void actions.goSubscriptionCenter()}"));
     assert!(app_tsx.contains("function SubscriptionCenterScreen"));
     assert!(app_tsx.contains("src={SUBSCRIPTION_CENTER_EMBED_URL}"));
+    assert!(!app_tsx.contains("浏览器打开"));
+    assert!(!app_tsx.contains("只使用泰盈订阅入口，不展示其它第三方平台。"));
     assert!(app_tsx.contains("onInstallCodex={() => void actions.installEntrypoints()}"));
     assert!(app_tsx.contains("onOpenCodex={() => void actions.launch()}"));
-    assert!(balance_panel.contains("订阅中心"));
+    assert!(balance_panel.contains("购买额度"));
     assert!(balance_panel.contains("打开 Codex"));
     assert!(balance_panel.contains("安装 Codex"));
+    assert!(!balance_panel.contains("泰盈订阅"));
+    assert!(balance_panel.contains("className=\"leishen-balance-action-open\""));
+    assert!(balance_panel.contains("className=\"leishen-balance-action-refresh\""));
+    let setup_panel_index = app_tsx.find("<LeishenSetupPanel />").expect("setup panel");
+    let balance_panel_index = app_tsx.find("<LeishenBalancePanel").expect("balance panel");
+    assert!(balance_panel_index < setup_panel_index);
+    assert!(!app_tsx.contains("key={`topbar-${route}`}"));
+    assert!(!app_tsx.contains("<section className=\"screen\" key={route}>"));
 }
 
 #[test]

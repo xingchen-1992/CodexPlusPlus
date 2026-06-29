@@ -34,7 +34,7 @@ pub fn run() {
             };
             let main_window =
                 tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
-                    .title("Codex++ 泰盈定制版管理工具")
+                    .title("Codex 泰盈定制版管理工具")
                     .inner_size(1180.0, 820.0)
                     .min_inner_size(960.0, 720.0)
                     .background_color(tauri::window::Color(24, 24, 24, 255))
@@ -67,7 +67,6 @@ pub fn run() {
             commands::delete_local_session,
             commands::load_provider_sync_targets,
             commands::sync_providers_now,
-            commands::load_ads,
             commands::refresh_script_market,
             commands::install_market_script,
             commands::set_user_script_enabled,
@@ -180,7 +179,7 @@ fn register_main_window_events<R: tauri::Runtime>(
             let window_for_decision = dialog_window.clone();
             dialog_app_handle
                 .dialog()
-                .message("要退出 Codex++ 管理工具，还是最小化到系统托盘？")
+                .message("要退出 Codex 管理工具，还是最小化到系统托盘？")
                 .title("关闭确认")
                 .kind(MessageDialogKind::Info)
                 .buttons(MessageDialogButtons::OkCancelCustom(

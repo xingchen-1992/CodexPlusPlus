@@ -29,7 +29,7 @@ Download the latest installer from [GitHub Releases](https://github.com/BigPizza
 After installation, two entry points are available:
 
 - `Codex++`: a silent launcher. It does not show the manager UI and only starts Codex with Codex++ injection.
-- `Codex++ Manager`: a Tauri control panel for launch, diagnostics, repair, updates, relay injection, enhancements, and user scripts.
+- `Codex Manager`: a Tauri control panel for launch, diagnostics, repair, updates, relay injection, enhancements, and user scripts.
 
 The Windows installer creates desktop and Start Menu shortcuts. The macOS DMG installs `/Applications/Codex++.app` and `/Applications/Codex++ 管理工具.app`.
 

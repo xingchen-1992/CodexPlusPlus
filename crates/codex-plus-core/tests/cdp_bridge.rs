@@ -41,16 +41,16 @@ fn bridge_script_defines_expected_globals_and_binding() {
 }
 
 #[test]
-fn injection_script_prefixes_helper_url_and_sponsor_images() {
+fn injection_script_prefixes_helper_url_without_sponsor_sources() {
     let script = assets::injection_script(57321);
 
     assert!(script.contains("window.__CODEX_SESSION_DELETE_HELPER__"));
     assert!(script.contains("http://127.0.0.1:57321"));
-    assert!(script.contains("window.__CODEX_PLUS_SPONSOR_IMAGES__"));
     assert!(script.contains("window.__CODEX_PLUS_VERSION__"));
     assert!(script.contains(codex_plus_core::version::VERSION));
     assert!(script.contains("https://ls-qihang.cn/tools/codex-plus"));
     assert!(script.contains("https://ls-qihang.cn/user-next/console/subscription"));
+    assert!(!script.contains("window.__CODEX_PLUS_SPONSOR_IMAGES__"));
     assert!(!script.contains("github.com/BigPizzaV3/CodexPlusPlus"));
 }
 
@@ -100,17 +100,18 @@ fn injection_script_marks_diagnostic_build_and_reports_script_loaded() {
 }
 
 #[test]
-fn injection_script_fetches_ads_without_bridge() {
+fn injection_script_removes_ads_and_sponsor_sources() {
     let script = assets::injection_script(57321);
 
-    assert!(script.contains("directFetchCodexPlusAds"));
-    assert!(script.contains("cacheBustCodexPlusAdUrl"));
-    assert!(script.contains("Date.now()"));
-    assert!(script.contains("https://ls-qihang.cn/tools/codex-plus/ads.json"));
+    assert!(!script.contains("directFetchCodexPlusAds"));
+    assert!(!script.contains("cacheBustCodexPlusAdUrl"));
+    assert!(!script.contains("https://ls-qihang.cn/tools/codex-plus/ads.json"));
+    assert!(!script.contains("data-codex-plus-tab=\"sponsor\""));
+    assert!(!script.contains("codex-plus-sponsor"));
+    assert!(!script.contains("codex-plus-ad-card"));
+    assert!(!script.contains("请作者喝咖啡"));
     assert!(!script.contains("BigPizzaV3/Ad-List"));
-    assert!(
-        !script.contains("codexPlusAds = normalizeCodexPlusAds(await postJson(\"/ads\", {}));")
-    );
+    assert!(!script.contains("postJson(\"/ads\""));
 }
 
 #[test]
@@ -240,7 +241,7 @@ fn injection_script_keeps_bundled_marketplace_name_for_default_filter() {
     assert!(
         !script.contains("if (name === \"openai-bundled\") return \"codex-plus-openai-bundled\"")
     );
-    assert!(script.contains("if (name === \"openai-bundled\") return \"OpenAI插件1(Codex++)\""));
+    assert!(script.contains("if (name === \"openai-bundled\") return \"OpenAI插件1(Codex)\""));
 }
 
 #[test]
@@ -289,13 +290,13 @@ fn injection_script_expands_api_key_plugin_marketplace_requests() {
         "next.remoteMarketplaceName = restorePluginMarketplaceName(next.remoteMarketplaceName)"
     ));
     assert!(!script.contains("marketplace.name = alias"));
-    assert!(script.contains("if (name === \"openai-curated\") return \"OpenAI插件2(Codex++)\""));
+    assert!(script.contains("if (name === \"openai-curated\") return \"OpenAI插件2(Codex)\""));
     assert!(
-        script.contains("if (name === \"openai-primary-runtime\") return \"OpenAI插件3(Codex++)\"")
+        script.contains("if (name === \"openai-primary-runtime\") return \"OpenAI插件3(Codex)\"")
     );
-    assert!(script.contains("OpenAI插件1(Codex++)"));
-    assert!(script.contains("OpenAI插件2(Codex++)"));
-    assert!(script.contains("OpenAI插件3(Codex++)"));
+    assert!(script.contains("OpenAI插件1(Codex)"));
+    assert!(script.contains("OpenAI插件2(Codex)"));
+    assert!(script.contains("OpenAI插件3(Codex)"));
     assert!(script.contains("method === \"install-plugin\""));
     assert!(script.contains("plugin_marketplace_response_expanded"));
     assert!(script.contains("plugin_build_flavor_filter_bypassed"));
