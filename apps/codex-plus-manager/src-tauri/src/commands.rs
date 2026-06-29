@@ -310,6 +310,14 @@ pub struct StartupPayload {
     pub show_update: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeishenSetupStatus {
+    pub node_version: Option<String>,
+    pub npm_version: Option<String>,
+    pub codex_version: Option<String>,
+}
+
 #[tauri::command]
 pub fn backend_version() -> CommandResult<VersionPayload> {
     ok(
@@ -328,6 +336,37 @@ pub fn startup_options() -> CommandResult<StartupPayload> {
             show_update: startup_should_show_update(),
         },
     )
+}
+
+#[tauri::command]
+pub async fn leishen_setup_status() -> CommandResult<LeishenSetupStatus> {
+    let node = std::process::Command::new("node")
+        .arg("--version")
+        .output()
+        .ok();
+    let npm = std::process::Command::new("npm")
+        .arg("--version")
+        .output()
+        .ok();
+    let codex = std::process::Command::new("codex")
+        .arg("--version")
+        .output()
+        .ok();
+    let text = |output: Option<std::process::Output>| {
+        output
+            .filter(|value| value.status.success())
+            .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_string())
+            .filter(|value| !value.is_empty())
+    };
+    CommandResult {
+        status: "ok".to_string(),
+        message: "环境检测完成".to_string(),
+        payload: LeishenSetupStatus {
+            node_version: text(node),
+            npm_version: text(npm),
+            codex_version: text(codex),
+        },
+    }
 }
 
 pub fn startup_should_show_update() -> bool {
@@ -2923,6 +2962,23 @@ mod tests {
         let result = startup_options();
 
         assert_eq!(result.status, "ok");
+    }
+
+    #[test]
+    fn leishen_setup_status_returns_structured_payload() {
+        let result = tauri::async_runtime::block_on(leishen_setup_status());
+
+        assert_eq!(result.status, "ok");
+        assert_eq!(result.message, "环境检测完成");
+        for version in [
+            &result.payload.node_version,
+            &result.payload.npm_version,
+            &result.payload.codex_version,
+        ] {
+            if let Some(version) = version {
+                assert!(!version.trim().is_empty());
+            }
+        }
     }
 
     #[test]
