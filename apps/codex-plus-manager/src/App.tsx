@@ -2380,42 +2380,17 @@ function OverviewScreen({
   const health = healthItems(overview);
   return (
     <>
-      <Panel className="leishen-overview">
-        <CardContent>
-          <div className="leishen-overview-layout">
-            <div className="leishen-overview-main">
-              <div className="leishen-overview-mark">
-                <Network className="h-5 w-5" />
-              </div>
-              <div>
-                <span className="eyebrow">Leishen 中转服务</span>
-                <h2>Leishen AI</h2>
-                <p>
-                  通过雷神启航订阅中心接入 Codex Plus 中转服务；预设只提供 Leishen 入口，其他供应商可继续通过手动配置添加。
-                </p>
-              </div>
-            </div>
-            <div className="leishen-overview-side">
-              <div className="leishen-model-tags">
-                <span>GPT-5.4</span>
-                <span>Responses</span>
-                <span>订阅中心</span>
-                <span>手动供应商</span>
-              </div>
-              <Button onClick={() => void actions.openExternalUrl("https://ls-qihang.cn/user-next/console/subscription")}>
-                <ExternalLink className="h-4 w-4" />
-                打开订阅中心
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Panel>
       <div className="grid two leishen-status-panels">
         <Panel className="leishen-panel-card">
           <LeishenSetupPanel />
         </Panel>
         <Panel className="leishen-panel-card">
-          <LeishenBalancePanel />
+          <LeishenBalancePanel
+            codexReady={Boolean(overview?.codex_version || overview?.codex_app.status === "found")}
+            onInstallCodex={() => void actions.installEntrypoints()}
+            onOpenCodex={() => void actions.launch()}
+            onOpenSubscription={() => void actions.openExternalUrl("https://ls-qihang.cn/user-next/console/subscription")}
+          />
         </Panel>
       </div>
       <Panel>

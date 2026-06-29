@@ -317,13 +317,38 @@ fn manager_window_and_relay_detail_header_stay_usable_with_leishen_title() {
     assert!(styles.contains("margin: 0"));
     assert!(lib_rs.contains(".inner_size(1180.0, 820.0)"));
     assert!(lib_rs.contains(".min_inner_size(960.0, 720.0)"));
+    assert!(lib_rs.contains(".visible(false)"));
+    assert!(lib_rs.contains(".background_color(tauri::window::Color(24, 24, 24, 255))"));
     assert!(lib_rs.contains(".title(\"Codex++ 雷神版管理工具\")"));
+    assert!(app_tsx.contains("currentWindow.show()"));
     assert!(tauri_conf.contains("\"productName\": \"Codex++ 雷神版管理工具\""));
     assert!(tauri_conf.contains("\"title\": \"Codex++ 雷神版管理工具\""));
     assert!(tauri_conf.contains("\"width\": 1180"));
     assert!(tauri_conf.contains("\"height\": 820"));
     assert!(tauri_conf.contains("\"minWidth\": 960"));
     assert!(tauri_conf.contains("\"minHeight\": 720"));
+}
+
+#[test]
+fn overview_moves_subscription_and_codex_actions_into_balance_card() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let app_tsx = manifest_dir.parent().unwrap().join("src/App.tsx");
+    let app_tsx = std::fs::read_to_string(&app_tsx).expect("read manager App.tsx");
+    let balance_panel = manifest_dir
+        .parent()
+        .unwrap()
+        .join("src/components/LeishenBalancePanel.tsx");
+    let balance_panel = std::fs::read_to_string(&balance_panel).expect("read balance panel");
+
+    assert!(!app_tsx.contains("Leishen 中转服务"));
+    assert!(!app_tsx.contains("打开订阅中心"));
+    assert!(app_tsx.contains("codexReady={Boolean(overview?.codex_version || overview?.codex_app.status === \"found\")}"));
+    assert!(app_tsx.contains("onOpenSubscription={() => void actions.openExternalUrl(\"https://ls-qihang.cn/user-next/console/subscription\")}"));
+    assert!(app_tsx.contains("onInstallCodex={() => void actions.installEntrypoints()}"));
+    assert!(app_tsx.contains("onOpenCodex={() => void actions.launch()}"));
+    assert!(balance_panel.contains("购买套餐"));
+    assert!(balance_panel.contains("打开 Codex"));
+    assert!(balance_panel.contains("安装 Codex"));
 }
 
 #[test]

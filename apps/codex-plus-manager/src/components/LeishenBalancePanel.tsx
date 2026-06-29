@@ -1,4 +1,4 @@
-import { Eye, EyeOff, RefreshCw } from "lucide-react";
+import { Download, ExternalLink, Eye, EyeOff, RefreshCw, Rocket } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,19 @@ import { Input } from "@/components/ui/input";
 
 import { fetchLeishenBalance, type LeishenBalance } from "../leishen";
 
-export function LeishenBalancePanel() {
+type LeishenBalancePanelProps = {
+  codexReady: boolean;
+  onInstallCodex: () => void;
+  onOpenCodex: () => void;
+  onOpenSubscription: () => void;
+};
+
+export function LeishenBalancePanel({
+  codexReady,
+  onInstallCodex,
+  onOpenCodex,
+  onOpenSubscription,
+}: LeishenBalancePanelProps) {
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [balance, setBalance] = useState<LeishenBalance | null>(null);
@@ -79,6 +91,16 @@ export function LeishenBalancePanel() {
         <Button disabled={busy} onClick={() => void refresh()} type="button">
           <RefreshCw className="h-4 w-4" />
           {busy ? "刷新中" : "刷新额度"}
+        </Button>
+      </div>
+      <div className="leishen-balance-actions">
+        <Button onClick={onOpenSubscription} type="button" variant="secondary">
+          <ExternalLink className="h-4 w-4" />
+          购买套餐
+        </Button>
+        <Button onClick={codexReady ? onOpenCodex : onInstallCodex} type="button" variant="secondary">
+          {codexReady ? <Rocket className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+          {codexReady ? "打开 Codex" : "安装 Codex"}
         </Button>
       </div>
       {metrics.length ? (

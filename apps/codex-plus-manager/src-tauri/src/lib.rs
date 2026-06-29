@@ -37,6 +37,8 @@ pub fn run() {
                     .title("Codex++ 雷神版管理工具")
                     .inner_size(1180.0, 820.0)
                     .min_inner_size(960.0, 720.0)
+                    .background_color(tauri::window::Color(24, 24, 24, 255))
+                    .visible(false)
                     .build()?;
             install_tray(app)?;
             register_main_window_events(main_window, app.handle().clone());
