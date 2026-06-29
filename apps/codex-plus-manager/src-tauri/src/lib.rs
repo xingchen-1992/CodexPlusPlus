@@ -48,6 +48,7 @@ pub fn run() {
             commands::backend_version,
             commands::startup_options,
             commands::leishen_setup_status,
+            commands::install_codex_cli,
             commands::leishen_balance,
             commands::configure_taiying_api_key,
             commands::load_overview,

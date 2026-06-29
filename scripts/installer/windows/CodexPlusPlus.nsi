@@ -66,7 +66,6 @@ SectionEnd
 
 Function LaunchInstalledApps
   ExecShell "open" "$INSTDIR\app\codex-plus-plus-manager.exe"
-  ExecShell "open" "$INSTDIR\app\codex-plus-plus.exe"
 FunctionEnd
 
 Section "Uninstall"

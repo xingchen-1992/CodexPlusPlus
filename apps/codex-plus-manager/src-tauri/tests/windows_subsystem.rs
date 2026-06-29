@@ -119,7 +119,7 @@ fn windows_installer_uses_taiying_setup_filename() {
             .contains("ExecShell \"open\" \"$INSTDIR\\app\\codex-plus-plus-manager.exe\"")
     );
     assert!(
-        windows_installer.contains("ExecShell \"open\" \"$INSTDIR\\app\\codex-plus-plus.exe\"")
+        !windows_installer.contains("ExecShell \"open\" \"$INSTDIR\\app\\codex-plus-plus.exe\"")
     );
     assert!(
         windows_installer.contains(
@@ -222,8 +222,10 @@ fn update_install_button_is_named_update_and_only_shown_when_available() {
 
     assert!(app_tsx.contains("if (!silent) {"));
     assert!(app_tsx.contains("showNotice(\"泰盈更新检查\", result.message, result.status);"));
-    assert!(!app_tsx.contains("!silent || result.updateAvailable"));
+    assert!(app_tsx.contains("showNotice(\"发现可用更新\""));
+    assert!(app_tsx.contains("className=\"topbar-update-version\""));
     assert!(app_tsx.contains("update?.updateAvailable === true ? ("));
+    assert!(app_tsx.contains("更新版本"));
     assert!(app_tsx.contains("更新"));
     assert!(!app_tsx.contains(">下载并运行安装包</Button>"));
 }
@@ -443,17 +445,23 @@ fn overview_moves_subscription_and_codex_actions_into_balance_card() {
     assert!(app_tsx.contains("onLoad={() => setFrameLoaded(true)}"));
     assert!(!app_tsx.contains("浏览器打开"));
     assert!(!app_tsx.contains("只使用泰盈订阅入口，不展示其它第三方平台。"));
-    assert!(app_tsx.contains("onInstallCodex={() => void actions.installEntrypoints()}"));
+    assert!(app_tsx.contains("onInstallCodex={() => void actions.installCodexFromOverview()}"));
     assert!(app_tsx.contains("onOpenCodex={() => void actions.launch()}"));
+    assert!(app_tsx.contains("saveTaiyingApiKey"));
+    assert!(app_tsx.contains("ensureTaiyingReadyForLaunch"));
     assert!(balance_panel.contains("购买额度"));
     assert!(balance_panel.contains("打开 Codex"));
     assert!(balance_panel.contains("安装 Codex"));
     assert!(!balance_panel.contains("泰盈订阅"));
     assert!(balance_panel.contains("className=\"leishen-balance-action-open\""));
     assert!(balance_panel.contains("className=\"leishen-balance-action-refresh\""));
-    let setup_panel_index = app_tsx.find("<LeishenSetupPanel />").expect("setup panel");
     let balance_panel_index = app_tsx.find("<LeishenBalancePanel").expect("balance panel");
-    assert!(balance_panel_index < setup_panel_index);
+    let cli_screen_index = app_tsx
+        .find("function CodexCliScreen")
+        .expect("codex cli screen");
+    assert!(balance_panel_index < cli_screen_index);
+    assert!(app_tsx.contains("id: \"codexCli\", label: \"Codex CLI\""));
+    assert!(!app_tsx.contains("id: \"zedRemote\", label: \"Zed 远程项目\""));
     assert!(!app_tsx.contains("key={`topbar-${route}`}"));
     assert!(!app_tsx.contains("<section className=\"screen\" key={route}>"));
 }

@@ -318,6 +318,15 @@ body {
   gap: 8px;
 }
 
+.topbar-update-version {
+  background: hsl(var(--brand-accent));
+  color: hsl(var(--primary-foreground));
+}
+
+.topbar-update-version:hover {
+  background: hsl(var(--brand-accent) / 0.88);
+}
+
 .screen {
   position: relative;
   display: grid;
@@ -594,6 +603,21 @@ body {
 
 .leishen-balance-details .feature-item {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.leishen-cli-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.leishen-cli-prompt {
+  display: grid;
+  gap: 8px;
+}
+
+.leishen-cli-prompt textarea {
+  min-height: 92px;
 }
 
 .fill {

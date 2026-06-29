@@ -360,6 +360,17 @@ pub async fn leishen_setup_status() -> CommandResult<LeishenSetupStatus> {
 }
 
 #[tauri::command]
+pub async fn install_codex_cli() -> CommandResult<Value> {
+    match tauri::async_runtime::spawn_blocking(install_codex_cli_blocking).await {
+        Ok(result) => result,
+        Err(error) => failed(
+            &format!("Codex CLI 安装任务失败：{error}"),
+            json!({ "stdout": "", "stderr": "" }),
+        ),
+    }
+}
+
+#[tauri::command]
 pub async fn leishen_balance(
     request: LeishenBalanceRequest,
 ) -> CommandResult<codex_plus_core::leishen_desktop_api::DesktopSummary> {
@@ -2999,6 +3010,52 @@ fn load_leishen_setup_status() -> LeishenSetupStatus {
         node_version: read_command_version("node", "--version"),
         npm_version: read_command_version("npm", "--version"),
         codex_version: read_command_version("codex", "--version"),
+    }
+}
+
+fn install_codex_cli_blocking() -> CommandResult<Value> {
+    let mut command = codex_cli_install_command();
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(codex_plus_core::windows_create_no_window());
+    }
+    match command.output() {
+        Ok(output) if output.status.success() => ok(
+            "Codex CLI 安装完成，请重新检测环境。",
+            json!({
+                "stdout": String::from_utf8_lossy(&output.stdout).trim(),
+                "stderr": String::from_utf8_lossy(&output.stderr).trim(),
+            }),
+        ),
+        Ok(output) => failed(
+            "Codex CLI 安装失败。请先确认 Node.js/npm 已安装，再重试。",
+            json!({
+                "stdout": String::from_utf8_lossy(&output.stdout).trim(),
+                "stderr": String::from_utf8_lossy(&output.stderr).trim(),
+                "code": output.status.code(),
+            }),
+        ),
+        Err(error) => failed(
+            &format!("无法启动 npm：{error}。请先安装 Node.js/npm。"),
+            json!({ "stdout": "", "stderr": "" }),
+        ),
+    }
+}
+
+fn codex_cli_install_command() -> std::process::Command {
+    #[cfg(windows)]
+    {
+        let mut command = std::process::Command::new("cmd");
+        command.args(["/C", "npm", "install", "-g", "@openai/codex"]);
+        command
+    }
+
+    #[cfg(not(windows))]
+    {
+        let mut command = std::process::Command::new("npm");
+        command.args(["install", "-g", "@openai/codex"]);
+        command
     }
 }
 

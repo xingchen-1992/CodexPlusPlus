@@ -67,7 +67,7 @@ import {
 } from "./model-windows";
 import { LeishenBalancePanel } from "./components/LeishenBalancePanel";
 import { LeishenSetupPanel } from "./components/LeishenSetupPanel";
-import { configureTaiyingApiKey, fetchLeishenBalance } from "./leishen";
+import { configureTaiyingApiKey, fetchLeishenBalance, installCodexCli, type LeishenBalance } from "./leishen";
 
 type Status = "ok" | "failed" | "not_implemented" | "not_checked" | string;
 
@@ -249,6 +249,13 @@ const SCRIPT_MARKET_REPOSITORY_URL = "https://ls-qihang.cn/tools/codex-plus/scri
 const SUBSCRIPTION_CENTER_URL = "https://ls-qihang.cn/user-next/console/subscription";
 const SUBSCRIPTION_CENTER_EMBED_URL = `${SUBSCRIPTION_CENTER_URL}?desktop=codex-plus-taiying`;
 const SUBSCRIPTION_CENTER_ORIGIN = "https://ls-qihang.cn";
+const TAIYING_API_KEY_STORAGE_KEY = "codex-plus-taiying-api-key";
+const TAIYING_RELAY_ID = "taiying";
+const TAIYING_BASE_URL = "https://ls-qihang.cn/openai";
+const NODE_INSTALLER_WINDOWS_URL = "https://ls-qihang.cn/tools/node/v24.18.0/node-v24.18.0-x64.msi";
+const NODE_INSTALLER_MACOS_URL = "https://ls-qihang.cn/tools/node/v24.18.0/node-v24.18.0.pkg";
+const CODEX_CLI_DESKTOP_PROMPT =
+  "请帮我检查并安装 Codex CLI 环境：先确认 Node.js 和 npm 是否可用；如果缺失，请指导我安装 Node.js LTS；然后执行 npm install -g @openai/codex；最后运行 codex --version 验证安装结果。";
 const LOCAL_MOBILE_RELAY_URL = "ws://127.0.0.1:57323";
 const PUBLIC_MOBILE_RELAY_URL = "";
 
@@ -592,18 +599,28 @@ type StartupResult = CommandResult<{
   showUpdate: boolean;
 }>;
 
-type Route = "overview" | "subscription" | "relay" | "mobileControl" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "maintenance" | "about" | "settings";
+type TaiyingSyncOptions = {
+  refreshBalance?: boolean;
+  silent?: boolean;
+};
+
+type TaiyingSyncResult = {
+  ok: boolean;
+  message: string;
+};
+
+type Route = "overview" | "subscription" | "codexCli" | "relay" | "mobileControl" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "maintenance" | "about" | "settings";
 type Theme = "dark" | "light";
 
 const routes: Array<{ id: Route; label: string; icon: LucideIcon; badge?: string }> = [
   { id: "overview", label: "概览", icon: LayoutDashboard },
   { id: "subscription", label: "订阅中心", icon: CreditCard },
+  { id: "codexCli", label: "Codex CLI", icon: FileCode2 },
   { id: "relay", label: "供应商配置", icon: KeyRound },
   { id: "mobileControl", label: "手机控制", icon: MessageCircle, badge: "测试版" },
   { id: "sessions", label: "会话管理", icon: MessageCircle },
   { id: "context", label: "工具与插件", icon: Network },
   { id: "enhance", label: "Codex增强", icon: Hammer },
-  { id: "zedRemote", label: "Zed 远程项目", icon: ExternalLink },
   { id: "userScripts", label: "脚本市场", icon: FileCode2 },
   { id: "maintenance", label: "安装维护", icon: Wrench },
   { id: "about", label: "关于", icon: Info },
@@ -712,6 +729,10 @@ export function App() {
   const [diagnostics, setDiagnostics] = useState<DiagnosticsResult | null>(null);
   const [watcher, setWatcher] = useState<WatcherResult | null>(null);
   const [update, setUpdate] = useState<UpdateResult | null>(null);
+  const [taiyingApiKey, setTaiyingApiKey] = useState(() => loadSavedTaiyingApiKey());
+  const [taiyingBalance, setTaiyingBalance] = useState<LeishenBalance | null>(null);
+  const [taiyingBalanceMessage, setTaiyingBalanceMessage] = useState("输入你的 API Key 后即可读取套餐和总量包余额。");
+  const [taiyingBalanceBusy, setTaiyingBalanceBusy] = useState(false);
   const [scriptMarket, setScriptMarket] = useState<ScriptMarketResult | null>(null);
   const [launchForm, setLaunchForm] = useState({
     appPath: "",
@@ -1024,6 +1045,103 @@ export function App() {
     await refreshLocalSessions(true);
   };
 
+  const confirmAction = (
+    title: string,
+    message: string,
+    confirmText = "确认",
+    cancelText = "取消",
+  ) =>
+    new Promise<boolean>((resolve) => {
+      setConfirmDialog({
+        title,
+        message,
+        confirmText,
+        cancelText,
+        resolve,
+      });
+    });
+
+  const saveTaiyingApiKey = async (
+    apiKey: string,
+    options: TaiyingSyncOptions = {},
+  ): Promise<TaiyingSyncResult> => {
+    const normalized = apiKey.trim();
+    if (!normalized) {
+      const message = "请先在订阅中心购买额度，或在账户额度填写 API Key。";
+      setTaiyingBalance(null);
+      setTaiyingBalanceMessage(message);
+      if (!options.silent) showNotice("账户额度", message, "failed");
+      return { ok: false, message };
+    }
+
+    setTaiyingApiKey(normalized);
+    saveTaiyingApiKeyToStorage(normalized);
+    setTaiyingBalanceBusy(true);
+    try {
+      setTaiyingBalanceMessage("正在写入本机 Codex 配置...");
+      const configureResult = await configureTaiyingApiKey(normalized);
+      if (!isSuccessStatus(configureResult.status)) {
+        throw new Error(configureResult.message || "本机 Codex 配置失败");
+      }
+
+      await refreshSettings(true);
+      await refreshOverview(true);
+
+      let message = configureResult.message || "本机 Codex 配置完成。";
+      if (options.refreshBalance !== false) {
+        setTaiyingBalanceMessage("本机配置完成，正在刷新额度...");
+        const balanceResult = await fetchLeishenBalance(normalized);
+        setTaiyingBalance(balanceResult);
+        if (isSuccessStatus(balanceResult.status)) {
+          const balanceText = balanceResult.topupBalance?.valueText || balanceResult.planRemainingText || "额度已刷新";
+          message = `${balanceResult.message || "额度刷新完成"}：${balanceText}`;
+        } else {
+          message = `本机配置完成，额度暂时无法刷新：${balanceResult.message || "请稍后重试"}`;
+        }
+      }
+
+      setTaiyingBalanceMessage(message);
+      if (!options.silent) showNotice("账户额度", message, "ok");
+      return { ok: true, message };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "本机 Codex 配置失败";
+      setTaiyingBalanceMessage(message);
+      if (!options.silent) showNotice("账户额度", message, "failed");
+      return { ok: false, message };
+    } finally {
+      setTaiyingBalanceBusy(false);
+    }
+  };
+
+  const ensureTaiyingReadyForLaunch = async () => {
+    const normalized = taiyingApiKey.trim();
+    if (!normalized) {
+      const message = "请先在订阅中心购买额度，或在账户额度填写 API Key 并刷新额度；未配置 API Key 时不会打开 Codex。";
+      setRoute("overview");
+      setTaiyingBalanceMessage(message);
+      showNotice("打开 Codex", message, "failed");
+      return false;
+    }
+
+    const currentSettings = await refreshSettings(true);
+    const settingsForCheck = currentSettings ?? settingsForm;
+    if (!isTaiyingRelayConfigured(settingsForCheck, normalized)) {
+      const prompt =
+        activeRelayProfile(settingsForCheck).relayMode === "official" || settingsForCheck.launchMode === "relay"
+          ? "当前供应商配置看起来是官方登录方式。继续打开会切换到账户额度里的 API Key，并写入本机 Codex 配置。"
+          : "当前供应商配置不是账户额度里的 API Key。继续打开会切换到账户额度里的 API Key，并写入本机 Codex 配置。";
+      const confirmed = await confirmAction("打开 Codex", prompt, "继续并配置", "取消");
+      if (!confirmed) return false;
+    }
+
+    const sync = await saveTaiyingApiKey(normalized, { refreshBalance: true, silent: true });
+    if (!sync.ok) {
+      showNotice("打开 Codex", sync.message, "failed");
+      return false;
+    }
+    return true;
+  };
+
   const refreshLiveContextEntries = async (silent = false) => {
     const result = await run(() => call<LiveContextEntriesResult>("read_live_context_entries"));
     if (result) {
@@ -1107,6 +1225,7 @@ export function App() {
   };
 
   const launch = async () => {
+    if (!(await ensureTaiyingReadyForLaunch())) return;
     const result = await launchCommand("launch_codex_plus");
     if (result) {
       showNotice("启动任务", result.message, result.status);
@@ -1115,11 +1234,17 @@ export function App() {
   };
 
   const restart = async () => {
+    if (!(await ensureTaiyingReadyForLaunch())) return;
     const result = await launchCommand("restart_codex_plus");
     if (result) {
       showNotice("重启 Codex", result.message, result.status);
       await refreshOverview(true);
     }
+  };
+
+  const installCodexFromOverview = async () => {
+    if (!(await ensureTaiyingReadyForLaunch())) return;
+    await installEntrypoints();
   };
 
   const launchCommand = async (command: "launch_codex_plus" | "restart_codex_plus") => {
@@ -1232,8 +1357,12 @@ export function App() {
       setUpdate(result);
       if (!silent) {
         showNotice("泰盈更新检查", result.message, result.status);
+      } else if (result.updateAvailable === true) {
+        showNotice("发现可用更新", "可在概览右上角点击“更新版本”安装。", "ok");
       }
+      return result;
     }
+    return null;
   };
 
   const performUpdate = async () => {
@@ -1623,6 +1752,7 @@ export function App() {
   const copyText = async (text: string, message: string) => {
     try {
       await navigator.clipboard.writeText(text);
+      showNotice("复制成功", message, "ok");
     } catch (error) {
       showNotice("复制失败", stringifyError(error), "failed");
     }
@@ -1633,6 +1763,22 @@ export function App() {
     if (result) {
       showResultNotice("打开链接", result, { silentSuccess: true });
     }
+  };
+
+  const openNodeInstaller = async () => {
+    const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+    await openExternalUrl(isMac ? NODE_INSTALLER_MACOS_URL : NODE_INSTALLER_WINDOWS_URL);
+  };
+
+  const installCodexCliEnvironment = async () => {
+    const result = await run(() => installCodexCli());
+    if (result) {
+      showNotice("Codex CLI", result.message, result.status);
+    }
+  };
+
+  const copyCodexCliPrompt = async () => {
+    await copyText(CODEX_CLI_DESKTOP_PROMPT, "Codex CLI 安装提示词已复制。");
   };
 
   const showNotice = (title: string, message: string, status?: Status) => {
@@ -1702,10 +1848,15 @@ export function App() {
       repairPluginMarketplace,
       checkPluginMarketplacePrompt,
       installEntrypoints,
+      installCodexFromOverview,
       uninstallEntrypoints,
       repairShortcuts,
       checkUpdate,
       performUpdate,
+      saveTaiyingApiKey,
+      openNodeInstaller,
+      installCodexCliEnvironment,
+      copyCodexCliPrompt,
       saveSettings,
       saveSettingsValue,
       refreshSettings,
@@ -1829,6 +1980,7 @@ export function App() {
       copyLogs: () => copyText(logs?.text ?? "", "日志已复制。"),
       copyDiagnostics: () => copyText(diagnostics?.report ?? "", "诊断报告已复制。"),
       goLogs: () => navigate("about"),
+      goOverview: () => navigate("overview"),
       goSubscriptionCenter: () => navigate("subscription"),
       checkHealth: async () => {
         await refreshOverview(true);
@@ -1842,7 +1994,7 @@ export function App() {
       disableWatcher: () => watcherAction("disable_watcher"),
       toggleTheme: () => setTheme((current) => (current === "dark" ? "light" : "dark")),
     }),
-    [route, launchForm, settingsForm, settings, removeOwnedData, update, logs, diagnostics, theme, relayFiles, localSessions, zedRemoteProjects, selectedProviderSyncTarget, envConflicts, ccsProviders],
+    [route, launchForm, settingsForm, settings, removeOwnedData, update, logs, diagnostics, theme, relayFiles, localSessions, zedRemoteProjects, selectedProviderSyncTarget, envConflicts, ccsProviders, taiyingApiKey],
   );
   const hasUpdate = update?.updateAvailable === true;
 
@@ -1907,6 +2059,12 @@ export function App() {
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
+            {hasUpdate ? (
+              <Button className="topbar-update-version" onClick={() => void actions.performUpdate()} title="更新版本">
+                <CircleArrowUp className="h-4 w-4" />
+                更新版本
+              </Button>
+            ) : null}
             <Button onClick={() => void actions.restart()} title="重启 Codex" variant="outline">
               <Rocket className="h-4 w-4" />
               重启 Codex
@@ -1921,10 +2079,23 @@ export function App() {
             <OverviewScreen
               overview={overview}
               pluginMarketplaceProgress={pluginMarketplaceProgress}
+              taiyingApiKey={taiyingApiKey}
+              taiyingBalance={taiyingBalance}
+              taiyingBalanceBusy={taiyingBalanceBusy}
+              taiyingBalanceMessage={taiyingBalanceMessage}
+              onTaiyingApiKeyChange={(value) => {
+                setTaiyingApiKey(value);
+                if (!value.trim()) {
+                  saveTaiyingApiKeyToStorage("");
+                  setTaiyingBalance(null);
+                  setTaiyingBalanceMessage("输入你的 API Key 后即可读取套餐和总量包余额。");
+                }
+              }}
               actions={actions}
             />
           ) : null}
           {route === "subscription" ? <SubscriptionCenterScreen actions={actions} /> : null}
+          {route === "codexCli" ? <CodexCliScreen actions={actions} /> : null}
           {route === "relay" ? (
             <RelayScreen
               settings={settings}
@@ -2037,10 +2208,15 @@ type Actions = {
   repairPluginMarketplace: () => Promise<void>;
   checkPluginMarketplacePrompt: () => Promise<PluginMarketplaceStatusResult | null>;
   installEntrypoints: () => Promise<void>;
+  installCodexFromOverview: () => Promise<void>;
   uninstallEntrypoints: () => Promise<void>;
   repairShortcuts: () => Promise<void>;
-  checkUpdate: () => Promise<void>;
+  checkUpdate: (silent?: boolean) => Promise<UpdateResult | null>;
   performUpdate: () => Promise<void>;
+  saveTaiyingApiKey: (apiKey: string, options?: TaiyingSyncOptions) => Promise<TaiyingSyncResult>;
+  openNodeInstaller: () => Promise<void>;
+  installCodexCliEnvironment: () => Promise<void>;
+  copyCodexCliPrompt: () => Promise<void>;
   saveSettings: () => Promise<void>;
   saveSettingsValue: (settings: BackendSettings, silent?: boolean) => Promise<void>;
   refreshSettings: (silent?: boolean) => Promise<BackendSettings | null>;
@@ -2097,6 +2273,7 @@ type Actions = {
   copyLogs: () => Promise<void>;
   copyDiagnostics: () => Promise<void>;
   goLogs: () => Promise<void>;
+  goOverview: () => Promise<void>;
   goSubscriptionCenter: () => Promise<void>;
   installWatcher: () => Promise<void>;
   uninstallWatcher: () => Promise<void>;
@@ -2351,28 +2528,39 @@ function MobileControlScreen({
 function OverviewScreen({
   overview,
   pluginMarketplaceProgress,
+  taiyingApiKey,
+  taiyingBalance,
+  taiyingBalanceBusy,
+  taiyingBalanceMessage,
+  onTaiyingApiKeyChange,
   actions,
 }: {
   overview: OverviewResult | null;
   pluginMarketplaceProgress: TaskProgress;
+  taiyingApiKey: string;
+  taiyingBalance: LeishenBalance | null;
+  taiyingBalanceBusy: boolean;
+  taiyingBalanceMessage: string;
+  onTaiyingApiKeyChange: (value: string) => void;
   actions: Actions;
 }) {
   const health = healthItems(overview);
   return (
     <>
-      <div className="grid two leishen-status-panels">
-        <Panel className="leishen-panel-card">
-          <LeishenBalancePanel
-            codexReady={Boolean(overview?.codex_version || overview?.codex_app.status === "found")}
-            onInstallCodex={() => void actions.installEntrypoints()}
-            onOpenCodex={() => void actions.launch()}
-            onOpenSubscription={() => void actions.goSubscriptionCenter()}
-          />
-        </Panel>
-        <Panel className="leishen-panel-card">
-          <LeishenSetupPanel />
-        </Panel>
-      </div>
+      <Panel className="leishen-panel-card">
+        <LeishenBalancePanel
+          apiKey={taiyingApiKey}
+          balance={taiyingBalance}
+          busy={taiyingBalanceBusy}
+          codexReady={Boolean(overview?.codex_version || overview?.codex_app.status === "found")}
+          message={taiyingBalanceMessage}
+          onApiKeyChange={onTaiyingApiKeyChange}
+          onRefreshBalance={() => void actions.saveTaiyingApiKey(taiyingApiKey, { refreshBalance: true })}
+          onInstallCodex={() => void actions.installCodexFromOverview()}
+          onOpenCodex={() => void actions.launch()}
+          onOpenSubscription={() => void actions.goSubscriptionCenter()}
+        />
+      </Panel>
       <Panel>
         <CardHead title="健康检查" detail="概览只展示关键问题，具体配置在对应页面处理" />
         <CardContent>
@@ -3194,18 +3382,12 @@ function SubscriptionCenterScreen({ actions }: { actions: Actions }) {
       void (async () => {
         try {
           setBridgeMessage("收到订阅中心 API Key，正在写入本机 Codex 配置...");
-          const configureResult = await configureTaiyingApiKey(payload.apiKey);
-          if (configureResult.status !== "ok") {
-            throw new Error(configureResult.message || "本机 Codex 配置失败");
-          }
-
-          const balanceResult = await fetchLeishenBalance(payload.apiKey);
-          const balanceMessage =
-            balanceResult.status === "ok"
-              ? `本机配置完成，额度已刷新：${balanceResult.topupBalance.valueText}`
-              : `本机配置完成，额度稍后可在概览页刷新。`;
+          const sync = await actions.saveTaiyingApiKey(payload.apiKey, { refreshBalance: true, silent: true });
+          if (!sync.ok) throw new Error(sync.message || "本机 Codex 配置失败");
+          const balanceMessage = "本机配置完成，已保存为当前使用的 API Key。";
           setBridgeMessage(balanceMessage);
           await actions.showMessage("订阅中心", balanceMessage, "ok");
+          await actions.goOverview();
         } catch (error) {
           const message = error instanceof Error ? error.message : "订阅中心同步失败";
           setBridgeMessage(message);
@@ -3355,6 +3537,19 @@ function MaintenanceScreen({
         </CardContent>
       </Panel>
     </>
+  );
+}
+
+function CodexCliScreen({ actions }: { actions: Actions }) {
+  return (
+    <Panel className="leishen-panel-card">
+      <LeishenSetupPanel
+        mode="full"
+        onCopyDesktopPrompt={() => void actions.copyCodexCliPrompt()}
+        onInstallCodexCli={() => void actions.installCodexCliEnvironment()}
+        onOpenNodeInstaller={() => void actions.openNodeInstaller()}
+      />
+    </Panel>
   );
 }
 
@@ -5093,6 +5288,7 @@ function routeSubtitle(route: Route) {
   const subtitles: Record<Route, string> = {
     overview: "检查问题、启动与快速修复",
     subscription: "购买总量包、生成 API Key 并回到概览刷新额度",
+    codexCli: "安装 Node.js、npm 和 Codex CLI",
     relay: "管理 API 供应商、协议、Key 与配置文件",
     mobileControl: "配置手机控制 relay、房间密钥和服务器状态",
     sessions: "查看、删除和修复 Codex 本地会话",
@@ -6793,6 +6989,20 @@ function loadInitialTheme(): Theme {
   return window.localStorage.getItem("codex-plus-theme") === "light" ? "light" : "dark";
 }
 
+function loadSavedTaiyingApiKey(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(TAIYING_API_KEY_STORAGE_KEY) ?? "";
+}
+
+function saveTaiyingApiKeyToStorage(apiKey: string) {
+  if (typeof window === "undefined") return;
+  if (apiKey.trim()) {
+    window.localStorage.setItem(TAIYING_API_KEY_STORAGE_KEY, apiKey.trim());
+  } else {
+    window.localStorage.removeItem(TAIYING_API_KEY_STORAGE_KEY);
+  }
+}
+
 function loadInitialRoute(): Route {
   if (typeof window === "undefined") return "overview";
   const params = new URLSearchParams(window.location.search);
@@ -6800,4 +7010,19 @@ function loadInitialRoute(): Route {
     return "about";
   }
   return "overview";
+}
+
+function isTaiyingRelayConfigured(settings: BackendSettings, apiKey: string): boolean {
+  const profile = activeRelayProfile(settings);
+  return (
+    settings.relayProfilesEnabled &&
+    profile.id === TAIYING_RELAY_ID &&
+    profile.relayMode === "pureApi" &&
+    stripTrailingSlash(profile.baseUrl) === stripTrailingSlash(TAIYING_BASE_URL) &&
+    profile.apiKey.trim() === apiKey.trim()
+  );
+}
+
+function stripTrailingSlash(value: string): string {
+  return value.trim().replace(/\/+$/, "");
 }

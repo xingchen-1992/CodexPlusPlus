@@ -47,3 +47,7 @@ export async function configureTaiyingApiKey(apiKey: string): Promise<CommandRes
     request: { apiKey },
   });
 }
+
+export async function installCodexCli(): Promise<CommandResult<Record<string, unknown>>> {
+  return invoke<CommandResult<Record<string, unknown>>>("install_codex_cli");
+}

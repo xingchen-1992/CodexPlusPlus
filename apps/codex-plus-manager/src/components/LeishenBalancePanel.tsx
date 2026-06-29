@@ -5,26 +5,34 @@ import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-import { configureTaiyingApiKey, fetchLeishenBalance, type LeishenBalance } from "../leishen";
+import type { LeishenBalance } from "../leishen";
 
 type LeishenBalancePanelProps = {
+  apiKey: string;
+  balance: LeishenBalance | null;
+  busy: boolean;
   codexReady: boolean;
+  message: string;
+  onApiKeyChange: (value: string) => void;
+  onRefreshBalance: () => void;
   onInstallCodex: () => void;
   onOpenCodex: () => void;
   onOpenSubscription: () => void;
 };
 
 export function LeishenBalancePanel({
+  apiKey,
+  balance,
+  busy,
   codexReady,
+  message,
+  onApiKeyChange,
+  onRefreshBalance,
   onInstallCodex,
   onOpenCodex,
   onOpenSubscription,
 }: LeishenBalancePanelProps) {
-  const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
-  const [balance, setBalance] = useState<LeishenBalance | null>(null);
-  const [message, setMessage] = useState("输入你的 API Key 后即可读取套餐和总量包余额。");
-  const [busy, setBusy] = useState(false);
 
   const metrics = useMemo(() => {
     if (!balance) return [];
@@ -37,33 +45,6 @@ export function LeishenBalancePanel({
       { label: "API Key", value: balance.apiKeyPreview },
     ];
   }, [balance]);
-
-  const refresh = async () => {
-    const normalized = apiKey.trim();
-    if (!normalized) {
-      setBalance(null);
-      setMessage("请先填写 API Key");
-      return;
-    }
-    setBusy(true);
-    try {
-      setMessage("正在配置本机 Codex 环境...");
-      const configureResult = await configureTaiyingApiKey(normalized);
-      if (configureResult.status !== "ok") {
-        throw new Error(configureResult.message || "本机 Codex 环境配置失败");
-      }
-      setMessage("本机配置完成，正在刷新额度...");
-      const result = await fetchLeishenBalance(normalized);
-      setBalance(result);
-      const balanceMessage = result.message || (result.status === "ok" ? "额度刷新完成" : "额度暂时无法刷新");
-      setMessage(`${balanceMessage}；${configureResult.message}`);
-    } catch (error) {
-      setBalance(null);
-      setMessage(error instanceof Error ? error.message : "额度暂时无法刷新");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <CardContent className="leishen-panel-content">
@@ -78,7 +59,7 @@ export function LeishenBalancePanel({
           <span>API Key</span>
           <div className="leishen-key-input">
             <Input
-              onChange={(event) => setApiKey(event.target.value)}
+              onChange={(event) => onApiKeyChange(event.target.value)}
               placeholder="粘贴 cr_... 或 sk-..."
               type={showApiKey ? "text" : "password"}
               value={apiKey}
@@ -96,7 +77,7 @@ export function LeishenBalancePanel({
         </label>
       </div>
       <div className="leishen-balance-actions">
-        <Button className="leishen-balance-action-refresh" disabled={busy} onClick={() => void refresh()} type="button" variant="secondary">
+        <Button className="leishen-balance-action-refresh" disabled={busy} onClick={onRefreshBalance} type="button" variant="secondary">
           <RefreshCw className="h-4 w-4" />
           {busy ? "刷新中" : "刷新额度"}
         </Button>
@@ -104,7 +85,12 @@ export function LeishenBalancePanel({
           <ExternalLink className="h-4 w-4" />
           购买额度
         </Button>
-        <Button className="leishen-balance-action-open" onClick={codexReady ? onOpenCodex : onInstallCodex} type="button">
+        <Button
+          className="leishen-balance-action-open"
+          disabled={busy}
+          onClick={codexReady ? onOpenCodex : onInstallCodex}
+          type="button"
+        >
           {codexReady ? <Rocket className="h-4 w-4" /> : <Download className="h-4 w-4" />}
           {codexReady ? "打开 Codex" : "安装 Codex"}
         </Button>
