@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use toml_edit::{DocumentMut, value};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,8 +28,14 @@ pub fn select_node_download(
         .and_then(Value::as_array)
         .ok_or_else(|| anyhow::anyhow!("node-runtime.json missing downloads"))?;
     for item in downloads {
-        let candidate: NodeDownload = serde_json::from_value(item.clone())?;
-        if candidate.platform == platform && candidate.arch == arch {
+        let Some(candidate_platform) = item.get("platform").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(candidate_arch) = item.get("arch").and_then(Value::as_str) else {
+            continue;
+        };
+        if candidate_platform == platform && candidate_arch == arch {
+            let candidate: NodeDownload = serde_json::from_value(item.clone())?;
             return Ok(candidate);
         }
     }
@@ -36,27 +43,17 @@ pub fn select_node_download(
 }
 
 pub fn build_codex_config_toml(base_url: &str) -> String {
-    let base_url = toml_string(base_url);
-    format!(
-        r#"cli_auth_credentials_store = "file"
-model_provider = "crs"
-model = "gpt-5.4"
-model_reasoning_effort = "high"
-model_auto_compact_token_limit = 188888
-preferred_auth_method = "apikey"
-
-[model_providers.crs]
-name = "OpenAI"
-base_url = "{base_url}"
-wire_api = "responses"
-requires_openai_auth = true
-
-[features]
-apps = false
-"#
-    )
-}
-
-fn toml_string(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
+    let mut document = DocumentMut::new();
+    document["cli_auth_credentials_store"] = value("file");
+    document["model_provider"] = value("crs");
+    document["model"] = value("gpt-5.4");
+    document["model_reasoning_effort"] = value("high");
+    document["model_auto_compact_token_limit"] = value(188888);
+    document["preferred_auth_method"] = value("apikey");
+    document["model_providers"]["crs"]["name"] = value("OpenAI");
+    document["model_providers"]["crs"]["base_url"] = value(base_url);
+    document["model_providers"]["crs"]["wire_api"] = value("responses");
+    document["model_providers"]["crs"]["requires_openai_auth"] = value(true);
+    document["features"]["apps"] = value(false);
+    document.to_string()
 }

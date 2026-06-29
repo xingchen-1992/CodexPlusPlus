@@ -318,6 +318,12 @@ pub struct LeishenSetupStatus {
     pub codex_version: Option<String>,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeishenBalanceRequest {
+    pub api_key: String,
+}
+
 #[tauri::command]
 pub fn backend_version() -> CommandResult<VersionPayload> {
     ok(
@@ -340,32 +346,34 @@ pub fn startup_options() -> CommandResult<StartupPayload> {
 
 #[tauri::command]
 pub async fn leishen_setup_status() -> CommandResult<LeishenSetupStatus> {
-    let node = std::process::Command::new("node")
-        .arg("--version")
-        .output()
-        .ok();
-    let npm = std::process::Command::new("npm")
-        .arg("--version")
-        .output()
-        .ok();
-    let codex = std::process::Command::new("codex")
-        .arg("--version")
-        .output()
-        .ok();
-    let text = |output: Option<std::process::Output>| {
-        output
-            .filter(|value| value.status.success())
-            .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_string())
-            .filter(|value| !value.is_empty())
-    };
-    CommandResult {
-        status: "ok".to_string(),
-        message: "环境检测完成".to_string(),
-        payload: LeishenSetupStatus {
-            node_version: text(node),
-            npm_version: text(npm),
-            codex_version: text(codex),
-        },
+    match tauri::async_runtime::spawn_blocking(load_leishen_setup_status).await {
+        Ok(status) => ok("环境检测完成", status),
+        Err(error) => failed(
+            &format!("环境检测失败：{error}"),
+            LeishenSetupStatus {
+                node_version: None,
+                npm_version: None,
+                codex_version: None,
+            },
+        ),
+    }
+}
+
+#[tauri::command]
+pub async fn leishen_balance(
+    request: LeishenBalanceRequest,
+) -> CommandResult<codex_plus_core::leishen_desktop_api::DesktopSummary> {
+    match codex_plus_core::leishen_desktop_api::fetch_desktop_summary(
+        "https://ls-qihang.cn",
+        &request.api_key,
+    )
+    .await
+    {
+        Ok(summary) => ok("额度刷新完成", summary),
+        Err(error) => failed(
+            &error.to_string(),
+            fallback_leishen_balance(&request.api_key),
+        ),
     }
 }
 
@@ -2866,6 +2874,47 @@ fn load_overview_payload() -> (
         install::inspect_entrypoints(),
         StatusStore::default().load_latest().unwrap_or(None),
     )
+}
+
+fn load_leishen_setup_status() -> LeishenSetupStatus {
+    LeishenSetupStatus {
+        node_version: read_command_version("node", "--version"),
+        npm_version: read_command_version("npm", "--version"),
+        codex_version: read_command_version("codex", "--version"),
+    }
+}
+
+fn read_command_version(command: &str, arg: &str) -> Option<String> {
+    std::process::Command::new(command)
+        .arg(arg)
+        .output()
+        .ok()
+        .filter(|value| value.status.success())
+        .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn fallback_leishen_balance(api_key: &str) -> codex_plus_core::leishen_desktop_api::DesktopSummary {
+    codex_plus_core::leishen_desktop_api::DesktopSummary {
+        api_key_preview: codex_plus_core::leishen_desktop_api::mask_api_key(api_key),
+        plan_name: "额度暂时无法刷新".to_string(),
+        plan_expiry_label: "到期日期".to_string(),
+        plan_remaining_text: "--".to_string(),
+        runtime_access_mode: "unknown".to_string(),
+        package_expired: false,
+        today_usd: 0.0,
+        total_usd: 0.0,
+        today_requests: 0,
+        total_requests: 0,
+        topup_balance: codex_plus_core::leishen_desktop_api::TopupBalance {
+            visible: false,
+            title: "总量包剩余额度".to_string(),
+            value_text: "--".to_string(),
+            summary_text: String::new(),
+            details: Vec::new(),
+            expiry: "--".to_string(),
+        },
+    }
 }
 
 fn install_background_failure(action: &str, error: impl std::fmt::Display) -> InstallActionResult {

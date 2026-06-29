@@ -46,6 +46,7 @@ pub fn run() {
             commands::backend_version,
             commands::startup_options,
             commands::leishen_setup_status,
+            commands::leishen_balance,
             commands::load_overview,
             commands::launch_codex_plus,
             commands::restart_codex_plus,
