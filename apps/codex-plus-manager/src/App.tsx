@@ -1924,7 +1924,13 @@ export function App() {
               actions={actions}
             />
           ) : null}
-          {route === "subscription" ? <SubscriptionCenterScreen actions={actions} /> : null}
+          <div
+            aria-hidden={route !== "subscription"}
+            className="subscription-center-route"
+            style={{ display: route === "subscription" ? "contents" : "none" }}
+          >
+            <SubscriptionCenterScreen actions={actions} />
+          </div>
           {route === "relay" ? (
             <RelayScreen
               settings={settings}
@@ -3179,6 +3185,7 @@ function subscriptionBridgeMessage(data: unknown): SubscriptionBridgeMessage | n
 
 function SubscriptionCenterScreen({ actions }: { actions: Actions }) {
   const [bridgeMessage, setBridgeMessage] = useState("选择总量包并完成付款。");
+  const [frameLoaded, setFrameLoaded] = useState(false);
   const lastBridgeSyncRef = useRef("");
 
   useEffect(() => {
@@ -3221,8 +3228,14 @@ function SubscriptionCenterScreen({ actions }: { actions: Actions }) {
     <Panel className="subscription-center-panel">
       <CardHead title="订阅中心" detail={bridgeMessage} />
       <CardContent className="subscription-center-content">
+        {!frameLoaded ? (
+          <div className="subscription-center-loading" aria-live="polite">
+            正在打开总量包购买页面...
+          </div>
+        ) : null}
         <iframe
           className="subscription-center-frame"
+          onLoad={() => setFrameLoaded(true)}
           src={SUBSCRIPTION_CENTER_EMBED_URL}
           title="订阅中心"
         />

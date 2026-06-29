@@ -345,16 +345,33 @@ body {
 }
 
 .subscription-center-content {
+  position: relative;
   display: grid;
   min-height: calc(100vh - 190px);
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--shell-bg));
+}
+
+.subscription-center-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  background: hsl(var(--shell-bg));
+  color: hsl(var(--muted-foreground));
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .subscription-center-frame {
   width: 100%;
   min-height: min(820px, calc(100vh - 210px));
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
+  border: 0;
   background: hsl(var(--shell-bg));
+  color-scheme: dark;
 }
 
 .panel {

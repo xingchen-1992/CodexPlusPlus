@@ -368,6 +368,10 @@ fn overview_moves_subscription_and_codex_actions_into_balance_card() {
     assert!(app_tsx.contains("onOpenSubscription={() => void actions.goSubscriptionCenter()}"));
     assert!(app_tsx.contains("function SubscriptionCenterScreen"));
     assert!(app_tsx.contains("src={SUBSCRIPTION_CENTER_EMBED_URL}"));
+    assert!(app_tsx.contains("subscription-center-route"));
+    assert!(app_tsx.contains("route === \"subscription\" ? \"contents\" : \"none\""));
+    assert!(app_tsx.contains("const [frameLoaded, setFrameLoaded] = useState(false);"));
+    assert!(app_tsx.contains("onLoad={() => setFrameLoaded(true)}"));
     assert!(!app_tsx.contains("浏览器打开"));
     assert!(!app_tsx.contains("只使用泰盈订阅入口，不展示其它第三方平台。"));
     assert!(app_tsx.contains("onInstallCodex={() => void actions.installEntrypoints()}"));
