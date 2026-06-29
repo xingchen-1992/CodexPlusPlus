@@ -3358,22 +3358,37 @@ function SessionsScreen({
 type SubscriptionBridgeMessage = {
   source: string;
   type: string;
-  apiKey: string;
+  apiKey?: string;
   reason?: string;
+  url?: string;
+  outTradeNo?: string;
 };
 
 function subscriptionBridgeMessage(data: unknown): SubscriptionBridgeMessage | null {
   if (!data || typeof data !== "object") return null;
   const payload = data as Partial<SubscriptionBridgeMessage>;
-  if (payload.source !== "taiying-subscription-center" || payload.type !== "taiying:api-key-ready") return null;
-  const apiKey = typeof payload.apiKey === "string" ? payload.apiKey.trim() : "";
-  if (!apiKey) return null;
-  return {
-    source: payload.source,
-    type: payload.type,
-    apiKey,
-    reason: typeof payload.reason === "string" ? payload.reason : undefined,
-  };
+  if (payload.source !== "taiying-subscription-center") return null;
+  if (payload.type === "taiying:api-key-ready") {
+    const apiKey = typeof payload.apiKey === "string" ? payload.apiKey.trim() : "";
+    if (!apiKey) return null;
+    return {
+      source: payload.source,
+      type: payload.type,
+      apiKey,
+      reason: typeof payload.reason === "string" ? payload.reason : undefined,
+    };
+  }
+  if (payload.type === "taiying:open-payment-url") {
+    const url = typeof payload.url === "string" ? payload.url.trim() : "";
+    if (!/^https?:\/\//i.test(url)) return null;
+    return {
+      source: payload.source,
+      type: payload.type,
+      url,
+      outTradeNo: typeof payload.outTradeNo === "string" ? payload.outTradeNo : undefined,
+    };
+  }
+  return null;
 }
 
 function SubscriptionCenterScreen({ actions }: { actions: Actions }) {
@@ -3386,14 +3401,22 @@ function SubscriptionCenterScreen({ actions }: { actions: Actions }) {
       if (event.origin !== SUBSCRIPTION_CENTER_ORIGIN) return;
       const payload = subscriptionBridgeMessage(event.data);
       if (!payload) return;
-      const syncKey = `${payload.apiKey}:${payload.reason || ""}`;
+      if (payload.type === "taiying:open-payment-url") {
+        if (!payload.url) return;
+        setBridgeMessage("正在打开支付页面...");
+        void actions.openExternalUrl(payload.url);
+        return;
+      }
+      const apiKey = payload.apiKey;
+      if (!apiKey) return;
+      const syncKey = `${apiKey}:${payload.reason || ""}`;
       if (lastBridgeSyncRef.current === syncKey) return;
       lastBridgeSyncRef.current = syncKey;
 
       void (async () => {
         try {
           setBridgeMessage("收到订阅中心 API Key，正在写入本机 Codex 配置...");
-          const sync = await actions.saveTaiyingApiKey(payload.apiKey, { refreshBalance: true, silent: true });
+          const sync = await actions.saveTaiyingApiKey(apiKey, { refreshBalance: true, silent: true });
           if (!sync.ok) throw new Error(sync.message || "本机 Codex 配置失败");
           const balanceMessage = "本机配置完成，已保存为当前使用的 API Key。";
           setBridgeMessage(balanceMessage);
