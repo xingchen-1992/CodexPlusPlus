@@ -330,7 +330,7 @@ fn update_zip_is_extracted_and_launches_visible_root_setup() {
     let dir = tempfile::tempdir().unwrap();
     let zip_path = dir
         .path()
-        .join("CodexPlusOfficial-1.0.13-official.6-windows-x64.zip");
+        .join("CodexPlusOfficial-1.0.13-official.7-windows-x64.zip");
     let file = std::fs::File::create(&zip_path).unwrap();
     let mut zip = zip::ZipWriter::new(file);
     let options = zip::write::SimpleFileOptions::default();

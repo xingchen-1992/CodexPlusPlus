@@ -474,7 +474,7 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
     {
         match codex_plus_core::relay_config::backfill_relay_profile_from_home(&home, active_profile)
         {
-            Ok(updated) => *active_profile = updated,
+            Ok(()) => {}
             Err(error) => {
                 return failed(
                     &format!("回填总量包配置失败：{error}"),
