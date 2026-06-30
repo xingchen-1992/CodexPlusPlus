@@ -383,19 +383,36 @@ body {
 
 .subscription-center-content {
   display: flex;
-  min-height: 220px;
+  min-height: calc(100vh - 220px);
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 16px;
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   background: hsl(var(--shell-bg));
+  padding: 0;
 }
 
-.subscription-center-loading {
-  color: hsl(var(--muted-foreground));
-  font-weight: 600;
+.subscription-center-frame-wrap {
+  width: 100%;
+  min-height: calc(100vh - 300px);
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--card));
+}
+
+.subscription-center-frame {
+  width: 100%;
+  height: calc(100vh - 300px);
+  min-height: 560px;
+  border: 0;
+  background: hsl(var(--card));
+}
+
+.subscription-center-content > button {
+  margin: 0 16px 16px;
 }
 
 .panel {

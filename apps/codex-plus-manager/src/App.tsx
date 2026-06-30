@@ -266,7 +266,8 @@ type RelayMode = "official" | "mixedApi" | "pureApi" | "aggregate";
 const PROTOCOL_PROXY_BASE_URL = "http://127.0.0.1:57321/v1";
 const CHAT_UPSTREAM_BASE_URL_KEY = "codex_plus_chat_base_url";
 const SCRIPT_MARKET_REPOSITORY_URL = "https://www.leishen-ai.cn/tools/codex-plus/script-market";
-const SUBSCRIPTION_CENTER_URL = "https://www.leishen-ai.cn/tools/codex-plus/#downloads";
+const SUBSCRIPTION_CENTER_URL = "https://www.leishen-ai.cn/user-next/console/subscription?desktop=codex-plus-taiying";
+const SUBSCRIPTION_CENTER_ORIGIN = "https://www.leishen-ai.cn";
 const UPDATE_POLL_INTERVAL_MS = 10 * 60 * 1000;
 const UPDATE_BUTTON_TOOLTIP = "更新管理工具，不会影响 Codex 应用当前正常使用。";
 const API_KEY_BACKUP_REMINDER = "请务必保存好 API Key，丢失后无法在本工具中找回。";
@@ -1955,6 +1956,28 @@ export function App() {
     window.localStorage.setItem("codex-plus-theme", theme);
   }, [theme]);
 
+  useEffect(() => {
+    const onSubscriptionMessage = (event: MessageEvent) => {
+      const data = event.data as Record<string, unknown> | null;
+      if (event.origin !== SUBSCRIPTION_CENTER_ORIGIN || !data || data.source !== "taiying-subscription-center") return;
+      if (data.type === "taiying:open-payment-url") {
+        const url = String(data.url || "").trim();
+        if (url) void openExternalUrl(url);
+        return;
+      }
+      if (data.type === "taiying:api-key-ready") {
+        const apiKey = String(data.apiKey || "").trim();
+        if (!/^(sk-|cr_)/i.test(apiKey)) return;
+        setOfficialApiKey(apiKey);
+        saveOfficialApiKeyToStorage(apiKey);
+        setOfficialBalanceMessage("订阅中心已生成 API Key，正在自动配置并刷新额度。");
+        void saveOfficialApiKey(apiKey, { refreshBalance: true });
+      }
+    };
+    window.addEventListener("message", onSubscriptionMessage);
+    return () => window.removeEventListener("message", onSubscriptionMessage);
+  }, []);
+
   const saveCodexAppPath = async (appPath: string) => {
     const next = { ...settingsForm, codexAppPath: appPath };
     const result = await run(() => call<SettingsResult>("save_settings", { settings: next }));
@@ -2231,7 +2254,7 @@ export function App() {
               actions={actions}
             />
           ) : null}
-          {route === "subscription" ? <SubscriptionCenterScreen actions={actions} /> : null}
+          {route === "subscription" ? <SubscriptionCenterScreen /> : null}
           {route === "relay" ? (
             <RelayScreen
               settings={settings}
@@ -3485,18 +3508,20 @@ function SessionsScreen({
   );
 }
 
-function SubscriptionCenterScreen({ actions }: { actions: Actions }) {
+function SubscriptionCenterScreen() {
   return (
     <Panel className="subscription-center-panel">
-      <CardHead title="订阅中心" detail="当前仅打开 Codex官方管理工具下载页。" />
+      <CardHead title="订阅中心" detail="购买总量包；付款成功后自动同步 API Key 到概览。" />
       <CardContent className="subscription-center-content">
-        <div className="subscription-center-loading" aria-live="polite">
-          下载页包含 Windows、macOS Apple Silicon 和 macOS Intel 三个安装包入口。
+        <div className="subscription-center-frame-wrap">
+          <iframe
+            allow="clipboard-read; clipboard-write"
+            className="subscription-center-frame"
+            sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
+            src={SUBSCRIPTION_CENTER_URL}
+            title="订阅中心"
+          />
         </div>
-        <Button onClick={() => void actions.openExternalUrl(SUBSCRIPTION_CENTER_URL)} type="button">
-          <ExternalLink className="h-4 w-4" />
-          打开下载页
-        </Button>
       </CardContent>
     </Panel>
   );
