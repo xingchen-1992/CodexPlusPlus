@@ -1498,8 +1498,7 @@ body {
   min-width: 0;
 }
 
-.managed-skill-title-row,
-.managed-skill-status {
+.managed-skill-title-row {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -1511,15 +1510,18 @@ body {
   font-size: 13px;
 }
 
-.managed-skill-copy span,
-.managed-skill-status small {
+.managed-skill-copy span {
   color: hsl(var(--muted-foreground));
   font-size: 12px;
   line-height: 1.45;
 }
 
-.spin {
-  animation: managed-spin 0.8s linear infinite;
+.managed-skill-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .relay-context-row {
@@ -2694,12 +2696,6 @@ body {
 
   to {
     transform: scaleX(0);
-  }
-}
-
-@keyframes managed-spin {
-  to {
-    transform: rotate(360deg);
   }
 }
 

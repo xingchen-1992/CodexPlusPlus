@@ -132,6 +132,11 @@ type CrsImageInstallOptions = {
   silent?: boolean;
 };
 
+type ManagedSkillsSyncOptions = {
+  silent?: boolean;
+  settingsOverride?: BackendSettings | null;
+};
+
 type BackendSettings = {
   codexAppPath: string;
   codexExtraArgs: string[];
@@ -537,6 +542,11 @@ type UpdateResult = CommandResult<{
   progress?: number;
 }>;
 
+type UpdateCheckOptions = {
+  promptAvailable?: boolean;
+  notifyAvailable?: boolean;
+};
+
 type ScriptMarketItem = {
   id: string;
   name: string;
@@ -744,6 +754,8 @@ export function App() {
   const [diagnostics, setDiagnostics] = useState<DiagnosticsResult | null>(null);
   const [watcher, setWatcher] = useState<WatcherResult | null>(null);
   const [update, setUpdate] = useState<UpdateResult | null>(null);
+  const [updateInstalling, setUpdateInstalling] = useState(false);
+  const [crsImageInstall, setCrsImageInstall] = useState<CrsImageInstallResult | null>(null);
   const [taiyingApiKey, setTaiyingApiKey] = useState(() => loadSavedTaiyingApiKey());
   const [taiyingBalance, setTaiyingBalance] = useState<LeishenBalance | null>(null);
   const [taiyingBalanceMessage, setTaiyingBalanceMessage] = useState("输入你的 API Key 后即可读取套餐和总量包余额。");
@@ -1128,6 +1140,35 @@ export function App() {
     }
   };
 
+  async function ensureManagedSkillsForCodex(
+    options: ManagedSkillsSyncOptions = {},
+  ): Promise<CrsImageInstallResult | null> {
+    const installResult = await installCrsImageSkill({ silent: true });
+    let nextSettings = normalizeSettings(options.settingsOverride ?? settingsForm);
+    const crsImageEntry = contextEntriesByKind(
+      contextEntriesFromSettings(nextSettings),
+      "skill",
+    ).find((entry) => entry.id === CRS_IMAGE_SKILL_ID);
+
+    if (!crsImageEntry) {
+      const saved = await upsertContextEntry(
+        nextSettings,
+        "skill",
+        CRS_IMAGE_SKILL_ID,
+        "enabled = true\n",
+      );
+      if (saved) nextSettings = saved;
+    }
+
+    const syncResult = await syncLiveContextEntries(nextSettings, true);
+    if (syncResult && isSuccessStatus(syncResult.status)) {
+      void refreshRelayFiles(true);
+    } else if (syncResult && !options.silent) {
+      showNotice("工具与插件", syncResult.message, syncResult.status);
+    }
+    return installResult;
+  }
+
   const ensureTaiyingReadyForLaunch = async () => {
     const normalized = taiyingApiKey.trim();
     if (!normalized) {
@@ -1154,6 +1195,7 @@ export function App() {
       showNotice("打开 Codex", sync.message, "failed");
       return false;
     }
+    await ensureManagedSkillsForCodex({ silent: true });
     return true;
   };
 
@@ -1327,6 +1369,7 @@ export function App() {
   const installCrsImageSkill = async (options: CrsImageInstallOptions = {}) => {
     const result = await run(() => call<CrsImageInstallResult>("install_crs_image_skill"));
     if (result) {
+      setCrsImageInstall(result);
       if (!options.silent || !isSuccessStatus(result.status)) {
         showNotice("crs-image", result.message, result.status);
       }
@@ -1376,24 +1419,23 @@ export function App() {
     }
   };
 
-  const checkUpdate = async (silent = false) => {
+  const checkUpdate = async (silent = false, options: UpdateCheckOptions = {}) => {
     const result = await run(() => call<UpdateResult>("check_update"));
     if (result) {
       setUpdate(result);
-      if (!silent) {
-        if (result.updateAvailable === true) {
-          const versionText = result.latestVersion ? ` ${result.latestVersion}` : "";
-          const confirmed = await confirmAction(
-            "发现可用更新",
-            `发现可用更新${versionText}，是否现在更新？`,
-            "更新",
-            "稍后",
-          );
-          if (confirmed) await performUpdate(result);
-        } else {
-          showNotice("泰盈更新检查", result.message, result.status);
-        }
-      } else if (result.updateAvailable === true) {
+      const shouldPrompt = result.updateAvailable === true && (!silent || options.promptAvailable === true);
+      if (shouldPrompt) {
+        const versionText = result.latestVersion ? ` ${result.latestVersion}` : "";
+        const confirmed = await confirmAction(
+          "发现可用更新",
+          `发现可用更新${versionText}，是否现在更新？`,
+          "更新",
+          "稍后",
+        );
+        if (confirmed) await performUpdate(result);
+      } else if (!silent) {
+        showNotice("泰盈更新检查", result.message, result.status);
+      } else if (result.updateAvailable === true && options.notifyAvailable !== false) {
         showNotice("发现可用更新", "可在概览右上角点击“更新版本”安装。", "ok");
       }
       return result;
@@ -1402,6 +1444,7 @@ export function App() {
   };
 
   const performUpdate = async (targetUpdate: UpdateResult | null = update) => {
+    if (updateInstalling) return;
     const release =
       targetUpdate?.latestVersion && targetUpdate.assetName && targetUpdate.assetUrl
         ? {
@@ -1411,12 +1454,29 @@ export function App() {
             asset_name: targetUpdate.assetName,
             asset_url: targetUpdate.assetUrl,
             asset_sha256: targetUpdate.assetSha256 ?? null,
-          }
+        }
         : null;
-    const result = await run(() => call<UpdateResult>("perform_update", { release }));
-    if (result) {
-      setUpdate(result);
-      showNotice("更新安装", result.message, result.status);
+    if (!release) {
+      showNotice("更新安装", "请先检查更新，找到可用版本后再更新。", "failed");
+      return;
+    }
+
+    setUpdateInstalling(true);
+    setUpdate({
+      ...(targetUpdate as UpdateResult),
+      status: "accepted",
+      message: "正在下载更新安装包，请稍等。",
+      progress: Math.max(targetUpdate?.progress ?? 0, 5),
+      updateAvailable: true,
+    });
+    try {
+      const result = await run(() => call<UpdateResult>("perform_update", { release }));
+      if (result) {
+        setUpdate(result);
+        showNotice("更新安装", result.message, result.status);
+      }
+    } finally {
+      setUpdateInstalling(false);
     }
   };
 
@@ -1837,16 +1897,16 @@ export function App() {
         setRoute("about");
         void checkUpdate(false);
       } else {
-        void checkUpdate(true);
+        void checkUpdate(true, { promptAvailable: true, notifyAvailable: false });
       }
       await refreshOverview(true);
-      await refreshSettings(true);
+      const startupSettings = await refreshSettings(true);
       await refreshRelay(true);
       await refreshEnvConflicts(true);
       await refreshProviderSyncTargets(true);
       await refreshPendingProviderImport(true);
       await checkPluginMarketplacePrompt();
-      void installCrsImageSkill({ silent: true });
+      void ensureManagedSkillsForCodex({ silent: true, settingsOverride: startupSettings });
     })();
   }, []);
 
@@ -2032,9 +2092,9 @@ export function App() {
       disableWatcher: () => watcherAction("disable_watcher"),
       toggleTheme: () => setTheme((current) => (current === "dark" ? "light" : "dark")),
     }),
-    [route, launchForm, settingsForm, settings, removeOwnedData, update, logs, diagnostics, theme, relayFiles, localSessions, zedRemoteProjects, selectedProviderSyncTarget, envConflicts, ccsProviders, taiyingApiKey],
+    [route, launchForm, settingsForm, settings, removeOwnedData, update, updateInstalling, logs, diagnostics, theme, relayFiles, localSessions, zedRemoteProjects, selectedProviderSyncTarget, envConflicts, ccsProviders, taiyingApiKey],
   );
-  const hasUpdate = update?.updateAvailable === true;
+  const hasUpdate = update?.updateAvailable === true || updateInstalling;
 
   return (
     <div className={`shell ${theme}`}>
@@ -2098,9 +2158,14 @@ export function App() {
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
             {hasUpdate ? (
-              <Button className="topbar-update-version" onClick={() => void actions.performUpdate()} title="更新版本">
+              <Button
+                className="topbar-update-version"
+                disabled={updateInstalling}
+                onClick={() => void actions.performUpdate()}
+                title="更新版本"
+              >
                 <CircleArrowUp className="h-4 w-4" />
-                更新版本
+                {updateInstalling ? "更新中" : "更新版本"}
               </Button>
             ) : null}
             <Button onClick={() => void actions.restart()} title="重启 Codex" variant="outline">
@@ -2163,6 +2228,7 @@ export function App() {
           {route === "context" ? (
             <ContextScreen
               form={settingsForm}
+              crsImageInstall={crsImageInstall}
               liveEntries={liveContextEntries}
               relayFiles={relayFiles}
               onFormChange={setSettingsForm}
@@ -2250,7 +2316,7 @@ type Actions = {
   installCodexFromOverview: () => Promise<void>;
   uninstallEntrypoints: () => Promise<void>;
   repairShortcuts: () => Promise<void>;
-  checkUpdate: (silent?: boolean) => Promise<UpdateResult | null>;
+  checkUpdate: (silent?: boolean, options?: UpdateCheckOptions) => Promise<UpdateResult | null>;
   performUpdate: (targetUpdate?: UpdateResult | null) => Promise<void>;
   saveTaiyingApiKey: (apiKey: string, options?: TaiyingSyncOptions) => Promise<TaiyingSyncResult>;
   openNodeInstaller: () => Promise<void>;
@@ -4169,12 +4235,14 @@ function RelayProfileDetail({
 
 function ContextScreen({
   form,
+  crsImageInstall,
   liveEntries,
   relayFiles,
   onFormChange,
   actions,
 }: {
   form: BackendSettings;
+  crsImageInstall: CrsImageInstallResult | null;
   liveEntries: CodexContextEntries | null;
   relayFiles: RelayFilesResult | null;
   onFormChange: (value: BackendSettings) => void;
@@ -4182,10 +4250,11 @@ function ContextScreen({
 }) {
   return (
     <Panel fill>
-      <CardHead title="Codex 工具与插件" detail="独立管理 Codex 的 MCP、Skills、Plugins；切换任意供应商都会带上。" />
+      <CardHead title="Codex 工具与插件" detail="独立管理 Codex 的 Skills、MCP、Plugins；切换任意供应商都会带上。" />
       <CardContent>
         <RelayContextManager
           form={normalizeSettings(form)}
+          crsImageInstall={crsImageInstall}
           liveEntries={liveEntries}
           relayFiles={relayFiles}
           onFormChange={onFormChange}
@@ -4635,12 +4704,14 @@ function AggregateRelayProfileEditor({
 
 function RelayContextManager({
   form,
+  crsImageInstall,
   liveEntries,
   relayFiles,
   onFormChange,
   actions,
 }: {
   form: BackendSettings;
+  crsImageInstall: CrsImageInstallResult | null;
   liveEntries: CodexContextEntries | null;
   relayFiles: RelayFilesResult | null;
   onFormChange: (value: BackendSettings) => void;
@@ -4649,15 +4720,18 @@ function RelayContextManager({
   const entries = contextEntriesWithLiveEntries(form, liveEntries);
   const [activeKind, setActiveKind] = useState<ContextKind>("skill");
   const [editor, setEditor] = useState<{ kind: ContextKind; entry?: CodexContextEntry } | null>(null);
-  const [crsImageInstall, setCrsImageInstall] = useState<CrsImageInstallResult | null>(null);
-  const [crsImageBusy, setCrsImageBusy] = useState(false);
-  const [crsImageAutoChecked, setCrsImageAutoChecked] = useState(false);
+  const [managedSkillBusy, setManagedSkillBusy] = useState(false);
   const visibleEntries = editableContextEntriesByKind(entries, activeKind);
   const label = contextKindLabel(activeKind);
+  const managedCrsImageEntry = contextEntriesByKind(entries, "skill").find((entry) => entry.id === CRS_IMAGE_SKILL_ID);
+  const managedCrsImageEnabled = managedCrsImageEntry?.enabled ?? true;
+  const activeCount = activeKind === "skill" ? visibleEntries.length + 1 : visibleEntries.length;
+  const contextKindCount = (kind: ContextKind) =>
+    kind === "skill" ? editableContextEntriesByKind(entries, kind).length + 1 : editableContextEntriesByKind(entries, kind).length;
 
   const saveEntry = async (kind: ContextKind, id: string, tomlBody: string) => {
     if (kind === "skill" && id.trim() === CRS_IMAGE_SKILL_ID) {
-      await actions.showMessage("crs-image", "crs-image 是内置托管 Skill，不允许作为普通 Skills 编辑或覆盖。", "failed");
+      await actions.showMessage("CRS Image 图片生成", "这个工具由管理工具维护，不支持编辑或覆盖。", "failed");
       return;
     }
     const next = await actions.upsertContextEntry(form, kind, id, tomlBody);
@@ -4683,29 +4757,33 @@ function RelayContextManager({
     onFormChange(next);
   };
 
-  const checkCrsImageSkill = async (silent = true) => {
-    if (crsImageBusy) return;
-    setCrsImageBusy(true);
+  const toggleManagedCrsImageSkill = async () => {
+    if (managedSkillBusy) return;
+    const nextEnabled = !managedCrsImageEnabled;
+    setManagedSkillBusy(true);
     try {
-      const result = await actions.installCrsImageSkill({ silent });
-      if (result) setCrsImageInstall(result);
+      if (nextEnabled) {
+        await actions.installCrsImageSkill({ silent: true });
+      }
+      const nextBody = setContextEntryEnabled(managedCrsImageEntry?.tomlBody ?? "", nextEnabled);
+      const next = await actions.upsertContextEntry(form, "skill", CRS_IMAGE_SKILL_ID, nextBody);
+      if (!next) return;
+      onFormChange(next);
+      const syncResult = await actions.syncLiveContextEntries(next, true);
+      if (syncResult && isSuccessStatus(syncResult.status)) {
+        void actions.refreshRelayFiles();
+      }
     } finally {
-      setCrsImageBusy(false);
+      setManagedSkillBusy(false);
     }
   };
-
-  useEffect(() => {
-    if (crsImageAutoChecked) return;
-    setCrsImageAutoChecked(true);
-    void checkCrsImageSkill(true);
-  }, [crsImageAutoChecked]);
 
   return (
     <div className="relay-context-panel">
       <div className="relay-context-head">
         <div>
           <strong>Codex 工具与插件</strong>
-          <span>MCP、Skills、Plugins 作为全局配置独立管理，切换任意供应商都会合并。</span>
+          <span>Skills、MCP、Plugins 作为全局配置独立管理，切换任意供应商都会合并。</span>
         </div>
         <div className="relay-context-head-actions">
           <Button onClick={() => setEditor({ kind: activeKind })} size="sm" variant="secondary">
@@ -4723,18 +4801,20 @@ function RelayContextManager({
             type="button"
           >
             <span>{option.label}</span>
-            <small>{editableContextEntriesByKind(entries, option.kind).length}</small>
+            <small>{contextKindCount(option.kind)}</small>
           </button>
         ))}
       </div>
       <div className="relay-context-summary">
-        当前共有 {visibleEntries.length} 个{label}；这些条目独立于供应商保存，会写入所有供应商切换后的 config.toml。
+        当前共有 {activeCount} 个{label}；这些条目独立于供应商保存，会写入所有供应商切换后的 config.toml。
       </div>
       {activeKind === "skill" ? (
         <ManagedCrsImageSkillCard
-          busy={crsImageBusy}
+          busy={managedSkillBusy}
+          enabled={managedCrsImageEnabled}
           result={crsImageInstall}
-          onCheck={() => void checkCrsImageSkill(false)}
+          onInstallNode={() => void actions.openNodeInstaller()}
+          onToggle={() => void toggleManagedCrsImageSkill()}
         />
       ) : null}
       <div className="relay-context-list">
@@ -4773,7 +4853,7 @@ function RelayContextManager({
           ))
         ) : (
           <div className="empty">
-            {activeKind === "skill" ? "暂无其它可编辑 Skills。crs-image 是内置托管项，可直接使用。" : `暂无${label}，可以从通用配置文件或这里新增。`}
+            {activeKind === "skill" ? "暂无其它可编辑 Skills。" : `暂无${label}，可以从通用配置文件或这里新增。`}
           </div>
         )}
       </div>
@@ -4791,21 +4871,18 @@ function RelayContextManager({
 
 function ManagedCrsImageSkillCard({
   busy,
+  enabled,
   result,
-  onCheck,
+  onInstallNode,
+  onToggle,
 }: {
   busy: boolean;
+  enabled: boolean;
   result: CrsImageInstallResult | null;
-  onCheck: () => void;
+  onInstallNode: () => void;
+  onToggle: () => void;
 }) {
-  const statusText = busy
-    ? "正在自动检查"
-    : result?.updated
-      ? "刚刚已更新"
-      : result
-        ? "已是最新"
-        : "等待检查";
-  const nodeText = result?.nodeDetected === false ? "未检测到 Node.js" : result ? "Node.js 已检测" : "运行环境待检查";
+  const needsNode = result?.nodeDetected === false;
   return (
     <div className="managed-skill-card">
       <div className="managed-skill-main">
@@ -4814,21 +4891,33 @@ function ManagedCrsImageSkillCard({
         </div>
         <div className="managed-skill-copy">
           <div className="managed-skill-title-row">
-            <strong>crs-image 图片生成</strong>
-            <UiBadge variant="secondary">内置托管</UiBadge>
-            <UiBadge variant="outline">自动更新</UiBadge>
+            <strong>CRS Image 图片生成</strong>
           </div>
-          <span>用于 gpt-image-2 生图和修图；由管理工具自动安装与更新，不开放查看、编辑或删除。</span>
-          <div className="managed-skill-status">
-            <small>{statusText}</small>
-            <small>{nodeText}</small>
-          </div>
+          {needsNode ? <span>缺少 Node.js，图片生成暂不可用。</span> : null}
         </div>
       </div>
-      <Button disabled={busy} onClick={onCheck} size="sm" type="button" variant="secondary">
-        <RefreshCw className={`h-4 w-4 ${busy ? "spin" : ""}`} />
-        立即检查更新
-      </Button>
+      <div className="managed-skill-actions">
+        {needsNode ? (
+          <Button disabled={busy} onClick={onInstallNode} size="sm" type="button" variant="secondary">
+            <Download className="h-4 w-4" />
+            安装 Node.js
+          </Button>
+        ) : null}
+        <button
+          aria-checked={enabled}
+          aria-label="CRS Image 图片生成开关"
+          className={`context-enabled-switch ${enabled ? "active" : ""}`}
+          disabled={busy}
+          onClick={onToggle}
+          role="switch"
+          title={enabled ? "关闭 CRS Image 图片生成" : "开启 CRS Image 图片生成"}
+          type="button"
+        >
+          <span className="context-switch-track" aria-hidden="true">
+            <span className="context-switch-thumb" />
+          </span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -5438,8 +5527,8 @@ function routeSubtitle(route: Route) {
 }
 
 const contextKindOptions: Array<{ kind: ContextKind; label: string; tableName: string }> = [
-  { kind: "mcp", label: "MCP", tableName: "mcp_servers" },
   { kind: "skill", label: "Skills", tableName: "skills" },
+  { kind: "mcp", label: "MCP", tableName: "mcp_servers" },
   { kind: "plugin", label: "插件", tableName: "plugins" },
 ];
 
