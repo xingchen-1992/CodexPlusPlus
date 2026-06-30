@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-import type { LeishenBalance } from "../leishen";
+import type { OfficialBalance } from "../official";
 
-type LeishenBalancePanelProps = {
+type OfficialBalancePanelProps = {
   apiKey: string;
-  balance: LeishenBalance | null;
+  balance: OfficialBalance | null;
   busy: boolean;
   codexReady: boolean;
   message: string;
@@ -20,7 +20,7 @@ type LeishenBalancePanelProps = {
   onOpenSubscription: () => void;
 };
 
-export function LeishenBalancePanel({
+export function OfficialBalancePanel({
   apiKey,
   balance,
   busy,
@@ -31,7 +31,7 @@ export function LeishenBalancePanel({
   onInstallCodex,
   onOpenCodex,
   onOpenSubscription,
-}: LeishenBalancePanelProps) {
+}: OfficialBalancePanelProps) {
   const [showApiKey, setShowApiKey] = useState(false);
 
   const metrics = useMemo(() => {
@@ -47,17 +47,17 @@ export function LeishenBalancePanel({
   }, [balance]);
 
   return (
-    <CardContent className="leishen-panel-content">
-      <div className="leishen-panel-head">
+    <CardContent className="official-panel-content">
+      <div className="official-panel-head">
         <div>
           <h3>账户额度</h3>
           <p>只读取当前 API Key 的套餐状态、已用美金和总量包余额，不暴露完整密钥。</p>
         </div>
       </div>
-      <div className="leishen-balance-form">
-        <label className="field leishen-key-field">
+      <div className="official-balance-form">
+        <label className="field official-key-field">
           <span>API Key</span>
-          <div className="leishen-key-input">
+          <div className="official-key-input">
             <Input
               onChange={(event) => onApiKeyChange(event.target.value)}
               placeholder="粘贴sk-"
@@ -76,8 +76,8 @@ export function LeishenBalancePanel({
           </div>
         </label>
       </div>
-      <div className="leishen-balance-actions">
-        <Button className="leishen-balance-action-refresh" disabled={busy} onClick={onRefreshBalance} type="button" variant="secondary">
+      <div className="official-balance-actions">
+        <Button className="official-balance-action-refresh" disabled={busy} onClick={onRefreshBalance} type="button" variant="secondary">
           <RefreshCw className="h-4 w-4" />
           {busy ? "刷新中" : "刷新额度"}
         </Button>
@@ -86,7 +86,7 @@ export function LeishenBalancePanel({
           购买额度
         </Button>
         <Button
-          className="leishen-balance-action-open"
+          className="official-balance-action-open"
           disabled={busy}
           onClick={codexReady ? onOpenCodex : onInstallCodex}
           type="button"
@@ -96,7 +96,7 @@ export function LeishenBalancePanel({
         </Button>
       </div>
       {metrics.length ? (
-        <div className="metric-list leishen-balance-metrics">
+        <div className="metric-list official-balance-metrics">
           {metrics.map((item) => (
             <div key={item.label}>
               <span>{item.label}</span>
@@ -106,7 +106,7 @@ export function LeishenBalancePanel({
         </div>
       ) : null}
       {balance?.topupBalance.visible && balance.topupBalance.details.length ? (
-        <div className="guide-list leishen-balance-details">
+        <div className="guide-list official-balance-details">
           {balance.topupBalance.details.map((detail) => (
             <div className="feature-item" key={detail}>
               <div>
@@ -117,7 +117,7 @@ export function LeishenBalancePanel({
           ))}
         </div>
       ) : null}
-      <p className="field-hint leishen-panel-hint">{message}</p>
+      <p className="field-hint official-panel-hint">{message}</p>
     </CardContent>
   );
 }

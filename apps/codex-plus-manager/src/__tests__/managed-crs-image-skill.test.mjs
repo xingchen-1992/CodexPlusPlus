@@ -33,8 +33,8 @@ test("tools page does not run crs-image update checks when switching into the pa
 
 test("opening or restarting Codex syncs managed skills first", () => {
   assert.match(appSource, /ensureManagedSkillsForCodex/);
-  const ready = appSource.match(/const ensureTaiyingReadyForLaunch[\s\S]*?return true;\n\s*};/);
-  assert.ok(ready, "ensureTaiyingReadyForLaunch should exist");
+  const ready = appSource.match(/const ensureOfficialReadyForLaunch[\s\S]*?return true;\n\s*};/);
+  assert.ok(ready, "ensureOfficialReadyForLaunch should exist");
   assert.match(ready[0], /await ensureManagedSkillsForCodex\(\{ silent: true \}\)/);
 });
 

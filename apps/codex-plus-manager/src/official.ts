@@ -1,12 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type LeishenSetupStatus = {
+export type OfficialSetupStatus = {
   nodeVersion?: string | null;
   npmVersion?: string | null;
   codexVersion?: string | null;
 };
 
-export type LeishenBalance = {
+export type OfficialBalance = {
   apiKeyPreview: string;
   planName: string;
   planExpiryLabel: string;
@@ -32,18 +32,18 @@ export type CommandResult<T> = T & {
   message: string;
 };
 
-export async function fetchLeishenSetupStatus(): Promise<CommandResult<LeishenSetupStatus>> {
-  return invoke<CommandResult<LeishenSetupStatus>>("leishen_setup_status");
+export async function fetchOfficialSetupStatus(): Promise<CommandResult<OfficialSetupStatus>> {
+  return invoke<CommandResult<OfficialSetupStatus>>("official_setup_status");
 }
 
-export async function fetchLeishenBalance(apiKey: string): Promise<CommandResult<LeishenBalance>> {
-  return invoke<CommandResult<LeishenBalance>>("leishen_balance", {
+export async function fetchOfficialBalance(apiKey: string): Promise<CommandResult<OfficialBalance>> {
+  return invoke<CommandResult<OfficialBalance>>("official_balance", {
     request: { apiKey },
   });
 }
 
-export async function configureTaiyingApiKey(apiKey: string): Promise<CommandResult<Record<string, unknown>>> {
-  return invoke<CommandResult<Record<string, unknown>>>("configure_taiying_api_key", {
+export async function configureOfficialApiKey(apiKey: string): Promise<CommandResult<Record<string, unknown>>> {
+  return invoke<CommandResult<Record<string, unknown>>>("configure_official_api_key", {
     request: { apiKey },
   });
 }

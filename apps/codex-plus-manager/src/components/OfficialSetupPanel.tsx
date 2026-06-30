@@ -5,25 +5,25 @@ import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 
-import { fetchLeishenSetupStatus, type LeishenSetupStatus } from "../leishen";
+import { fetchOfficialSetupStatus, type OfficialSetupStatus } from "../official";
 
 const CODEX_CLI_PROMPT =
   "请帮我检查并安装 Codex CLI 环境：先确认 Node.js 和 npm 是否可用；如果缺失，请指导我安装 Node.js LTS；然后执行 npm install -g @openai/codex；最后运行 codex --version 验证安装结果。";
 
-type LeishenSetupPanelProps = {
+type OfficialSetupPanelProps = {
   mode?: "compact" | "full";
   onCopyDesktopPrompt?: () => void;
   onInstallCodexCli?: () => void;
   onOpenNodeInstaller?: () => void;
 };
 
-export function LeishenSetupPanel({
+export function OfficialSetupPanel({
   mode = "compact",
   onCopyDesktopPrompt,
   onInstallCodexCli,
   onOpenNodeInstaller,
-}: LeishenSetupPanelProps) {
-  const [status, setStatus] = useState<LeishenSetupStatus>({});
+}: OfficialSetupPanelProps) {
+  const [status, setStatus] = useState<OfficialSetupStatus>({});
   const [message, setMessage] = useState("尚未检测环境。");
   const [busy, setBusy] = useState(false);
   const fullMode = mode === "full";
@@ -31,7 +31,7 @@ export function LeishenSetupPanel({
   const refresh = async () => {
     setBusy(true);
     try {
-      const result = await fetchLeishenSetupStatus();
+      const result = await fetchOfficialSetupStatus();
       if (result.status === "ok") {
         setStatus(result);
         setMessage(result.message || "环境检测完成");
@@ -58,8 +58,8 @@ export function LeishenSetupPanel({
   ] as const;
 
   return (
-    <CardContent className="leishen-panel-content">
-      <div className="leishen-panel-head">
+    <CardContent className="official-panel-content">
+      <div className="official-panel-head">
         <div>
           <h3>{fullMode ? "Codex CLI 环境" : "环境配置"}</h3>
           <p>
@@ -73,7 +73,7 @@ export function LeishenSetupPanel({
           {busy ? "检测中" : "重新检测"}
         </Button>
       </div>
-      <div className="health-grid leishen-status-grid">
+      <div className="health-grid official-status-grid">
         {rows.map(([label, value]) => {
           const detected = Boolean(value);
           return (
@@ -89,7 +89,7 @@ export function LeishenSetupPanel({
       </div>
       {fullMode ? (
         <>
-          <div className="leishen-cli-actions">
+          <div className="official-cli-actions">
             <Button onClick={onOpenNodeInstaller} type="button" variant="secondary">
               <Download className="h-4 w-4" />
               安装 Node.js/npm
@@ -99,7 +99,7 @@ export function LeishenSetupPanel({
               安装 Codex CLI
             </Button>
           </div>
-          <div className="leishen-cli-prompt">
+          <div className="official-cli-prompt">
             <div className="relay-file-head">
               <div>
                 <strong>桌面端辅助提示词</strong>
@@ -114,7 +114,7 @@ export function LeishenSetupPanel({
           </div>
         </>
       ) : null}
-      <p className="field-hint leishen-panel-hint">{message}</p>
+      <p className="field-hint official-panel-hint">{message}</p>
     </CardContent>
   );
 }

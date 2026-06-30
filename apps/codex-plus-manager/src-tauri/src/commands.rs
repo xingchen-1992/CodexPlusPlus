@@ -324,7 +324,7 @@ pub struct StartupPayload {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LeishenSetupStatus {
+pub struct OfficialSetupStatus {
     pub node_version: Option<String>,
     pub npm_version: Option<String>,
     pub codex_version: Option<String>,
@@ -332,13 +332,13 @@ pub struct LeishenSetupStatus {
 
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LeishenBalanceRequest {
+pub struct OfficialBalanceRequest {
     pub api_key: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TaiyingApiKeyConfigureRequest {
+pub struct OfficialApiKeyConfigureRequest {
     pub api_key: String,
 }
 
@@ -363,12 +363,12 @@ pub fn startup_options() -> CommandResult<StartupPayload> {
 }
 
 #[tauri::command]
-pub async fn leishen_setup_status() -> CommandResult<LeishenSetupStatus> {
-    match tauri::async_runtime::spawn_blocking(load_leishen_setup_status).await {
+pub async fn official_setup_status() -> CommandResult<OfficialSetupStatus> {
+    match tauri::async_runtime::spawn_blocking(load_official_setup_status).await {
         Ok(status) => ok("环境检测完成", status),
         Err(error) => failed(
             &format!("环境检测失败：{error}"),
-            LeishenSetupStatus {
+            OfficialSetupStatus {
                 node_version: None,
                 npm_version: None,
                 codex_version: None,
@@ -389,10 +389,10 @@ pub async fn install_codex_cli() -> CommandResult<Value> {
 }
 
 #[tauri::command]
-pub async fn leishen_balance(
-    request: LeishenBalanceRequest,
-) -> CommandResult<codex_plus_core::leishen_desktop_api::DesktopSummary> {
-    match codex_plus_core::leishen_desktop_api::fetch_desktop_summary(
+pub async fn official_balance(
+    request: OfficialBalanceRequest,
+) -> CommandResult<codex_plus_core::official_desktop_api::DesktopSummary> {
+    match codex_plus_core::official_desktop_api::fetch_desktop_summary(
         "https://ls-qihang.cn",
         &request.api_key,
     )
@@ -401,16 +401,16 @@ pub async fn leishen_balance(
         Ok(summary) => ok("额度刷新完成", summary),
         Err(error) => failed(
             &error.to_string(),
-            fallback_leishen_balance(&request.api_key),
+            fallback_official_balance(&request.api_key),
         ),
     }
 }
 
 #[tauri::command]
-pub fn configure_taiying_api_key(request: TaiyingApiKeyConfigureRequest) -> CommandResult<Value> {
-    const TAIYING_RELAY_ID: &str = "taiying";
-    const TAIYING_RELAY_NAME: &str = "官方 AI";
-    const TAIYING_BASE_URL: &str = "https://ls-qihang.cn/openai";
+pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> CommandResult<Value> {
+    const OFFICIAL_RELAY_ID: &str = "official";
+    const OFFICIAL_RELAY_NAME: &str = "官方";
+    const OFFICIAL_BASE_URL: &str = "https://ls-qihang.cn/openai";
 
     let api_key = request.api_key.trim().to_string();
     if api_key.is_empty() {
@@ -420,20 +420,20 @@ pub fn configure_taiying_api_key(request: TaiyingApiKeyConfigureRequest) -> Comm
     let store = SettingsStore::default();
     let mut settings = store.load().unwrap_or_default();
     let already_configured_settings = settings.relay_profiles_enabled
-        && settings.active_relay_id == TAIYING_RELAY_ID
+        && settings.active_relay_id == OFFICIAL_RELAY_ID
         && settings.relay_profiles.iter().any(|profile| {
-            profile.id == TAIYING_RELAY_ID
-                && profile.base_url.trim_end_matches('/') == TAIYING_BASE_URL
+            profile.id == OFFICIAL_RELAY_ID
+                && profile.base_url.trim_end_matches('/') == OFFICIAL_BASE_URL
                 && profile.api_key == api_key
         });
 
     if !already_configured_settings {
         let mut profile = codex_plus_core::settings::RelayProfile::default();
-        profile.id = TAIYING_RELAY_ID.to_string();
-        profile.name = TAIYING_RELAY_NAME.to_string();
+        profile.id = OFFICIAL_RELAY_ID.to_string();
+        profile.name = OFFICIAL_RELAY_NAME.to_string();
         profile.model = "gpt-5.4".to_string();
-        profile.base_url = TAIYING_BASE_URL.to_string();
-        profile.upstream_base_url = TAIYING_BASE_URL.to_string();
+        profile.base_url = OFFICIAL_BASE_URL.to_string();
+        profile.upstream_base_url = OFFICIAL_BASE_URL.to_string();
         profile.api_key = api_key.clone();
         profile.protocol = codex_plus_core::settings::RelayProtocol::Responses;
         profile.relay_mode = codex_plus_core::settings::RelayMode::PureApi;
@@ -444,18 +444,18 @@ pub fn configure_taiying_api_key(request: TaiyingApiKeyConfigureRequest) -> Comm
 
         let mut profiles = std::mem::take(&mut settings.relay_profiles)
             .into_iter()
-            .filter(|profile| profile.id != TAIYING_RELAY_ID)
+            .filter(|profile| profile.id != OFFICIAL_RELAY_ID)
             .collect::<Vec<_>>();
         profiles.insert(0, profile);
         settings.relay_profiles = profiles;
-        settings.active_relay_id = TAIYING_RELAY_ID.to_string();
+        settings.active_relay_id = OFFICIAL_RELAY_ID.to_string();
         settings.relay_profiles_enabled = true;
         settings.launch_mode = codex_plus_core::settings::LaunchMode::Patch;
-        settings.relay_base_url = TAIYING_BASE_URL.to_string();
+        settings.relay_base_url = OFFICIAL_BASE_URL.to_string();
         settings.relay_api_key = api_key.clone();
         settings.relay_test_model = "gpt-5.4-mini".to_string();
         settings.cli_wrapper_enabled = true;
-        settings.cli_wrapper_base_url = TAIYING_BASE_URL.to_string();
+        settings.cli_wrapper_base_url = OFFICIAL_BASE_URL.to_string();
         settings.cli_wrapper_api_key = api_key.clone();
         settings.cli_wrapper_api_key_env = codex_plus_core::settings::default_api_key_env();
 
@@ -470,7 +470,7 @@ pub fn configure_taiying_api_key(request: TaiyingApiKeyConfigureRequest) -> Comm
     let apply_result = if applied {
         match codex_plus_core::relay_config::apply_pure_api_config_to_home_with_protocol(
             &home,
-            TAIYING_BASE_URL,
+            OFFICIAL_BASE_URL,
             &api_key,
             codex_plus_core::settings::RelayProtocol::Responses,
             codex_plus_core::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT,
@@ -3289,8 +3289,8 @@ fn load_overview_payload() -> (
     )
 }
 
-fn load_leishen_setup_status() -> LeishenSetupStatus {
-    LeishenSetupStatus {
+fn load_official_setup_status() -> OfficialSetupStatus {
+    OfficialSetupStatus {
         node_version: read_command_version("node", "--version"),
         npm_version: read_command_version("npm", "--version"),
         codex_version: read_command_version("codex", "--version"),
@@ -3359,9 +3359,11 @@ fn read_command_version(command: &str, arg: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn fallback_leishen_balance(api_key: &str) -> codex_plus_core::leishen_desktop_api::DesktopSummary {
-    codex_plus_core::leishen_desktop_api::DesktopSummary {
-        api_key_preview: codex_plus_core::leishen_desktop_api::mask_api_key(api_key),
+fn fallback_official_balance(
+    api_key: &str,
+) -> codex_plus_core::official_desktop_api::DesktopSummary {
+    codex_plus_core::official_desktop_api::DesktopSummary {
+        api_key_preview: codex_plus_core::official_desktop_api::mask_api_key(api_key),
         plan_name: "额度暂时无法刷新".to_string(),
         plan_expiry_label: "到期日期".to_string(),
         plan_remaining_text: "--".to_string(),
@@ -3371,7 +3373,7 @@ fn fallback_leishen_balance(api_key: &str) -> codex_plus_core::leishen_desktop_a
         total_usd: 0.0,
         today_requests: 0,
         total_requests: 0,
-        topup_balance: codex_plus_core::leishen_desktop_api::TopupBalance {
+        topup_balance: codex_plus_core::official_desktop_api::TopupBalance {
             visible: false,
             title: "总量包剩余额度".to_string(),
             value_text: "--".to_string(),
@@ -3479,8 +3481,8 @@ mod tests {
     }
 
     #[test]
-    fn leishen_setup_status_returns_structured_payload() {
-        let result = tauri::async_runtime::block_on(leishen_setup_status());
+    fn official_setup_status_returns_structured_payload() {
+        let result = tauri::async_runtime::block_on(official_setup_status());
 
         assert_eq!(result.status, "ok");
         assert_eq!(result.message, "环境检测完成");

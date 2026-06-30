@@ -1,4 +1,4 @@
-use codex_plus_core::leishen_setup::{
+use codex_plus_core::official_setup::{
     build_codex_config_toml, parse_node_major, select_node_download,
 };
 use serde_json::json;
@@ -71,7 +71,7 @@ fn select_node_download_ignores_broken_non_matching_entries() {
 }
 
 #[test]
-fn build_codex_config_toml_contains_leishen_crs_defaults() {
+fn build_codex_config_toml_contains_official_crs_defaults() {
     let config = build_codex_config_toml("https://ls-qihang.cn/openai");
 
     assert!(config.contains("model_provider = \"crs\""));

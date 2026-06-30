@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread;
 
-use codex_plus_core::leishen_desktop_api::{DesktopSummary, fetch_desktop_summary, mask_api_key};
+use codex_plus_core::official_desktop_api::{DesktopSummary, fetch_desktop_summary, mask_api_key};
 use serde_json::json;
 
 #[test]

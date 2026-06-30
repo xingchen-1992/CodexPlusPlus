@@ -34,7 +34,7 @@ pub fn run() {
             };
             let main_window =
                 tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
-                    .title("Codex 官方管理工具")
+                    .title("Codex官方管理工具")
                     .inner_size(1180.0, 820.0)
                     .min_inner_size(960.0, 720.0)
                     .background_color(tauri::window::Color(24, 24, 24, 255))
@@ -47,10 +47,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::backend_version,
             commands::startup_options,
-            commands::leishen_setup_status,
+            commands::official_setup_status,
             commands::install_codex_cli,
-            commands::leishen_balance,
-            commands::configure_taiying_api_key,
+            commands::official_balance,
+            commands::configure_official_api_key,
             commands::load_overview,
             commands::launch_codex_plus,
             commands::restart_codex_plus,

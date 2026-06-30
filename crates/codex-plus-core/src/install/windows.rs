@@ -6,10 +6,10 @@ use super::{
 };
 
 const UNINSTALL_SUBKEY: &str =
-    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexPlusTaiying";
+    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexOfficialManager";
 const LEGACY_UNINSTALL_SUBKEY: &str =
-    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexPlusTaiyingLegacy";
-const URL_PROTOCOL_SUBKEY: &str = r"Software\Classes\codexplustaiying";
+    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexPlusOfficial";
+const URL_PROTOCOL_SUBKEY: &str = r"Software\Classes\codexplusofficial";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsEntrypointPlan {
@@ -59,8 +59,8 @@ pub fn build_windows_entrypoint_plan(options: &InstallOptions) -> WindowsEntrypo
         uninstaller_path: uninstaller_path.to_string_lossy().to_string(),
         uninstall_command,
         quiet_uninstall_command,
-        uninstall_key: "CodexPlusTaiying".to_string(),
-        legacy_uninstall_key: "CodexPlusTaiyingLegacy".to_string(),
+        uninstall_key: "CodexOfficialManager".to_string(),
+        legacy_uninstall_key: "CodexPlusOfficial".to_string(),
         remove_owned_data: options.remove_owned_data,
     }
 }
@@ -145,7 +145,7 @@ fn write_uninstall_registration(plan: &WindowsEntrypointPlan) -> anyhow::Result<
         .to_string_lossy()
         .to_string();
     for (name, value) in [
-        ("DisplayName", SILENT_NAME.to_string()),
+        ("DisplayName", MANAGER_NAME.to_string()),
         ("DisplayVersion", crate::version::VERSION.to_string()),
         ("Publisher", super::INSTALL_PUBLISHER.to_string()),
         ("DisplayIcon", plan.manager_icon_path.clone()),
@@ -163,7 +163,7 @@ fn register_url_protocol(manager_path: &str) -> anyhow::Result<()> {
     crate::windows_integration::set_current_user_string_value(
         URL_PROTOCOL_SUBKEY,
         "",
-        "URL:Codex 官方版 Import Protocol",
+        "URL:Codex官方管理工具 Import Protocol",
     )?;
     crate::windows_integration::set_current_user_string_value(
         URL_PROTOCOL_SUBKEY,

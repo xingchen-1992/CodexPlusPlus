@@ -58,7 +58,7 @@ pub fn parse_version_tag(value: &str) -> anyhow::Result<Vec<u64>> {
         .map(|part| part.parse::<u64>().map_err(Into::into))
         .collect::<anyhow::Result<Vec<_>>>()?;
     if let Some(suffix) = normalized.get(digits.len()..) {
-        for prefix in ["-official.", "-taiying.", "-leishen."] {
+        for prefix in ["-official.", "-official.", "-official."] {
             if let Some(edition_suffix) = suffix.strip_prefix(prefix) {
                 let suffix_digits = edition_suffix
                     .chars()

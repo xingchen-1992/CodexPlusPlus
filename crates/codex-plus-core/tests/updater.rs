@@ -6,7 +6,7 @@ use codex_plus_core::update::{
 use serde_json::json;
 
 #[test]
-fn default_update_source_uses_taiying_latest_json() {
+fn default_update_source_uses_official_latest_json() {
     assert_eq!(
         DEFAULT_LATEST_JSON_URL,
         "https://ls-qihang.cn/tools/codex-plus/latest.json"
@@ -33,13 +33,8 @@ fn version_comparison_uses_numeric_segments() {
 }
 
 #[test]
-fn taiying_version_comparison_uses_numeric_segments_before_suffix() {
-    assert!(is_newer_version("v1.0.1-taiying.1", "v1.0.0-taiying.1").unwrap());
-}
-
-#[test]
-fn taiying_version_comparison_uses_suffix_increment_for_same_base() {
-    assert!(is_newer_version("v1.0.0-taiying.2", "v1.0.0-taiying.1").unwrap());
+fn official_version_comparison_uses_numeric_segments_before_suffix() {
+    assert!(is_newer_version("v1.0.1-official.1", "v1.0.0-official.1").unwrap());
 }
 
 #[test]
@@ -48,8 +43,8 @@ fn official_version_comparison_uses_suffix_increment_for_same_base() {
 }
 
 #[test]
-fn official_base_version_updates_old_taiying_builds() {
-    assert!(is_newer_version("v1.0.6-official.1", "v1.0.5-taiying.7").unwrap());
+fn official_base_version_updates_old_official_builds() {
+    assert!(is_newer_version("v1.0.7-official.1", "v1.0.5-official.7").unwrap());
 }
 
 #[test]

@@ -447,30 +447,30 @@ body {
   letter-spacing: 0;
 }
 
-.leishen-overview {
+.official-overview {
   border-color: hsl(var(--border));
   background: hsl(var(--card));
 }
 
-.light .leishen-overview {
+.light .official-overview {
   background: hsl(var(--card));
 }
 
-.leishen-overview-layout {
+.official-overview-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
 }
 
-.leishen-overview-main {
+.official-overview-main {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
 }
 
-.leishen-overview-mark {
+.official-overview-mark {
   display: grid;
   place-items: center;
   width: 42px;
@@ -481,25 +481,25 @@ body {
   color: hsl(var(--brand-accent));
 }
 
-.leishen-overview h2 {
+.official-overview h2 {
   margin: 2px 0 4px;
   font-size: 20px;
   line-height: 1.25;
 }
 
-.leishen-overview p {
+.official-overview p {
   margin: 0;
   color: hsl(var(--muted-foreground));
   line-height: 1.5;
 }
 
-.leishen-overview-side {
+.official-overview-side {
   display: grid;
   justify-items: end;
   gap: 10px;
 }
 
-.leishen-model-tags {
+.official-model-tags {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -507,7 +507,7 @@ body {
   max-width: 390px;
 }
 
-.leishen-model-tags span {
+.official-model-tags span {
   border: 1px solid hsl(var(--brand-accent) / 0.28);
   border-radius: 999px;
   background: hsl(var(--background) / 0.5);
@@ -517,106 +517,106 @@ body {
   padding: 6px 8px;
 }
 
-.leishen-status-panels {
+.official-status-panels {
   align-items: start;
 }
 
-.leishen-panel-card {
+.official-panel-card {
   height: 100%;
 }
 
-.leishen-panel-content {
+.official-panel-content {
   display: grid;
   gap: 12px;
 }
 
-.leishen-panel-head {
+.official-panel-head {
   display: flex;
   justify-content: space-between;
   gap: 16px;
   align-items: start;
 }
 
-.leishen-panel-head h3 {
+.official-panel-head h3 {
   margin: 4px 0;
   font-size: 18px;
   line-height: 1.3;
 }
 
-.leishen-panel-head p,
-.leishen-panel-hint {
+.official-panel-head p,
+.official-panel-hint {
   margin: 0;
   color: hsl(var(--muted-foreground));
   line-height: 1.45;
 }
 
-.leishen-status-grid,
-.leishen-balance-details {
+.official-status-grid,
+.official-balance-details {
   display: grid;
   gap: 8px;
 }
 
-.leishen-balance-form {
+.official-balance-form {
   display: grid;
   gap: 8px;
 }
 
-.leishen-key-field {
+.official-key-field {
   margin-bottom: 0;
 }
 
-.leishen-key-input {
+.official-key-input {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
 }
 
-.leishen-balance-actions {
+.official-balance-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
-.leishen-balance-actions .button,
-.leishen-balance-actions button {
+.official-balance-actions .button,
+.official-balance-actions button {
   justify-content: center;
   min-height: 38px;
 }
 
-.leishen-balance-action-open {
+.official-balance-action-open {
   background: hsl(var(--brand-accent));
   color: hsl(var(--primary-foreground));
 }
 
-.leishen-balance-action-open:hover {
+.official-balance-action-open:hover {
   background: hsl(var(--brand-accent) / 0.88);
 }
 
-.leishen-balance-metrics div {
+.official-balance-metrics div {
   grid-template-columns: 120px minmax(0, 1fr);
 }
 
-.leishen-balance-metrics strong {
+.official-balance-metrics strong {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.leishen-balance-details .feature-item {
+.official-balance-details .feature-item {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.leishen-cli-actions {
+.official-cli-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.leishen-cli-prompt {
+.official-cli-prompt {
   display: grid;
   gap: 8px;
 }
 
-.leishen-cli-prompt textarea {
+.official-cli-prompt textarea {
   min-height: 92px;
 }
 

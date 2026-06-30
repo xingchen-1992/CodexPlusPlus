@@ -32,11 +32,11 @@ for pattern in "${forbidden_patterns[@]}"; do
   if rg --fixed-strings --quiet \
     --glob '!target/**' \
     --glob '!node_modules/**' \
-    --glob '!LEISHEN_UPSTREAM_BASE/**' \
+    --glob '!OFFICIAL_UPSTREAM_BASE/**' \
     -- "$pattern" "${scan_paths[@]}"; then
     echo "Forbidden third-party URL found: $pattern"
     exit 1
   fi
 done
 
-echo "Leishen release URL audit passed."
+echo "Official release URL audit passed."

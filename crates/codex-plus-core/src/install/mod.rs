@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 pub mod macos;
 pub mod windows;
 
-pub const SILENT_NAME: &str = "Codex 官方版";
-pub const MANAGER_NAME: &str = "Codex 官方管理工具";
+pub const SILENT_NAME: &str = "Codex官方管理工具";
+pub const MANAGER_NAME: &str = "Codex官方管理工具";
 pub const INSTALL_PUBLISHER: &str = "官方";
 pub const MACOS_BUNDLE_ID_BASE: &str = "cn.ls-qihang.codexplusplus";
 pub const SILENT_BINARY: &str = "codex-plus-plus";
@@ -74,11 +74,11 @@ impl ShortcutState {
 }
 
 pub fn shortcut_names() -> (&'static str, &'static str) {
-    ("Codex 官方版.lnk", "Codex 官方管理工具.lnk")
+    ("Codex官方管理工具.lnk", "Codex官方管理工具.lnk")
 }
 
 pub fn app_bundle_names() -> (&'static str, &'static str) {
-    ("Codex 官方版.app", "Codex 官方管理工具.app")
+    ("Codex官方管理工具.app", "Codex官方管理工具.app")
 }
 
 pub fn inspect_entrypoints() -> EntryPointState {
@@ -310,15 +310,28 @@ fn macos_preferred_bundle_binary(
     bundle_executable_name: &str,
 ) -> PathBuf {
     let macos = exe.parent().unwrap_or_else(|| Path::new("."));
+    let bundle_executable = macos.join(bundle_executable_name);
+    if exe == bundle_executable {
+        return exe.to_path_buf();
+    }
+    if sidecar_name == MANAGER_BINARY {
+        if bundle_executable.exists() {
+            return bundle_executable;
+        }
+        let sidecar = macos.join(sidecar_name);
+        if sidecar.exists() {
+            return sidecar;
+        }
+        return bundle_executable;
+    }
     let sidecar = macos.join(sidecar_name);
     if sidecar.exists() {
         return sidecar;
     }
-    let bundle_executable = macos.join(bundle_executable_name);
     if bundle_executable.exists() {
         return bundle_executable;
     }
-    exe.to_path_buf()
+    sidecar
 }
 
 #[cfg(target_os = "macos")]

@@ -118,16 +118,15 @@ verify_app() {
 }
 
 prepare_icon
-create_app "Codex 官方版" "CodexPlusPlus" "$BINARY_DIR/codex-plus-plus" "cn.ls-qihang.codexplusplus" "true"
-create_app "Codex 官方管理工具" "CodexPlusPlusManager" "$BINARY_DIR/codex-plus-plus-manager" "cn.ls-qihang.codexplusplus.manager" "false"
+create_app "Codex官方管理工具" "CodexPlusPlusManager" "$BINARY_DIR/codex-plus-plus-manager" "cn.ls-qihang.codexplusplus.manager" "false"
+cp "$BINARY_DIR/codex-plus-plus" "$STAGE/Codex官方管理工具.app/Contents/MacOS/codex-plus-plus"
+chmod +x "$STAGE/Codex官方管理工具.app/Contents/MacOS/codex-plus-plus"
 
-sign_app "$STAGE/Codex 官方版.app"
-sign_app "$STAGE/Codex 官方管理工具.app"
+sign_app "$STAGE/Codex官方管理工具.app"
 
-verify_app "$STAGE/Codex 官方版.app"
-verify_app "$STAGE/Codex 官方管理工具.app"
+verify_app "$STAGE/Codex官方管理工具.app"
 
 ln -s /Applications "$STAGE/Applications"
 
-hdiutil create -volname "Codex 官方版" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+hdiutil create -volname "Codex官方管理工具" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 echo "$DMG"
