@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 
 import type { OfficialBalance } from "../official";
 
+const CODEX_MICROSOFT_STORE_URL = "https://apps.microsoft.com/detail/9plm9xgg6vks?hl=zh-CN&gl=SC";
+
 type OfficialBalancePanelProps = {
   apiKey: string;
   balance: OfficialBalance | null;
@@ -97,6 +99,22 @@ export function OfficialBalancePanel({
           {codexReady ? "打开 Codex" : codexInstallBusy ? "安装中" : "安装 Codex"}
         </Button>
       </div>
+      {!codexReady ? (
+        <div className="official-codex-install-guide">
+          <strong>安装 Codex 说明</strong>
+          <span>
+            点击“安装 Codex”会先用 Windows 官方命令自动安装；如果系统限制、Microsoft Store
+            不可用或 winget 不可用，会自动打开微软商店页面。
+          </span>
+          <span>
+            兜底安装链接：
+            <a href={CODEX_MICROSOFT_STORE_URL} rel="noreferrer" target="_blank">
+              打开微软商店 Codex 页面
+            </a>
+          </span>
+          <span>安装完成后回到概览，点击“刷新额度”或重新打开管理工具；按钮会变成“打开 Codex”。</span>
+        </div>
+      ) : null}
       {metrics.length ? (
         <div className="metric-list official-balance-metrics">
           {metrics.map((item) => (

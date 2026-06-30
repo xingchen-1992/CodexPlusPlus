@@ -630,6 +630,34 @@ body {
   background: hsl(var(--brand-accent) / 0.88);
 }
 
+.official-codex-install-guide {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.22);
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.official-codex-install-guide strong {
+  color: hsl(var(--foreground));
+  font-size: 13px;
+}
+
+.official-codex-install-guide a {
+  margin-left: 4px;
+  color: hsl(var(--brand-accent));
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.official-codex-install-guide a:hover {
+  text-decoration: underline;
+}
+
 .official-balance-metrics div {
   grid-template-columns: 120px minmax(0, 1fr);
 }
