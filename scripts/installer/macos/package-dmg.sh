@@ -93,6 +93,9 @@ sign_app() {
   local app_dir="$1"
   local executable
   executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_dir/Contents/Info.plist")"
+  find "$app_dir/Contents/MacOS" -type f -perm -111 ! -name "$executable" -print0 | while IFS= read -r -d '' sidecar; do
+    codesign --force --sign - "$sidecar"
+  done
   codesign --force --sign - "$app_dir/Contents/MacOS/$executable"
   codesign --force --sign - "$app_dir"
 }

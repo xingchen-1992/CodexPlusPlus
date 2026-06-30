@@ -44,7 +44,7 @@ fn official_version_comparison_uses_suffix_increment_for_same_base() {
 
 #[test]
 fn official_base_version_updates_old_official_builds() {
-    assert!(is_newer_version("v1.0.7-official.1", "v1.0.5-official.7").unwrap());
+    assert!(is_newer_version("v1.0.7-official.2", "v1.0.5-official.7").unwrap());
 }
 
 #[test]

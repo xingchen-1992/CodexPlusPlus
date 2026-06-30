@@ -29,10 +29,10 @@ SetCompressor /SOLID lzma
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "English"
 
-Function RemoveLegacyVisibleEntries
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference=''SilentlyContinue''; $shortcutPatterns=@(''Codex*版.lnk'',''Codex*管理工具.lnk''); foreach($dir in @([Environment]::GetFolderPath(''Desktop''),[Environment]::GetFolderPath(''CommonDesktopDirectory''))){ if($dir -and (Test-Path -LiteralPath $dir)){ foreach($pattern in $shortcutPatterns){ Get-ChildItem -LiteralPath $dir -Filter $pattern -Force | Remove-Item -Force } } }; $dirPatterns=@(''Codex*版'',''Codex*管理工具''); foreach($base in @((Join-Path ([Environment]::GetFolderPath(''StartMenu'')) ''Programs''),(Join-Path ([Environment]::GetFolderPath(''CommonStartMenu'')) ''Programs''),(Join-Path $env:LOCALAPPDATA ''Programs''))){ if($base -and (Test-Path -LiteralPath $base)){ foreach($pattern in $dirPatterns){ Get-ChildItem -LiteralPath $base -Directory -Filter $pattern -Force | Remove-Item -Recurse -Force } } }; $uninstall=''HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall''; if(Test-Path $uninstall){ Get-ChildItem $uninstall | Where-Object { $_.PSChildName -like ''CodexPlus*'' -or (Get-ItemProperty $_.PSPath).DisplayName -like ''Codex*版'' -or (Get-ItemProperty $_.PSPath).DisplayName -like ''Codex*管理工具'' } | Remove-Item -Recurse -Force }; $software=''HKCU:\Software''; if(Test-Path $software){ Get-ChildItem $software | Where-Object { $_.PSChildName -like ''CodexPlus*'' } | Remove-Item -Recurse -Force }"'
+!macro RemoveLegacyVisibleEntries
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference=''SilentlyContinue''; $$shortcutPatterns=@(''Codex*版.lnk'',''Codex*管理工具.lnk''); foreach($$dir in @([Environment]::GetFolderPath(''Desktop''),[Environment]::GetFolderPath(''CommonDesktopDirectory''))){ if($$dir -and (Test-Path -LiteralPath $$dir)){ foreach($$pattern in $$shortcutPatterns){ Get-ChildItem -LiteralPath $$dir -Filter $$pattern -Force | Remove-Item -Force } } }; $$dirPatterns=@(''Codex*版'',''Codex*管理工具''); foreach($$base in @((Join-Path ([Environment]::GetFolderPath(''StartMenu'')) ''Programs''),(Join-Path ([Environment]::GetFolderPath(''CommonStartMenu'')) ''Programs''),(Join-Path $$env:LOCALAPPDATA ''Programs''))){ if($$base -and (Test-Path -LiteralPath $$base)){ foreach($$pattern in $$dirPatterns){ Get-ChildItem -LiteralPath $$base -Directory -Filter $$pattern -Force | Remove-Item -Recurse -Force } } }; $$uninstall=''HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall''; if(Test-Path $$uninstall){ Get-ChildItem $$uninstall | Where-Object { $$_.PSChildName -like ''CodexPlus*'' -or (Get-ItemProperty $$_.PSPath).DisplayName -like ''Codex*版'' -or (Get-ItemProperty $$_.PSPath).DisplayName -like ''Codex*管理工具'' } | Remove-Item -Recurse -Force }; $$software=''HKCU:\Software''; if(Test-Path $$software){ Get-ChildItem $$software | Where-Object { $$_.PSChildName -like ''CodexPlus*'' } | Remove-Item -Recurse -Force }"'
   Pop $0
-FunctionEnd
+!macroend
 
 Section "安装主程序" SEC_MAIN
   SectionIn RO
@@ -42,7 +42,7 @@ Section "安装主程序" SEC_MAIN
   Pop $0
   nsExec::ExecToLog 'taskkill /IM codex-plus-plus-manager.exe /F'
   Pop $0
-  Call RemoveLegacyVisibleEntries
+  !insertmacro RemoveLegacyVisibleEntries
 
   File "${ROOT}\dist\windows\app\codex-plus-plus.exe"
   File "${ROOT}\dist\windows\app\codex-plus-plus-manager.exe"
@@ -77,7 +77,7 @@ Section "Uninstall"
   Pop $0
   nsExec::ExecToLog 'taskkill /IM codex-plus-plus-manager.exe /F'
   Pop $0
-  Call RemoveLegacyVisibleEntries
+  !insertmacro RemoveLegacyVisibleEntries
 
   Delete "$INSTDIR\Codex官方管理工具.lnk"
   Delete "$DESKTOP\Codex官方管理工具.lnk"
