@@ -11,6 +11,7 @@ DMG="$DIST/CodexPlusOfficial-${VERSION}-macos-${ARCH}.dmg"
 ICON_SOURCE="$ROOT/apps/codex-plus-manager/src-tauri/icons/icon.png"
 ICON_NAME="codex-plus-plus.icns"
 ICON_ICNS="$DIST/$ICON_NAME"
+CODEX_APP_SOURCE="${CODEX_APP_SOURCE:-}"
 
 rm -rf "$DIST"
 mkdir -p "$STAGE"
@@ -120,10 +121,31 @@ verify_app() {
   }
 }
 
+bundle_codex_app_if_present() {
+  if [ -z "$CODEX_APP_SOURCE" ]; then
+    echo "CODEX_APP_SOURCE not set; skipping bundled official Codex app."
+    return 0
+  fi
+  if [ ! -e "$CODEX_APP_SOURCE" ]; then
+    echo "error: CODEX_APP_SOURCE does not exist: $CODEX_APP_SOURCE" >&2
+    return 1
+  fi
+
+  local resources="$STAGE/Codex官方管理工具.app/Contents/Resources"
+  rm -rf "$resources/Codex" "$resources/Codex.app" "$resources/OpenAI Codex.app" "$resources/OpenAI.Codex.app"
+  if [[ "$CODEX_APP_SOURCE" == *.app ]]; then
+    cp -R "$CODEX_APP_SOURCE" "$resources/$(basename "$CODEX_APP_SOURCE")"
+  else
+    mkdir -p "$resources/Codex"
+    cp -R "$CODEX_APP_SOURCE"/. "$resources/Codex/"
+  fi
+}
+
 prepare_icon
 create_app "Codex官方管理工具" "CodexPlusPlusManager" "$BINARY_DIR/codex-plus-plus-manager" "cn.ls-qihang.codexplusplus.manager" "false"
 cp "$BINARY_DIR/codex-plus-plus" "$STAGE/Codex官方管理工具.app/Contents/MacOS/codex-plus-plus"
 chmod +x "$STAGE/Codex官方管理工具.app/Contents/MacOS/codex-plus-plus"
+bundle_codex_app_if_present
 
 sign_app "$STAGE/Codex官方管理工具.app"
 

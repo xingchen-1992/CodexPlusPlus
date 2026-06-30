@@ -1,10 +1,12 @@
-use std::path::{Path, PathBuf};
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-pub const DEFAULT_LATEST_JSON_URL: &str = "https://ls-qihang.cn/tools/codex-plus/latest.json";
+pub const DEFAULT_LATEST_JSON_URL: &str = "https://www.leishen-ai.cn/tools/codex-plus/latest.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReleaseAsset {
@@ -37,6 +39,7 @@ pub struct UpdateCheck {
 pub struct UpdateInstall {
     pub release: Release,
     pub installer_path: PathBuf,
+    pub backup_path: Option<PathBuf>,
     pub launched: bool,
 }
 
@@ -264,6 +267,7 @@ pub async fn perform_update(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("没有可下载的 Release asset"))?;
     expected_asset_sha256(release)?;
+    let backup_path = create_pre_update_backup()?;
     let bytes = crate::http_client::proxied_client(&format!("Codex/{}", crate::version::VERSION))?
         .get(url)
         .send()
@@ -277,8 +281,82 @@ pub async fn perform_update(
     Ok(UpdateInstall {
         release: release.clone(),
         installer_path,
+        backup_path,
         launched: true,
     })
+}
+
+pub fn create_pre_update_backup() -> anyhow::Result<Option<PathBuf>> {
+    let app_state = crate::paths::default_app_state_dir();
+    let codex_home = crate::codex_home::default_codex_home_dir();
+    create_pre_update_backup_from_sources(
+        &app_state.join("backups"),
+        &[
+            (
+                crate::paths::default_settings_path(),
+                PathBuf::from("manager/settings.json"),
+            ),
+            (
+                codex_home.join("config.toml"),
+                PathBuf::from("codex/config.toml"),
+            ),
+            (
+                codex_home.join("auth.json"),
+                PathBuf::from("codex/auth.json"),
+            ),
+        ],
+    )
+}
+
+pub fn create_pre_update_backup_from_sources(
+    backup_root: &Path,
+    sources: &[(PathBuf, PathBuf)],
+) -> anyhow::Result<Option<PathBuf>> {
+    let mut existing = Vec::new();
+    for (source, relative) in sources {
+        validate_backup_relative_path(relative)?;
+        match fs::metadata(source) {
+            Ok(metadata) if metadata.is_file() => existing.push((source.clone(), relative.clone())),
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                anyhow::bail!("读取更新前备份源失败：{error}");
+            }
+        }
+    }
+    if existing.is_empty() {
+        return Ok(None);
+    }
+
+    let backup_dir = backup_root.join(format!("pre-update-{}", timestamp_millis()));
+    for (source, relative) in existing {
+        let target = backup_dir.join(relative);
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(&source, &target)?;
+    }
+    Ok(Some(backup_dir))
+}
+
+fn validate_backup_relative_path(path: &Path) -> anyhow::Result<()> {
+    if path.is_absolute() {
+        anyhow::bail!("非法更新前备份目标路径");
+    }
+    if !path
+        .components()
+        .all(|component| matches!(component, Component::Normal(_)))
+    {
+        anyhow::bail!("非法更新前备份目标路径");
+    }
+    Ok(())
+}
+
+fn timestamp_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
 }
 
 pub fn validate_asset_sha256(release: &Release, bytes: &[u8]) -> anyhow::Result<()> {

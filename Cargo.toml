@@ -9,10 +9,10 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.7-official.2"
+version = "1.0.8-official.1"
 edition = "2024"
 license = "MIT"
-repository = "https://ls-qihang.cn/tools/codex-plus"
+repository = "https://www.leishen-ai.cn/tools/codex-plus"
 
 [workspace.dependencies]
 aes-gcm = "0.10"

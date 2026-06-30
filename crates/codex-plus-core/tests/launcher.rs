@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use codex_plus_core::app_paths::{
-    build_codex_executable, codex_app_version, find_latest_codex_app_dir,
-    find_latest_codex_app_dir_from_roots, find_macos_codex_app,
+    build_codex_executable, codex_app_version, find_bundled_codex_app_dir_from_exe,
+    find_latest_codex_app_dir, find_latest_codex_app_dir_from_roots, find_macos_codex_app,
     latest_appx_install_location_from_output, normalize_codex_app_path, packaged_app_user_model_id,
     resolve_codex_app_dir_with_saved, user_data_candidates_from,
 };
@@ -190,6 +190,20 @@ fn app_paths_saved_path_is_used_when_no_explicit_path_is_provided() {
     assert_eq!(
         resolve_codex_app_dir_with_saved(None, Some(&app.to_string_lossy())).as_deref(),
         Some(app.as_path())
+    );
+}
+
+#[test]
+fn app_paths_find_bundled_codex_next_to_manager_executable() {
+    let temp = tempfile::tempdir().unwrap();
+    let manager = temp.path().join("app").join("codex-plus-plus-manager.exe");
+    let codex_app = temp.path().join("app").join("Codex").join("app");
+    std::fs::create_dir_all(&codex_app).unwrap();
+    std::fs::write(codex_app.join("Codex.exe"), "").unwrap();
+
+    assert_eq!(
+        find_bundled_codex_app_dir_from_exe(&manager).as_deref(),
+        Some(codex_app.as_path())
     );
 }
 

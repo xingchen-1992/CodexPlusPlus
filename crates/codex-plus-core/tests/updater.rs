@@ -1,15 +1,16 @@
 use codex_plus_core::update::{
-    DEFAULT_LATEST_JSON_URL, Release, download_asset_to, is_newer_version, parse_version_tag,
-    release_from_github_payload, release_from_latest_json_payload, safe_asset_name,
-    select_update_asset, validate_asset_sha256,
+    DEFAULT_LATEST_JSON_URL, Release, create_pre_update_backup_from_sources, download_asset_to,
+    is_newer_version, parse_version_tag, release_from_github_payload,
+    release_from_latest_json_payload, safe_asset_name, select_update_asset, validate_asset_sha256,
 };
 use serde_json::json;
+use std::path::PathBuf;
 
 #[test]
 fn default_update_source_uses_official_latest_json() {
     assert_eq!(
         DEFAULT_LATEST_JSON_URL,
-        "https://ls-qihang.cn/tools/codex-plus/latest.json"
+        "https://www.leishen-ai.cn/tools/codex-plus/latest.json"
     );
     assert!(
         !DEFAULT_LATEST_JSON_URL
@@ -116,17 +117,17 @@ fn latest_json_payload_stores_selected_asset_sha256() {
     let macos_sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
     let release = release_from_latest_json_payload(&json!({
         "version": "v1.0.1-official.1",
-        "url": "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-official.1",
+        "url": "https://www.leishen-ai.cn/tools/codex-plus/releases/v1.0.1-official.1",
         "body": "官方版更新",
         "assets": [
             {
                 "name": "CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe",
-                "url": "https://ls-qihang.cn/tools/codex-plus/CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe",
+                "url": "https://www.leishen-ai.cn/tools/codex-plus/CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe",
                 "sha256": windows_sha
             },
             {
                 "name": "CodexPlusOfficial-1.0.1-official.1-macos-x64.dmg",
-                "url": "https://ls-qihang.cn/tools/codex-plus/CodexPlusOfficial-1.0.1-official.1-macos-x64.dmg",
+                "url": "https://www.leishen-ai.cn/tools/codex-plus/CodexPlusOfficial-1.0.1-official.1-macos-x64.dmg",
                 "sha256": macos_sha
             }
         ]
@@ -178,15 +179,15 @@ fn asset_selection_accepts_official_style_desktop_artifacts() {
     let assets = vec![
         (
             "CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe".to_string(),
-            "https://ls-qihang.cn/tools/codex-plus/windows-setup.exe".to_string(),
+            "https://www.leishen-ai.cn/tools/codex-plus/windows-setup.exe".to_string(),
         ),
         (
             "CodexPlusOfficial-1.0.1-official.1-macos-arm64.dmg".to_string(),
-            "https://ls-qihang.cn/tools/codex-plus/macos-arm64.dmg".to_string(),
+            "https://www.leishen-ai.cn/tools/codex-plus/macos-arm64.dmg".to_string(),
         ),
         (
             "CodexPlusOfficial-1.0.1-official.1-macos-x64.dmg".to_string(),
-            "https://ls-qihang.cn/tools/codex-plus/macos-x64.dmg".to_string(),
+            "https://www.leishen-ai.cn/tools/codex-plus/macos-x64.dmg".to_string(),
         ),
     ];
 
@@ -301,13 +302,62 @@ fn download_asset_to_writes_bytes() {
 }
 
 #[test]
+fn pre_update_backup_copies_existing_sensitive_config_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let manager_settings = dir.path().join("settings.json");
+    let codex_config = dir.path().join("config.toml");
+    let codex_auth = dir.path().join("auth.json");
+    std::fs::write(
+        &manager_settings,
+        r#"{"authContents":"{\"OPENAI_API_KEY\":\"sk-test\"}"}"#,
+    )
+    .unwrap();
+    std::fs::write(&codex_config, r#"model_provider = "crs""#).unwrap();
+    std::fs::write(&codex_auth, r#"{"OPENAI_API_KEY":"sk-test"}"#).unwrap();
+
+    let backup = create_pre_update_backup_from_sources(
+        &dir.path().join("backups"),
+        &[
+            (manager_settings, PathBuf::from("manager/settings.json")),
+            (codex_config, PathBuf::from("codex/config.toml")),
+            (codex_auth, PathBuf::from("codex/auth.json")),
+        ],
+    )
+    .unwrap()
+    .expect("existing config files should create a pre-update backup");
+
+    assert!(backup.join("manager/settings.json").exists());
+    assert!(backup.join("codex/config.toml").exists());
+    assert_eq!(
+        std::fs::read_to_string(backup.join("codex/auth.json")).unwrap(),
+        r#"{"OPENAI_API_KEY":"sk-test"}"#
+    );
+}
+
+#[test]
+fn pre_update_backup_rejects_path_traversal_targets() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("settings.json");
+    std::fs::write(&source, "{}").unwrap();
+
+    let error = create_pre_update_backup_from_sources(
+        &dir.path().join("backups"),
+        &[(source, PathBuf::from("../settings.json"))],
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.contains("非法更新前备份目标路径"));
+}
+
+#[test]
 fn validate_asset_sha256_accepts_uppercase_manifest_hash() {
     let release = Release {
         version: "v1.0.1-official.1".to_string(),
-        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-official.1".to_string(),
+        url: "https://www.leishen-ai.cn/tools/codex-plus/releases/v1.0.1-official.1".to_string(),
         body: "官方版更新".to_string(),
         asset_name: Some("pkg.zip".to_string()),
-        asset_url: Some("https://ls-qihang.cn/tools/codex-plus/pkg.zip".to_string()),
+        asset_url: Some("https://www.leishen-ai.cn/tools/codex-plus/pkg.zip".to_string()),
         asset_sha256: Some(
             "2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824".to_string(),
         ),
@@ -320,10 +370,10 @@ fn validate_asset_sha256_accepts_uppercase_manifest_hash() {
 fn validate_asset_sha256_rejects_missing_manifest_hash() {
     let release = Release {
         version: "v1.0.1-official.1".to_string(),
-        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-official.1".to_string(),
+        url: "https://www.leishen-ai.cn/tools/codex-plus/releases/v1.0.1-official.1".to_string(),
         body: "官方版更新".to_string(),
         asset_name: Some("pkg.zip".to_string()),
-        asset_url: Some("https://ls-qihang.cn/tools/codex-plus/pkg.zip".to_string()),
+        asset_url: Some("https://www.leishen-ai.cn/tools/codex-plus/pkg.zip".to_string()),
         asset_sha256: None,
     };
 
@@ -338,10 +388,10 @@ fn validate_asset_sha256_rejects_missing_manifest_hash() {
 fn validate_asset_sha256_rejects_mismatch() {
     let release = Release {
         version: "v1.0.1-official.1".to_string(),
-        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-official.1".to_string(),
+        url: "https://www.leishen-ai.cn/tools/codex-plus/releases/v1.0.1-official.1".to_string(),
         body: "官方版更新".to_string(),
         asset_name: Some("pkg.zip".to_string()),
-        asset_url: Some("https://ls-qihang.cn/tools/codex-plus/pkg.zip".to_string()),
+        asset_url: Some("https://www.leishen-ai.cn/tools/codex-plus/pkg.zip".to_string()),
         asset_sha256: Some(
             "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
         ),

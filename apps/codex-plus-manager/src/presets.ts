@@ -33,10 +33,10 @@ export const PRESETS: ProviderPreset[] = [
   {
     id: "official",
     name: "官方",
-    websiteUrl: "https://ls-qihang.cn/user-next/console/subscription",
-    apiKeyUrl: "https://ls-qihang.cn/user-next/console/subscription",
+    websiteUrl: "https://www.leishen-ai.cn/tools/codex-plus/#downloads",
+    apiKeyUrl: "https://www.leishen-ai.cn/tools/codex-plus/#downloads",
     category: "aggregator",
-    baseUrl: "https://ls-qihang.cn/openai",
+    baseUrl: "https://www.leishen-ai.cn/openai",
     protocol: "responses",
     model: "gpt-5.4",
     modelList: ["gpt-5.4"],

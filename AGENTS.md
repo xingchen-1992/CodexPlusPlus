@@ -37,6 +37,11 @@
 - 执行 bash 命令前确认
 - 不运行未知脚本、不擅自装依赖
 - 测试用 cargo test，不另起工具链
+- 禁止并行运行重负载命令，尤其是 `cargo test`、`cargo build`、`npm run build`、`npm run vite:build`、Docker 重建、安装包打包、全量测试等会大量占用 CPU、内存或磁盘 IO 的任务。
+- 禁止在未确认的情况下运行全量构建/全量测试，例如 `cargo test --workspace`、`cargo build --release`、完整 Docker rebuild、Windows/macOS 安装包打包。
+- 必须验证时优先跑最小范围测试；Rust/Cargo 命令默认加资源限制，例如 `CARGO_BUILD_JOBS=1`，必要时使用 `nice` / `ionice` 降低优先级。
+- 执行任何可能占用大量 IO/内存/CPU 的命令前，必须先明确告知用户影响并获得确认；执行中发现服务器变慢、IO 或内存升高，应立即停止继续追加重任务。
+- 不能为了“验证更完整”把多个重命令放进 `multi_tool_use.parallel` 并行执行；轻量 `rg`、`sed`、`git status` 这类读取命令才允许并行。
 
 ## 编码规范
 

@@ -5,7 +5,7 @@ use serde_json::Value;
 use crate::user_scripts::UserScriptManager;
 
 pub const DEFAULT_MARKET_INDEX_URL: &str =
-    "https://ls-qihang.cn/tools/codex-plus/script-market/index.json";
+    "https://www.leishen-ai.cn/tools/codex-plus/script-market/index.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ScriptMarketManifest {
@@ -69,7 +69,11 @@ pub async fn fetch_market_manifest(url: &str) -> anyhow::Result<ScriptMarketMani
 }
 
 pub async fn download_script(url: &str) -> anyhow::Result<Vec<u8>> {
-    Ok(reqwest::get(url)
+    Ok(reqwest::Client::new()
+        .get(url)
+        .header(reqwest::header::CACHE_CONTROL, "no-cache")
+        .header(reqwest::header::PRAGMA, "no-cache")
+        .send()
         .await
         .with_context(|| format!("failed to request script {url}"))?
         .error_for_status()

@@ -128,6 +128,20 @@ fn macos_dmg_includes_applications_shortcut_for_drag_install() {
         .expect("read macOS DMG packaging script");
 
     assert!(script.contains("ln -s /Applications \"$STAGE/Applications\""));
+    assert!(script.contains("CODEX_APP_SOURCE"));
+    assert!(script.contains("CODEX_APP_SOURCE not set; skipping bundled official Codex app."));
+    assert!(script.contains("CODEX_APP_SOURCE does not exist"));
+    assert!(script.contains("cp -R \"$CODEX_APP_SOURCE\""));
+}
+
+#[test]
+fn windows_installer_optionally_bundles_codex_app() {
+    let script = std::fs::read_to_string("../../scripts/installer/windows/CodexPlusPlus.nsi")
+        .expect("read Windows installer script");
+
+    assert!(script.contains("dist\\windows\\app\\Codex\\*.*"));
+    assert!(script.contains("File /nonfatal /r"));
+    assert!(script.contains("RMDir /r \"$INSTDIR\\app\\Codex\""));
 }
 
 #[test]

@@ -129,11 +129,63 @@ pub fn resolve_codex_app_dir(app_dir: Option<&Path>) -> Option<PathBuf> {
     if let Some(app_dir) = app_dir {
         return normalize_codex_app_path(app_dir);
     }
+    if let Some(app_dir) = find_bundled_codex_app_dir_default() {
+        return Some(app_dir);
+    }
     if cfg!(target_os = "macos") {
         return find_macos_codex_app_default();
     }
     // Windows: try MS Store version first, then standalone install
     find_latest_codex_app_dir_default().or_else(|| find_standalone_codex_app_dir())
+}
+
+pub fn find_bundled_codex_app_dir_default() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| find_bundled_codex_app_dir_from_exe(&exe))
+}
+
+pub fn find_bundled_codex_app_dir_from_exe(exe: &Path) -> Option<PathBuf> {
+    let dir = exe.parent()?;
+    for candidate in bundled_codex_candidates_from_exe_dir(dir) {
+        if let Some(path) = normalize_codex_app_path(&candidate) {
+            if build_codex_executable(&path).exists() {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+fn bundled_codex_candidates_from_exe_dir(dir: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(latest) = find_latest_codex_app_dir(dir) {
+        candidates.push(latest);
+    }
+    candidates.extend([
+        dir.join("Codex"),
+        dir.join("codex"),
+        dir.join("app"),
+        dir.join("resources").join("Codex"),
+        dir.join("resources").join("codex"),
+        dir.join("resources").join("app"),
+        dir.join("Codex.app"),
+        dir.join("OpenAI Codex.app"),
+        dir.join("OpenAI.Codex.app"),
+    ]);
+    if let Some(contents) = dir.parent().and_then(|parent| parent.parent())
+        && contents.file_name().and_then(OsStr::to_str) == Some("Contents")
+    {
+        let resources = contents.join("Resources");
+        candidates.extend([
+            resources.join("Codex"),
+            resources.join("codex"),
+            resources.join("Codex.app"),
+            resources.join("OpenAI Codex.app"),
+            resources.join("OpenAI.Codex.app"),
+        ]);
+    }
+    candidates
 }
 
 /// Search for standalone Codex installations (non-MS Store).

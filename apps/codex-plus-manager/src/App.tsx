@@ -265,15 +265,16 @@ type RelayProtocol = "responses" | "chatCompletions";
 type RelayMode = "official" | "mixedApi" | "pureApi" | "aggregate";
 const PROTOCOL_PROXY_BASE_URL = "http://127.0.0.1:57321/v1";
 const CHAT_UPSTREAM_BASE_URL_KEY = "codex_plus_chat_base_url";
-const SCRIPT_MARKET_REPOSITORY_URL = "https://ls-qihang.cn/tools/codex-plus/script-market";
-const SUBSCRIPTION_CENTER_URL = "https://ls-qihang.cn/user-next/console/subscription";
-const SUBSCRIPTION_CENTER_EMBED_URL = `${SUBSCRIPTION_CENTER_URL}?desktop=codex-plus-official`;
-const SUBSCRIPTION_CENTER_ORIGIN = "https://ls-qihang.cn";
+const SCRIPT_MARKET_REPOSITORY_URL = "https://www.leishen-ai.cn/tools/codex-plus/script-market";
+const SUBSCRIPTION_CENTER_URL = "https://www.leishen-ai.cn/tools/codex-plus/#downloads";
+const UPDATE_POLL_INTERVAL_MS = 10 * 60 * 1000;
+const UPDATE_BUTTON_TOOLTIP = "更新管理工具，不会影响 Codex 应用当前正常使用。";
+const API_KEY_BACKUP_REMINDER = "请务必保存好 API Key，丢失后无法在本工具中找回。";
 const OFFICIAL_API_KEY_STORAGE_KEY = "codex-plus-official-api-key";
 const OFFICIAL_RELAY_ID = "official";
-const OFFICIAL_BASE_URL = "https://ls-qihang.cn/openai";
-const NODE_INSTALLER_WINDOWS_URL = "https://ls-qihang.cn/tools/node/v24.18.0/node-v24.18.0-x64.msi";
-const NODE_INSTALLER_MACOS_URL = "https://ls-qihang.cn/tools/node/v24.18.0/node-v24.18.0.pkg";
+const OFFICIAL_BASE_URL = "https://www.leishen-ai.cn/openai";
+const NODE_INSTALLER_WINDOWS_URL = "https://www.leishen-ai.cn/tools/node/v24.18.0/node-v24.18.0-x64.msi";
+const NODE_INSTALLER_MACOS_URL = "https://www.leishen-ai.cn/tools/node/v24.18.0/node-v24.18.0.pkg";
 const CODEX_CLI_DESKTOP_PROMPT =
   "请帮我检查并安装 Codex CLI 环境：先确认 Node.js 和 npm 是否可用；如果缺失，请指导我安装 Node.js LTS；然后执行 npm install -g @openai/codex；最后运行 codex --version 验证安装结果。";
 const LOCAL_MOBILE_RELAY_URL = "ws://127.0.0.1:57323";
@@ -539,12 +540,14 @@ type UpdateResult = CommandResult<{
   assetSha256?: string | null;
   updateAvailable?: boolean;
   installedPath?: string;
+  backupPath?: string | null;
   progress?: number;
 }>;
 
 type UpdateCheckOptions = {
   promptAvailable?: boolean;
   notifyAvailable?: boolean;
+  autoInstall?: boolean;
 };
 
 type ScriptMarketItem = {
@@ -634,13 +637,12 @@ type OfficialSyncResult = {
   message: string;
 };
 
-type Route = "overview" | "subscription" | "codexCli" | "relay" | "mobileControl" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "maintenance" | "about" | "settings";
+type Route = "overview" | "subscription" | "relay" | "mobileControl" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "maintenance" | "about" | "settings";
 type Theme = "dark" | "light";
 
 const routes: Array<{ id: Route; label: string; icon: LucideIcon; badge?: string }> = [
   { id: "overview", label: "概览", icon: LayoutDashboard },
   { id: "subscription", label: "订阅中心", icon: CreditCard },
-  { id: "codexCli", label: "Codex CLI", icon: FileCode2 },
   { id: "relay", label: "供应商配置", icon: KeyRound },
   { id: "mobileControl", label: "手机控制", icon: MessageCircle, badge: "测试版" },
   { id: "sessions", label: "会话管理", icon: MessageCircle },
@@ -767,6 +769,8 @@ export function App() {
     helperPort: "57321",
   });
   const prevLaunchStatusRef = useRef<string | null>(null);
+  const updateAutoInstallStartedRef = useRef(false);
+  const updateCheckInFlightRef = useRef(false);
   const [settingsForm, setSettingsForm] = useState<BackendSettings>({ ...defaultSettings });
   const [providerSyncProgress, setProviderSyncProgress] = useState<ProviderSyncProgress>({
     active: false,
@@ -1121,7 +1125,7 @@ export function App() {
         setOfficialBalance(balanceResult);
         if (isSuccessStatus(balanceResult.status)) {
           const balanceText = balanceResult.topupBalance?.valueText || balanceResult.planRemainingText || "额度已刷新";
-          message = `${balanceResult.message || "额度刷新完成"}：${balanceText}`;
+          message = `${balanceResult.message || "额度刷新完成"}：${balanceText}。${API_KEY_BACKUP_REMINDER}`;
         } else {
           message = `本机配置完成，额度暂时无法刷新：${balanceResult.message || "请稍后重试"}`;
         }
@@ -1300,8 +1304,11 @@ export function App() {
   };
 
   const installCodexFromOverview = async () => {
-    if (!(await ensureOfficialReadyForLaunch())) return;
-    await installEntrypoints();
+    const result = await run(() => call<CommandResult<Record<string, unknown>>>("install_codex_app"));
+    if (result) {
+      showNotice("安装 Codex", result.message, result.status);
+    }
+    await refreshOverview(true);
   };
 
   const launchCommand = async (command: "launch_codex_plus" | "restart_codex_plus") => {
@@ -1420,27 +1427,39 @@ export function App() {
   };
 
   const checkUpdate = async (silent = false, options: UpdateCheckOptions = {}) => {
-    const result = await run(() => call<UpdateResult>("check_update"));
-    if (result) {
-      setUpdate(result);
-      const shouldPrompt = result.updateAvailable === true && (!silent || options.promptAvailable === true);
-      if (shouldPrompt) {
-        const versionText = result.latestVersion ? ` ${result.latestVersion}` : "";
-        const confirmed = await confirmAction(
-          "发现可用更新",
-          `发现可用更新${versionText}，是否现在更新？`,
-          "更新",
-          "稍后",
-        );
-        if (confirmed) await performUpdate(result);
-      } else if (!silent) {
-        showNotice("官方更新检查", result.message, result.status);
-      } else if (result.updateAvailable === true && options.notifyAvailable !== false) {
-        showNotice("发现可用更新", "可在概览右上角点击“更新版本”安装。", "ok");
+    if (updateCheckInFlightRef.current) return null;
+    updateCheckInFlightRef.current = true;
+    try {
+      const result = await run(() => call<UpdateResult>("check_update"));
+      if (result) {
+        setUpdate(result);
+        if (result.updateAvailable === true && options.autoInstall === true && !updateAutoInstallStartedRef.current) {
+          updateAutoInstallStartedRef.current = true;
+          showNotice("自动更新", "发现新版本，正在下载并启动管理工具更新；不会影响 Codex 应用当前正常使用。", "ok");
+          await performUpdate(result);
+        } else {
+          const shouldPrompt = result.updateAvailable === true && (!silent || options.promptAvailable === true);
+          if (shouldPrompt) {
+            const versionText = result.latestVersion ? ` ${result.latestVersion}` : "";
+            const confirmed = await confirmAction(
+              "发现可用更新",
+              `发现可用更新${versionText}，是否现在更新？`,
+              "更新",
+              "稍后",
+            );
+            if (confirmed) await performUpdate(result);
+          } else if (!silent) {
+            showNotice("官方更新检查", result.message, result.status);
+          } else if (result.updateAvailable === true && options.notifyAvailable !== false) {
+            showNotice("发现可用更新", "可在概览右上角点击“更新版本”安装。", "ok");
+          }
+        }
+        return result;
       }
-      return result;
+      return null;
+    } finally {
+      updateCheckInFlightRef.current = false;
     }
-    return null;
   };
 
   const performUpdate = async (targetUpdate: UpdateResult | null = update) => {
@@ -1895,10 +1914,8 @@ export function App() {
       const startup = await run(() => call<StartupResult>("startup_options"));
       if (startup?.showUpdate) {
         setRoute("about");
-        void checkUpdate(false);
-      } else {
-        void checkUpdate(true, { promptAvailable: true, notifyAvailable: false });
       }
+      void checkUpdate(true, { autoInstall: true, promptAvailable: true, notifyAvailable: false });
       await refreshOverview(true);
       const startupSettings = await refreshSettings(true);
       await refreshRelay(true);
@@ -1914,6 +1931,13 @@ export function App() {
     const timer = window.setInterval(() => {
       void refreshPendingProviderImport(true);
     }, 1200);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void checkUpdate(true, { notifyAvailable: true });
+    }, UPDATE_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -2159,10 +2183,11 @@ export function App() {
             </Button>
             {hasUpdate ? (
               <Button
-                className="topbar-update-version"
+                aria-label={UPDATE_BUTTON_TOOLTIP}
+                className="topbar-update-version update-pulse"
                 disabled={updateInstalling}
                 onClick={() => void actions.performUpdate()}
-                title="更新版本"
+                title={UPDATE_BUTTON_TOOLTIP}
               >
                 <CircleArrowUp className="h-4 w-4" />
                 {updateInstalling ? "更新中" : "更新版本"}
@@ -2198,7 +2223,6 @@ export function App() {
             />
           ) : null}
           {route === "subscription" ? <SubscriptionCenterScreen actions={actions} /> : null}
-          {route === "codexCli" ? <CodexCliScreen actions={actions} /> : null}
           {route === "relay" ? (
             <RelayScreen
               settings={settings}
@@ -3449,100 +3473,18 @@ function SessionsScreen({
   );
 }
 
-type SubscriptionBridgeMessage = {
-  source: string;
-  type: string;
-  apiKey?: string;
-  reason?: string;
-  url?: string;
-  outTradeNo?: string;
-};
-
-function subscriptionBridgeMessage(data: unknown): SubscriptionBridgeMessage | null {
-  if (!data || typeof data !== "object") return null;
-  const payload = data as Partial<SubscriptionBridgeMessage>;
-  if (payload.source !== "official-subscription-center") return null;
-  if (payload.type === "official:api-key-ready") {
-    const apiKey = typeof payload.apiKey === "string" ? payload.apiKey.trim() : "";
-    if (!apiKey) return null;
-    return {
-      source: payload.source,
-      type: payload.type,
-      apiKey,
-      reason: typeof payload.reason === "string" ? payload.reason : undefined,
-    };
-  }
-  if (payload.type === "official:open-payment-url") {
-    const url = typeof payload.url === "string" ? payload.url.trim() : "";
-    if (!/^https?:\/\//i.test(url)) return null;
-    return {
-      source: payload.source,
-      type: payload.type,
-      url,
-      outTradeNo: typeof payload.outTradeNo === "string" ? payload.outTradeNo : undefined,
-    };
-  }
-  return null;
-}
-
 function SubscriptionCenterScreen({ actions }: { actions: Actions }) {
-  const [bridgeMessage, setBridgeMessage] = useState("选择总量包并完成付款。");
-  const [frameLoaded, setFrameLoaded] = useState(false);
-  const lastBridgeSyncRef = useRef("");
-
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== SUBSCRIPTION_CENTER_ORIGIN) return;
-      const payload = subscriptionBridgeMessage(event.data);
-      if (!payload) return;
-      if (payload.type === "official:open-payment-url") {
-        if (!payload.url) return;
-        setBridgeMessage("正在打开支付页面...");
-        void actions.openExternalUrl(payload.url);
-        return;
-      }
-      const apiKey = payload.apiKey;
-      if (!apiKey) return;
-      const syncKey = `${apiKey}:${payload.reason || ""}`;
-      if (lastBridgeSyncRef.current === syncKey) return;
-      lastBridgeSyncRef.current = syncKey;
-
-      void (async () => {
-        try {
-          setBridgeMessage("收到订阅中心 API Key，正在写入本机 Codex 配置...");
-          const sync = await actions.saveOfficialApiKey(apiKey, { refreshBalance: true, silent: true });
-          if (!sync.ok) throw new Error(sync.message || "本机 Codex 配置失败");
-          const balanceMessage = "本机配置完成，已保存为当前使用的 API Key。";
-          setBridgeMessage(balanceMessage);
-          await actions.showMessage("订阅中心", balanceMessage, "ok");
-          await actions.goOverview();
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "订阅中心同步失败";
-          setBridgeMessage(message);
-          await actions.showMessage("订阅中心", message, "failed");
-        }
-      })();
-    };
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [actions]);
-
   return (
     <Panel className="subscription-center-panel">
-      <CardHead title="订阅中心" detail={bridgeMessage} />
+      <CardHead title="订阅中心" detail="当前仅打开 Codex官方管理工具下载页。" />
       <CardContent className="subscription-center-content">
-        {!frameLoaded ? (
-          <div className="subscription-center-loading" aria-live="polite">
-            正在打开总量包购买页面...
-          </div>
-        ) : null}
-        <iframe
-          className="subscription-center-frame"
-          onLoad={() => setFrameLoaded(true)}
-          src={SUBSCRIPTION_CENTER_EMBED_URL}
-          title="订阅中心"
-        />
+        <div className="subscription-center-loading" aria-live="polite">
+          下载页包含 Windows、macOS Apple Silicon 和 macOS Intel 三个安装包入口。
+        </div>
+        <Button onClick={() => void actions.openExternalUrl(SUBSCRIPTION_CENTER_URL)} type="button">
+          <ExternalLink className="h-4 w-4" />
+          打开下载页
+        </Button>
       </CardContent>
     </Panel>
   );
@@ -3585,6 +3527,14 @@ function MaintenanceScreen({
             <Button variant="secondary" onClick={() => void actions.repairBackend()}>修复后端</Button>
           </Toolbar>
         </CardContent>
+      </Panel>
+      <Panel className="official-panel-card">
+        <OfficialSetupPanel
+          mode="full"
+          onCopyDesktopPrompt={() => void actions.copyCodexCliPrompt()}
+          onInstallCodexCli={() => void actions.installCodexCliEnvironment()}
+          onOpenNodeInstaller={() => void actions.openNodeInstaller()}
+        />
       </Panel>
       <Panel>
         <CardHead title="入口管理" detail="快捷方式写入系统实际桌面位置，不使用写死桌面路径" />
@@ -3668,19 +3618,6 @@ function MaintenanceScreen({
   );
 }
 
-function CodexCliScreen({ actions }: { actions: Actions }) {
-  return (
-    <Panel className="official-panel-card">
-      <OfficialSetupPanel
-        mode="full"
-        onCopyDesktopPrompt={() => void actions.copyCodexCliPrompt()}
-        onInstallCodexCli={() => void actions.installCodexCliEnvironment()}
-        onOpenNodeInstaller={() => void actions.openNodeInstaller()}
-      />
-    </Panel>
-  );
-}
-
 function AboutScreen({
   overview,
   update,
@@ -3702,14 +3639,14 @@ function AboutScreen({
           <div className="metric-list">
             <Metric label="管理工具版本" value={overview?.current_version ?? update?.currentVersion ?? "-"} />
             <Metric label="Codex 版本" value={overview?.codex_version ?? "未检测到"} />
-            <Metric label="项目地址" value="ls-qihang.cn/tools/codex-plus" />
+            <Metric label="项目地址" value="www.leishen-ai.cn/tools/codex-plus" />
           </div>
           <Toolbar>
-            <Button onClick={() => void actions.openExternalUrl("https://ls-qihang.cn/tools/codex-plus")} variant="secondary">
+            <Button onClick={() => void actions.openExternalUrl("https://www.leishen-ai.cn/tools/codex-plus")} variant="secondary">
               <ExternalLink className="h-4 w-4" />
               打开项目主页
             </Button>
-            <Button onClick={() => void actions.openExternalUrl("https://ls-qihang.cn/tools/codex-plus/feedback")} variant="secondary">
+            <Button onClick={() => void actions.openExternalUrl("https://www.leishen-ai.cn/tools/codex-plus/feedback")} variant="secondary">
               <ExternalLink className="h-4 w-4" />
               反馈问题
             </Button>
@@ -5511,7 +5448,6 @@ function routeSubtitle(route: Route) {
   const subtitles: Record<Route, string> = {
     overview: "检查问题、启动与快速修复",
     subscription: "购买总量包、生成 API Key 并回到概览刷新额度",
-    codexCli: "安装 Node.js、npm 和 Codex CLI",
     relay: "管理 API 供应商、协议、Key 与配置文件",
     mobileControl: "配置手机控制 relay、房间密钥和服务器状态",
     sessions: "查看、删除和修复 Codex 本地会话",
@@ -5519,7 +5455,7 @@ function routeSubtitle(route: Route) {
     enhance: "会话删除、导出、项目移动和脚本能力",
     zedRemote: "管理 Codex SSH 项目并加入 Zed workspace",
     userScripts: "内置和用户自定义脚本清单",
-    maintenance: "入口安装、修复、Watcher 与手动启动",
+    maintenance: "入口安装、环境配置、Watcher 与手动启动",
     about: "版本信息、项目链接、官方更新、日志与诊断",
     settings: "主题、命令包装器和启动参数",
   };

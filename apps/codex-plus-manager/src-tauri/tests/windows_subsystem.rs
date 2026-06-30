@@ -505,7 +505,7 @@ fn provider_presets_only_include_official_and_openai() {
     assert!(presets.contains("id: \"official\""));
     assert!(presets.contains("name: \"官方\""));
     assert!(presets.contains("category: \"aggregator\""));
-    assert!(presets.contains("baseUrl: \"https://ls-qihang.cn/openai\""));
+    assert!(presets.contains("baseUrl: \"https://www.leishen-ai.cn/openai\""));
     assert!(presets.contains("id: \"openai\""));
     assert!(presets.contains("name: \"OpenAI Official\""));
     assert!(!presets.contains("id: \"runapi\""));

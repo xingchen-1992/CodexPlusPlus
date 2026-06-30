@@ -52,6 +52,14 @@ jobs:
           New-Item -ItemType Directory -Force dist/windows/app | Out-Null
           Copy-Item target/release/codex-plus-plus.exe dist/windows/app/
           Copy-Item target/release/codex-plus-plus-manager.exe dist/windows/app/
+          if ($env:CODEX_APP_SOURCE) {
+            if (-not (Test-Path $env:CODEX_APP_SOURCE)) {
+              throw "CODEX_APP_SOURCE is set but does not exist: $env:CODEX_APP_SOURCE"
+            }
+            Copy-Item $env:CODEX_APP_SOURCE dist/windows/app/Codex -Recurse -Force
+          } else {
+            Write-Host "CODEX_APP_SOURCE not set; installer will rely on the management tool install flow."
+          }
 
       - name: Build Windows installer
         shell: pwsh

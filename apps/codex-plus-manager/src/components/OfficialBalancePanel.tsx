@@ -118,6 +118,9 @@ export function OfficialBalancePanel({
         </div>
       ) : null}
       <p className="field-hint official-panel-hint">{message}</p>
+      <p className="field-hint official-panel-key-warning">
+        请务必保存好 API Key。API Key 丢失后无法在本工具中找回；更换设备或清空配置前，请先确认自己已备份。
+      </p>
     </CardContent>
   );
 }

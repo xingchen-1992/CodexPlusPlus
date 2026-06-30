@@ -17,9 +17,12 @@ use serde_json::{Value, json};
 
 use crate::install::{self, InstallActionResult, InstallOptions};
 
-const CRS_IMAGE_CLIENT_URL: &str = "https://ls-qihang.cn/tools/crs-image.mjs";
-const CRS_IMAGE_SKILL_URL: &str = "https://ls-qihang.cn/tools/crs-image-skill/SKILL.md";
-const CRS_IMAGE_DEFAULT_BASE_URL: &str = "https://ls-qihang.cn/openai/v1";
+const CRS_IMAGE_CLIENT_URL: &str = "https://www.leishen-ai.cn/tools/crs-image.mjs?v=1.0.3";
+const CRS_IMAGE_SKILL_URL: &str = "https://www.leishen-ai.cn/tools/crs-image-skill/SKILL.md?v=1.0.3";
+const CRS_IMAGE_DEFAULT_BASE_URL: &str = "https://www.leishen-ai.cn/openai/v1";
+const CODEX_WINDOWS_INSTALL_COMMAND: &str = "winget install Codex -s msstore";
+const CODEX_OFFICIAL_INSTALL_URL: &str = "https://developers.openai.com/codex/app";
+const CODEX_WINDOWS_INSTALL_URL: &str = "https://developers.openai.com/codex/app/windows";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CommandResult<T>
@@ -389,11 +392,22 @@ pub async fn install_codex_cli() -> CommandResult<Value> {
 }
 
 #[tauri::command]
+pub async fn install_codex_app() -> CommandResult<Value> {
+    match tauri::async_runtime::spawn_blocking(install_codex_app_blocking).await {
+        Ok(result) => result,
+        Err(error) => failed(
+            &format!("无法打开 Codex 官方安装流程：{error}。如果安装失败，请打开 https://developers.openai.com/codex/app 按官方说明安装。"),
+            json!({ "installUrl": CODEX_OFFICIAL_INSTALL_URL }),
+        ),
+    }
+}
+
+#[tauri::command]
 pub async fn official_balance(
     request: OfficialBalanceRequest,
 ) -> CommandResult<codex_plus_core::official_desktop_api::DesktopSummary> {
     match codex_plus_core::official_desktop_api::fetch_desktop_summary(
-        "https://ls-qihang.cn",
+        "https://www.leishen-ai.cn",
         &request.api_key,
     )
     .await
@@ -410,7 +424,7 @@ pub async fn official_balance(
 pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> CommandResult<Value> {
     const OFFICIAL_RELAY_ID: &str = "official";
     const OFFICIAL_RELAY_NAME: &str = "官方";
-    const OFFICIAL_BASE_URL: &str = "https://ls-qihang.cn/openai";
+    const OFFICIAL_BASE_URL: &str = "https://www.leishen-ai.cn/openai";
 
     let api_key = request.api_key.trim().to_string();
     if api_key.is_empty() {
@@ -1782,6 +1796,7 @@ pub async fn perform_update(
                 "assetUrl": result.release.asset_url,
                 "assetSha256": result.release.asset_sha256,
                 "installedPath": result.installer_path.to_string_lossy(),
+                "backupPath": result.backup_path.map(|path| path.to_string_lossy().to_string()),
                 "launched": result.launched,
                 "progress": 100
             }),
@@ -2979,6 +2994,7 @@ fn set_owner_only_read_write(_path: &Path) -> anyhow::Result<()> {
 
 fn node_detected() -> bool {
     let mut command = std::process::Command::new("node");
+    apply_command_search_path(&mut command);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -3298,53 +3314,210 @@ fn load_official_setup_status() -> OfficialSetupStatus {
 }
 
 fn install_codex_cli_blocking() -> CommandResult<Value> {
-    let mut command = codex_cli_install_command();
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(codex_plus_core::windows_create_no_window());
-    }
-    match command.output() {
-        Ok(output) if output.status.success() => ok(
-            "Codex CLI 安装完成，请重新检测环境。",
-            json!({
-                "stdout": String::from_utf8_lossy(&output.stdout).trim(),
-                "stderr": String::from_utf8_lossy(&output.stderr).trim(),
-            }),
-        ),
-        Ok(output) => failed(
-            "Codex CLI 安装失败。请先确认 Node.js/npm 已安装，再重试。",
-            json!({
-                "stdout": String::from_utf8_lossy(&output.stdout).trim(),
-                "stderr": String::from_utf8_lossy(&output.stderr).trim(),
-                "code": output.status.code(),
-            }),
+    match open_codex_cli_install_terminal() {
+        Ok(payload) => ok(
+            "已打开 Codex CLI 安装窗口，请按窗口提示完成；完成后点击重新检测。",
+            payload,
         ),
         Err(error) => failed(
-            &format!("无法启动 npm：{error}。请先安装 Node.js/npm。"),
-            json!({ "stdout": "", "stderr": "" }),
+            &format!("无法打开 Codex CLI 安装窗口：{error}"),
+            json!({ "scriptPath": "" }),
         ),
     }
 }
 
-fn codex_cli_install_command() -> std::process::Command {
+fn open_codex_cli_install_terminal() -> anyhow::Result<Value> {
+    let script_dir = codex_plus_core::paths::default_app_state_dir().join("installers");
+    fs::create_dir_all(&script_dir)?;
+
     #[cfg(windows)]
     {
+        let script_path = script_dir.join("install-codex-cli.ps1");
+        fs::write(&script_path, codex_cli_install_script_windows())?;
         let mut command = std::process::Command::new("cmd");
-        command.args(["/C", "npm", "install", "-g", "@openai/codex"]);
-        command
+        command.args([
+            "/C",
+            "start",
+            "",
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-NoExit",
+            "-File",
+        ]);
+        command.arg(&script_path);
+        command.spawn()?;
+        return Ok(json!({ "scriptPath": path_to_string(&script_path) }));
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
-        let mut command = std::process::Command::new("npm");
-        command.args(["install", "-g", "@openai/codex"]);
-        command
+        use std::os::unix::fs::PermissionsExt;
+
+        let script_path = script_dir.join("install-codex-cli.command");
+        fs::write(&script_path, codex_cli_install_script_unix())?;
+        let mut permissions = fs::metadata(&script_path)?.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script_path, permissions)?;
+        std::process::Command::new("open")
+            .args(["-a", "Terminal"])
+            .arg(&script_path)
+            .spawn()?;
+        return Ok(json!({ "scriptPath": path_to_string(&script_path) }));
     }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let script_path = script_dir.join("install-codex-cli.sh");
+        fs::write(&script_path, codex_cli_install_script_unix())?;
+        anyhow::bail!(
+            "当前平台无法自动打开终端，请在终端运行 sh {}",
+            script_path.to_string_lossy()
+        );
+    }
+}
+
+fn install_codex_app_blocking() -> CommandResult<Value> {
+    match open_codex_app_install_flow() {
+        Ok(payload) => ok(
+            "Windows：已打开 Codex 官方安装窗口；如果安装失败，窗口会打开官方安装页面。macOS：已打开 OpenAI 官方 Codex 安装页面。安装完成后回到概览刷新，即可打开 Codex。",
+            payload,
+        ),
+        Err(error) => failed(
+            &format!("无法打开 Codex 官方安装流程：{error}。如果安装失败，请打开 https://developers.openai.com/codex/app 按官方说明安装。"),
+            json!({ "installUrl": CODEX_OFFICIAL_INSTALL_URL }),
+        ),
+    }
+}
+
+fn open_codex_app_install_flow() -> anyhow::Result<Value> {
+    let script_dir = codex_plus_core::paths::default_app_state_dir().join("installers");
+    fs::create_dir_all(&script_dir)?;
+
+    #[cfg(windows)]
+    {
+        let script_path = script_dir.join("install-codex-app.ps1");
+        fs::write(&script_path, codex_app_install_script_windows())?;
+        let mut command = std::process::Command::new("cmd");
+        command.args([
+            "/C",
+            "start",
+            "",
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-NoExit",
+            "-File",
+        ]);
+        command.arg(&script_path);
+        command.spawn()?;
+        return Ok(json!({
+            "scriptPath": path_to_string(&script_path),
+            "installUrl": CODEX_WINDOWS_INSTALL_URL,
+            "command": CODEX_WINDOWS_INSTALL_COMMAND
+        }));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(CODEX_OFFICIAL_INSTALL_URL)
+            .spawn()?;
+        return Ok(json!({ "installUrl": CODEX_OFFICIAL_INSTALL_URL }));
+    }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        anyhow::bail!(
+            "当前平台不支持自动安装 Codex，请打开 {} 按官方说明安装",
+            CODEX_OFFICIAL_INSTALL_URL
+        );
+    }
+}
+
+fn codex_app_install_script_windows() -> &'static str {
+    r#"$ErrorActionPreference = 'Continue'
+$installUrl = 'https://developers.openai.com/codex/app/windows'
+Write-Host ''
+Write-Host '正在安装 OpenAI 官方 Codex 桌面应用...' -ForegroundColor Cyan
+Write-Host '将优先使用官方命令：winget install Codex -s msstore'
+Write-Host ''
+
+if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+  Write-Host '当前电脑没有检测到 winget。' -ForegroundColor Yellow
+  Write-Host '如果安装失败，请在打开的 OpenAI 官方页面按说明安装 Codex。'
+  Start-Process $installUrl
+  Read-Host '处理完成后按回车关闭窗口'
+  exit 1
+}
+
+winget source list | Out-String | Write-Host
+winget install Codex -s msstore
+if ($LASTEXITCODE -ne 0) {
+  Write-Host ''
+  Write-Host 'Codex 自动安装失败。' -ForegroundColor Yellow
+  Write-Host '常见原因：Microsoft Store 被禁用、msstore 源不可用、网络或系统策略限制。'
+  Write-Host '已打开 OpenAI 官方 Windows 安装页面，请按页面说明安装 Codex。'
+  Start-Process $installUrl
+  Read-Host '安装完成后回到 Codex 官方管理工具概览页刷新；按回车关闭窗口'
+  exit $LASTEXITCODE
+}
+
+Write-Host ''
+Write-Host 'Codex 安装命令已完成。请回到 Codex 官方管理工具概览页刷新，然后点击打开 Codex。' -ForegroundColor Green
+Read-Host '按回车关闭窗口'
+"#
+}
+
+fn codex_cli_install_script_windows() -> &'static str {
+    r#"$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::UTF8
+Write-Host 'Codex CLI 安装维护'
+Write-Host '正在检查 Node.js 和 npm...'
+if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) {
+  Write-Host '未检测到 Node.js/npm。请先安装 Node.js LTS，然后重新点击安装 Codex CLI。'
+  Read-Host '按回车关闭窗口'
+  exit 1
+}
+node --version
+npm --version
+Write-Host '正在执行 npm install -g @openai/codex ...'
+npm install -g @openai/codex
+Write-Host '正在验证 codex --version ...'
+codex --version
+Write-Host 'Codex CLI 安装完成。'
+Read-Host '按回车关闭窗口'
+"#
+}
+
+fn codex_cli_install_script_unix() -> &'static str {
+    r#"#!/bin/sh
+set -e
+echo 'Codex CLI 安装维护'
+echo '正在检查 Node.js 和 npm...'
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo '未检测到 Node.js/npm。请先安装 Node.js LTS，然后重新点击安装 Codex CLI。'
+  printf '按回车关闭窗口'
+  read _
+  exit 1
+fi
+node --version
+npm --version
+echo '正在执行 npm install -g @openai/codex ...'
+npm install -g @openai/codex
+echo '正在验证 codex --version ...'
+codex --version
+echo 'Codex CLI 安装完成。'
+printf '按回车关闭窗口'
+read _
+"#
 }
 
 fn read_command_version(command: &str, arg: &str) -> Option<String> {
     let mut command = std::process::Command::new(command);
+    apply_command_search_path(&mut command);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -3357,6 +3530,56 @@ fn read_command_version(command: &str, arg: &str) -> Option<String> {
         .filter(|value| value.status.success())
         .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+fn apply_command_search_path(command: &mut std::process::Command) {
+    if let Some(path) = command_search_path() {
+        command.env("PATH", path);
+    }
+}
+
+fn command_search_path() -> Option<std::ffi::OsString> {
+    let mut paths = Vec::<PathBuf>::new();
+
+    if cfg!(windows) {
+        if let Some(program_files) = std::env::var_os("ProgramFiles") {
+            paths.push(PathBuf::from(program_files).join("nodejs"));
+        }
+        if let Some(program_files_x86) = std::env::var_os("ProgramFiles(x86)") {
+            paths.push(PathBuf::from(program_files_x86).join("nodejs"));
+        }
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            paths.push(PathBuf::from(appdata).join("npm"));
+        }
+        if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
+            let local = PathBuf::from(local_appdata);
+            paths.push(local.join("Programs").join("nodejs"));
+            paths.push(local.join("Programs").join("OpenAI").join("Codex").join("bin"));
+        }
+        if let Some(profile) = std::env::var_os("USERPROFILE") {
+            paths.push(PathBuf::from(profile).join(".npm-global").join("bin"));
+        }
+    } else {
+        if let Some(home) = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf()) {
+            paths.push(home.join(".npm-global").join("bin"));
+            paths.push(home.join(".local").join("bin"));
+        }
+        paths.push(PathBuf::from("/opt/homebrew/bin"));
+        paths.push(PathBuf::from("/usr/local/bin"));
+        paths.push(PathBuf::from("/usr/bin"));
+    }
+
+    if let Some(current) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&current));
+    }
+
+    let mut deduped = Vec::new();
+    for path in paths {
+        if !deduped.iter().any(|existing| existing == &path) {
+            deduped.push(path);
+        }
+    }
+    std::env::join_paths(deduped).ok()
 }
 
 fn fallback_official_balance(
@@ -3561,7 +3784,7 @@ mod tests {
             latest_version: Some("v1.0.1-official.1".to_string()),
             release_summary: "官方版更新".to_string(),
             asset_name: Some("CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe".to_string()),
-            asset_url: Some("https://ls-qihang.cn/tools/codex-plus/CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe".to_string()),
+            asset_url: Some("https://www.leishen-ai.cn/tools/codex-plus/CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe".to_string()),
             asset_sha256: Some(
                 "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824".to_string(),
             ),

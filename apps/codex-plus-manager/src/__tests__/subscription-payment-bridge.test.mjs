@@ -4,8 +4,11 @@ import test from "node:test";
 
 const appSource = fs.readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 
-test("subscription iframe payment links open in the system browser", () => {
-  assert.match(appSource, /official:open-payment-url/);
-  assert.match(appSource, /actions\.openExternalUrl\(payload\.url\)/);
-  assert.match(appSource, /正在打开支付页面/);
+test("subscription center opens the public downloads page", () => {
+  assert.match(appSource, /https:\/\/www\.leishen-ai\.cn\/tools\/codex-plus\/#downloads/);
+  assert.match(appSource, /actions\.openExternalUrl\(SUBSCRIPTION_CENTER_URL\)/);
+  assert.match(appSource, /打开下载页/);
+  assert.doesNotMatch(appSource, /<iframe/);
+  assert.doesNotMatch(appSource, /user-next\/console\/subscription/);
+  assert.doesNotMatch(appSource, /official:open-payment-url/);
 });

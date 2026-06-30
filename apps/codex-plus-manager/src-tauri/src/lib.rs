@@ -48,6 +48,7 @@ pub fn run() {
             commands::backend_version,
             commands::startup_options,
             commands::official_setup_status,
+            commands::install_codex_app,
             commands::install_codex_cli,
             commands::official_balance,
             commands::configure_official_api_key,

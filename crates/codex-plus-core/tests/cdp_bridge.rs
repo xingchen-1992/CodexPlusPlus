@@ -48,8 +48,8 @@ fn injection_script_prefixes_helper_url_without_sponsor_sources() {
     assert!(script.contains("http://127.0.0.1:57321"));
     assert!(script.contains("window.__CODEX_PLUS_VERSION__"));
     assert!(script.contains(codex_plus_core::version::VERSION));
-    assert!(script.contains("https://ls-qihang.cn/tools/codex-plus"));
-    assert!(script.contains("https://ls-qihang.cn/user-next/console/subscription"));
+    assert!(script.contains("https://www.leishen-ai.cn/tools/codex-plus"));
+    assert!(script.contains("https://www.leishen-ai.cn/user-next/console/subscription"));
     assert!(!script.contains("window.__CODEX_PLUS_SPONSOR_IMAGES__"));
     assert!(!script.contains("github.com/BigPizzaV3/CodexPlusPlus"));
 }
@@ -105,7 +105,7 @@ fn injection_script_removes_ads_and_sponsor_sources() {
 
     assert!(!script.contains("directFetchCodexPlusAds"));
     assert!(!script.contains("cacheBustCodexPlusAdUrl"));
-    assert!(!script.contains("https://ls-qihang.cn/tools/codex-plus/ads.json"));
+    assert!(!script.contains("https://www.leishen-ai.cn/tools/codex-plus/ads.json"));
     assert!(!script.contains("data-codex-plus-tab=\"sponsor\""));
     assert!(!script.contains("codex-plus-sponsor"));
     assert!(!script.contains("codex-plus-ad-card"));
