@@ -762,6 +762,7 @@ export function App() {
   const [officialBalance, setOfficialBalance] = useState<OfficialBalance | null>(null);
   const [officialBalanceMessage, setOfficialBalanceMessage] = useState("输入你的 API Key 后即可读取套餐和总量包余额。");
   const [officialBalanceBusy, setOfficialBalanceBusy] = useState(false);
+  const [codexAppInstallBusy, setCodexAppInstallBusy] = useState(false);
   const [scriptMarket, setScriptMarket] = useState<ScriptMarketResult | null>(null);
   const [launchForm, setLaunchForm] = useState({
     appPath: "",
@@ -1304,11 +1305,18 @@ export function App() {
   };
 
   const installCodexFromOverview = async () => {
-    const result = await run(() => call<CommandResult<Record<string, unknown>>>("install_codex_app"));
-    if (result) {
-      showNotice("安装 Codex", result.message, result.status);
+    if (codexAppInstallBusy) return;
+    setCodexAppInstallBusy(true);
+    showNotice("安装 Codex", "正在后台安装 Codex，请稍候。安装完成后会自动刷新概览。", "ok");
+    try {
+      const result = await run(() => call<CommandResult<Record<string, unknown>>>("install_codex_app"));
+      if (result) {
+        showNotice("安装 Codex", result.message, result.status);
+      }
+      await refreshOverview(true);
+    } finally {
+      setCodexAppInstallBusy(false);
     }
-    await refreshOverview(true);
   };
 
   const launchCommand = async (command: "launch_codex_plus" | "restart_codex_plus") => {
@@ -2211,6 +2219,7 @@ export function App() {
               officialBalance={officialBalance}
               officialBalanceBusy={officialBalanceBusy}
               officialBalanceMessage={officialBalanceMessage}
+              codexAppInstallBusy={codexAppInstallBusy}
               onOfficialApiKeyChange={(value) => {
                 setOfficialApiKey(value);
                 if (!value.trim()) {
@@ -2661,6 +2670,7 @@ function OverviewScreen({
   officialBalance,
   officialBalanceBusy,
   officialBalanceMessage,
+  codexAppInstallBusy,
   onOfficialApiKeyChange,
   actions,
 }: {
@@ -2670,6 +2680,7 @@ function OverviewScreen({
   officialBalance: OfficialBalance | null;
   officialBalanceBusy: boolean;
   officialBalanceMessage: string;
+  codexAppInstallBusy: boolean;
   onOfficialApiKeyChange: (value: string) => void;
   actions: Actions;
 }) {
@@ -2681,6 +2692,7 @@ function OverviewScreen({
           apiKey={officialApiKey}
           balance={officialBalance}
           busy={officialBalanceBusy}
+          codexInstallBusy={codexAppInstallBusy}
           codexReady={Boolean(overview?.codex_version || overview?.codex_app.status === "found")}
           message={officialBalanceMessage}
           onApiKeyChange={onOfficialApiKeyChange}

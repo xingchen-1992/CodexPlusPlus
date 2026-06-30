@@ -42,7 +42,11 @@ fn select_node_download_returns_matching_platform_and_arch() {
     assert_eq!(download.platform, "windows");
     assert_eq!(download.arch, "x64");
     assert_eq!(download.file, "node-v24.18.0-win-x64.zip");
-    assert!(download.mirror_url.starts_with("https://www.leishen-ai.cn/"));
+    assert!(
+        download
+            .mirror_url
+            .starts_with("https://www.leishen-ai.cn/")
+    );
 }
 
 #[test]

@@ -11,6 +11,7 @@ type OfficialBalancePanelProps = {
   apiKey: string;
   balance: OfficialBalance | null;
   busy: boolean;
+  codexInstallBusy: boolean;
   codexReady: boolean;
   message: string;
   onApiKeyChange: (value: string) => void;
@@ -24,6 +25,7 @@ export function OfficialBalancePanel({
   apiKey,
   balance,
   busy,
+  codexInstallBusy,
   codexReady,
   message,
   onApiKeyChange,
@@ -87,12 +89,12 @@ export function OfficialBalancePanel({
         </Button>
         <Button
           className="official-balance-action-open"
-          disabled={busy}
+          disabled={busy || codexInstallBusy}
           onClick={codexReady ? onOpenCodex : onInstallCodex}
           type="button"
         >
           {codexReady ? <Rocket className="h-4 w-4" /> : <Download className="h-4 w-4" />}
-          {codexReady ? "打开 Codex" : "安装 Codex"}
+          {codexReady ? "打开 Codex" : codexInstallBusy ? "安装中" : "安装 Codex"}
         </Button>
       </div>
       {metrics.length ? (

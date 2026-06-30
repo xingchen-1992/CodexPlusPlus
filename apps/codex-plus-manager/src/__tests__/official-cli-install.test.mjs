@@ -39,7 +39,7 @@ test("official setup detection uses an expanded command search path", () => {
 
 test("managed crs-image assets are fetched from the official domain without cache", () => {
   assert.match(commandsSource, /CRS_IMAGE_CLIENT_URL: &str = "https:\/\/www\.leishen-ai\.cn\/tools\/crs-image\.mjs\?v=1\.0\.3"/);
-  assert.match(commandsSource, /CRS_IMAGE_SKILL_URL: &str = "https:\/\/www\.leishen-ai\.cn\/tools\/crs-image-skill\/SKILL\.md\?v=1\.0\.3"/);
+  assert.match(commandsSource, /https:\/\/www\.leishen-ai\.cn\/tools\/crs-image-skill\/SKILL\.md\?v=1\.0\.3/);
   assert.match(scriptMarketSource, /CACHE_CONTROL/);
   assert.match(scriptMarketSource, /PRAGMA/);
 });

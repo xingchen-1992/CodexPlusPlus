@@ -18,9 +18,10 @@ use serde_json::{Value, json};
 use crate::install::{self, InstallActionResult, InstallOptions};
 
 const CRS_IMAGE_CLIENT_URL: &str = "https://www.leishen-ai.cn/tools/crs-image.mjs?v=1.0.3";
-const CRS_IMAGE_SKILL_URL: &str = "https://www.leishen-ai.cn/tools/crs-image-skill/SKILL.md?v=1.0.3";
+const CRS_IMAGE_SKILL_URL: &str =
+    "https://www.leishen-ai.cn/tools/crs-image-skill/SKILL.md?v=1.0.3";
 const CRS_IMAGE_DEFAULT_BASE_URL: &str = "https://www.leishen-ai.cn/openai/v1";
-const CODEX_WINDOWS_INSTALL_COMMAND: &str = "winget install Codex -s msstore";
+const CODEX_WINDOWS_INSTALL_COMMAND: &str = "winget install --id 9PLM9XGG6VKS --exact --source msstore --accept-source-agreements --accept-package-agreements --silent --disable-interactivity";
 const CODEX_OFFICIAL_INSTALL_URL: &str = "https://developers.openai.com/codex/app";
 const CODEX_WINDOWS_INSTALL_URL: &str = "https://developers.openai.com/codex/app/windows";
 
@@ -396,7 +397,9 @@ pub async fn install_codex_app() -> CommandResult<Value> {
     match tauri::async_runtime::spawn_blocking(install_codex_app_blocking).await {
         Ok(result) => result,
         Err(error) => failed(
-            &format!("无法打开 Codex 官方安装流程：{error}。如果安装失败，请打开 https://developers.openai.com/codex/app 按官方说明安装。"),
+            &format!(
+                "无法打开 Codex 官方安装流程：{error}。如果安装失败，请打开 https://developers.openai.com/codex/app 按官方说明安装。"
+            ),
             json!({ "installUrl": CODEX_OFFICIAL_INSTALL_URL }),
         ),
     }
@@ -3381,11 +3384,11 @@ fn open_codex_cli_install_terminal() -> anyhow::Result<Value> {
 fn install_codex_app_blocking() -> CommandResult<Value> {
     match open_codex_app_install_flow() {
         Ok(payload) => ok(
-            "Windows：已打开 Codex 官方安装窗口；如果安装失败，窗口会打开官方安装页面。macOS：已打开 OpenAI 官方 Codex 安装页面。安装完成后回到概览刷新，即可打开 Codex。",
+            "Windows：Codex 自动安装流程已完成。macOS：已打开 OpenAI 官方 Codex 安装页面。安装完成后回到概览刷新，即可打开 Codex。",
             payload,
         ),
         Err(error) => failed(
-            &format!("无法打开 Codex 官方安装流程：{error}。如果安装失败，请打开 https://developers.openai.com/codex/app 按官方说明安装。"),
+            &format!("Codex 自动安装失败：{error}。已尝试打开官方安装页面，请按页面说明安装。"),
             json!({ "installUrl": CODEX_OFFICIAL_INSTALL_URL }),
         ),
     }
@@ -3399,20 +3402,33 @@ fn open_codex_app_install_flow() -> anyhow::Result<Value> {
     {
         let script_path = script_dir.join("install-codex-app.ps1");
         fs::write(&script_path, codex_app_install_script_windows())?;
-        let mut command = std::process::Command::new("cmd");
-        command.args([
-            "/C",
-            "start",
-            "",
-            "powershell.exe",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-NoExit",
-            "-File",
-        ]);
-        command.arg(&script_path);
-        command.spawn()?;
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let output = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-WindowStyle",
+                "Hidden",
+                "-File",
+            ])
+            .arg(&script_path)
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let detail = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                format!("winget 退出码：{}", output.status)
+            };
+            anyhow::bail!(detail);
+        }
         return Ok(json!({
             "scriptPath": path_to_string(&script_path),
             "installUrl": CODEX_WINDOWS_INSTALL_URL,
@@ -3439,35 +3455,44 @@ fn open_codex_app_install_flow() -> anyhow::Result<Value> {
 
 fn codex_app_install_script_windows() -> &'static str {
     r#"$ErrorActionPreference = 'Continue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::UTF8
+[System.Console]::InputEncoding = [System.Text.UTF8Encoding]::UTF8
+$OutputEncoding = [System.Text.UTF8Encoding]::UTF8
 $installUrl = 'https://developers.openai.com/codex/app/windows'
 Write-Host ''
 Write-Host '正在安装 OpenAI 官方 Codex 桌面应用...' -ForegroundColor Cyan
-Write-Host '将优先使用官方命令：winget install Codex -s msstore'
+Write-Host '将优先使用官方命令：winget install --id 9PLM9XGG6VKS --exact --source msstore --accept-source-agreements --accept-package-agreements --silent --disable-interactivity'
 Write-Host ''
 
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
   Write-Host '当前电脑没有检测到 winget。' -ForegroundColor Yellow
   Write-Host '如果安装失败，请在打开的 OpenAI 官方页面按说明安装 Codex。'
   Start-Process $installUrl
-  Read-Host '处理完成后按回车关闭窗口'
   exit 1
 }
 
-winget source list | Out-String | Write-Host
-winget install Codex -s msstore
+$installArgs = @(
+  'install',
+  '--id', '9PLM9XGG6VKS',
+  '--exact',
+  '--source', 'msstore',
+  '--accept-source-agreements',
+  '--accept-package-agreements',
+  '--silent',
+  '--disable-interactivity'
+)
+winget @installArgs
 if ($LASTEXITCODE -ne 0) {
   Write-Host ''
   Write-Host 'Codex 自动安装失败。' -ForegroundColor Yellow
   Write-Host '常见原因：Microsoft Store 被禁用、msstore 源不可用、网络或系统策略限制。'
   Write-Host '已打开 OpenAI 官方 Windows 安装页面，请按页面说明安装 Codex。'
   Start-Process $installUrl
-  Read-Host '安装完成后回到 Codex 官方管理工具概览页刷新；按回车关闭窗口'
   exit $LASTEXITCODE
 }
 
 Write-Host ''
 Write-Host 'Codex 安装命令已完成。请回到 Codex 官方管理工具概览页刷新，然后点击打开 Codex。' -ForegroundColor Green
-Read-Host '按回车关闭窗口'
 "#
 }
 
@@ -3554,7 +3579,13 @@ fn command_search_path() -> Option<std::ffi::OsString> {
         if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
             let local = PathBuf::from(local_appdata);
             paths.push(local.join("Programs").join("nodejs"));
-            paths.push(local.join("Programs").join("OpenAI").join("Codex").join("bin"));
+            paths.push(
+                local
+                    .join("Programs")
+                    .join("OpenAI")
+                    .join("Codex")
+                    .join("bin"),
+            );
         }
         if let Some(profile) = std::env::var_os("USERPROFILE") {
             paths.push(PathBuf::from(profile).join(".npm-global").join("bin"));
