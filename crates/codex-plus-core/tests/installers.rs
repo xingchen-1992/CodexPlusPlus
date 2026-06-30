@@ -143,9 +143,11 @@ fn windows_installer_optionally_bundles_codex_app() {
     assert!(script.contains("File /nonfatal /r"));
     assert!(script.contains("RMDir /r \"$INSTDIR\\app\\Codex\""));
     assert!(script.contains("CodexOfficialApp-x64.msix"));
-    assert!(script.contains("IfFileExists \"$EXEDIR\\${CODEX_MSIX_FILENAME}\""));
+    assert!(script.contains("!define CODEX_MSIX_DIR \"安装资源\""));
+    assert!(script.contains("$EXEDIR\\${CODEX_MSIX_DIR}\\${CODEX_MSIX_FILENAME}"));
+    assert!(script.contains("$EXEDIR\\${CODEX_MSIX_FILENAME}"));
     assert!(script.contains("Add-AppxPackage -Path $$msix"));
-    assert!(script.contains("请确认已完整解压压缩包"));
+    assert!(!script.contains("请确认已完整解压压缩包"));
 }
 
 #[test]

@@ -565,6 +565,12 @@ pub fn prepare_installer_for_launch(path: &Path) -> anyhow::Result<PathBuf> {
 }
 
 fn find_windows_setup_executable(root: &Path) -> anyhow::Result<PathBuf> {
+    let visible_setup = root.join("双击安装.exe");
+    if visible_setup.is_file() {
+        return Ok(visible_setup);
+    }
+
+    let mut fallback = None;
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         for entry in fs::read_dir(&dir)? {
@@ -579,16 +585,21 @@ fn find_windows_setup_executable(root: &Path) -> anyhow::Result<PathBuf> {
                 .file_name()
                 .and_then(|name| name.to_str())
                 .unwrap_or_default()
-                .to_ascii_lowercase();
-            if file_name.contains("codexplusofficial")
-                && file_name.contains("windows")
-                && file_name.ends_with("setup.exe")
-            {
+                .to_string();
+            if file_name == "双击安装.exe" {
                 return Ok(path);
+            }
+            let lower_file_name = file_name.to_ascii_lowercase();
+            if fallback.is_none()
+                && lower_file_name.contains("codexplusofficial")
+                && lower_file_name.contains("windows")
+                && lower_file_name.ends_with("setup.exe")
+            {
+                fallback = Some(path);
             }
         }
     }
-    anyhow::bail!("Windows 更新压缩包中没有找到安装程序")
+    fallback.ok_or_else(|| anyhow::anyhow!("Windows 更新压缩包中没有找到安装程序"))
 }
 
 pub fn launch_installer(path: &Path) -> anyhow::Result<()> {

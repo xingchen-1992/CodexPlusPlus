@@ -15,6 +15,7 @@ jobs:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
       CODEX_WINDOWS_X64_MSIX_URL: "https://codexapp.agentsmirror.com/latest/win-x64"
+      CODEX_WINDOWS_X64_MSIX_CACHE_KEY: "2026-06-30"
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v4
@@ -82,7 +83,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: apps/codex-plus-manager
-        run: npm install --package-lock=false
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Build frontend
         working-directory: apps/codex-plus-manager
@@ -110,13 +111,26 @@ jobs:
             Write-Host "CODEX_APP_SOURCE not set; installer will rely on the management tool install flow."
           }
 
+      - name: Cache Codex Windows MSIX
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/codex-plus-release/windows/CodexOfficialApp-x64.msix
+          key: ${{ runner.os }}-codex-windows-msix-${{ env.CODEX_WINDOWS_X64_MSIX_CACHE_KEY }}
+
       - name: Download Codex Windows MSIX
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force dist/windows/package | Out-Null
           $msix = "dist/windows/package/CodexOfficialApp-x64.msix"
-          curl.exe -L --retry 3 --retry-delay 10 --fail -o $msix $env:CODEX_WINDOWS_X64_MSIX_URL
+          $cache = Join-Path $env:USERPROFILE ".cache\codex-plus-release\windows\CodexOfficialApp-x64.msix"
+          New-Item -ItemType Directory -Force (Split-Path $cache) | Out-Null
+          if (Test-Path $cache) {
+            Copy-Item $cache $msix -Force
+          } else {
+            curl.exe -L --retry 3 --retry-delay 10 --fail -o $msix $env:CODEX_WINDOWS_X64_MSIX_URL
+            Copy-Item $msix $cache -Force
+          }
           $size = (Get-Item $msix).Length
           if ($size -lt 100MB) {
             throw "Downloaded Codex MSIX is unexpectedly small: $size bytes"
@@ -158,17 +172,10 @@ jobs:
             Remove-Item $packageRoot -Recurse -Force
           }
           New-Item -ItemType Directory -Force $packageRoot | Out-Null
-          Copy-Item $setup "$packageRoot/"
-          Copy-Item $msix "$packageRoot/"
-          $readme = "$packageRoot/请先解压后运行安装程序.txt"
-          @"
-          Codex官方管理工具安装说明
-
-          1. 请先完整解压这个压缩包。
-          2. 双击 CodexPlusOfficial-${version}-windows-x64-setup.exe。
-          3. 安装程序会同时安装 Codex官方管理工具 和 OpenAI Codex 应用。
-          4. 安装完成后会自动打开 Codex官方管理工具，概览页点击“打开 Codex”即可使用。
-          "@ | Set-Content -Path $readme -Encoding UTF8
+          $resourcesDir = "$packageRoot/安装资源"
+          New-Item -ItemType Directory -Force $resourcesDir | Out-Null
+          Copy-Item $setup "$packageRoot/双击安装.exe"
+          Copy-Item $msix "$resourcesDir/CodexOfficialApp-x64.msix"
           Compress-Archive -Force -Path "$packageRoot/*" -DestinationPath "dist/windows/CodexPlusOfficial-${version}-windows-x64.zip"
 
       - name: Upload Windows ZIP package
@@ -184,6 +191,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
+      CODEX_MACOS_APP_VERSION: "26.623.70822"
       CODEX_MACOS_ARM64_ZIP_URL: "https://github.com/Wangnov/codex-app-mirror/releases/latest/download/Codex-darwin-arm64-26.623.70822.zip"
       CODEX_MACOS_X64_ZIP_URL: "https://github.com/Wangnov/codex-app-mirror/releases/latest/download/Codex-darwin-x64-26.623.70822.zip"
     strategy:
@@ -230,7 +238,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: apps/codex-plus-manager
-        run: npm install --package-lock=false
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Build frontend
         working-directory: apps/codex-plus-manager
@@ -243,6 +251,12 @@ jobs:
         if: always()
         run: sccache --show-stats
 
+      - name: Cache Codex macOS app zip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/codex-plus-release/macos/${{ matrix.arch }}/codex-app.zip
+          key: ${{ runner.os }}-${{ matrix.arch }}-codex-app-${{ env.CODEX_MACOS_APP_VERSION }}
+
       - name: Download Codex macOS app bundle
         env:
           CODEX_DARWIN_ARCH: ${{ matrix.arch }}
@@ -251,12 +265,20 @@ jobs:
           source_root="dist/codex-source/${CODEX_DARWIN_ARCH}"
           rm -rf "$source_root"
           mkdir -p "$source_root"
+          cache_root="$HOME/.cache/codex-plus-release/macos/${CODEX_DARWIN_ARCH}"
+          cache_zip="$cache_root/codex-app.zip"
+          mkdir -p "$cache_root"
           case "$CODEX_DARWIN_ARCH" in
             arm64) url="$CODEX_MACOS_ARM64_ZIP_URL" ;;
             x64) url="$CODEX_MACOS_X64_ZIP_URL" ;;
             *) echo "Unsupported Codex macOS arch: $CODEX_DARWIN_ARCH" >&2; exit 1 ;;
           esac
-          curl -L --retry 3 --retry-delay 10 --fail -o "$source_root/codex-app.zip" "$url"
+          if [ -f "$cache_zip" ]; then
+            cp "$cache_zip" "$source_root/codex-app.zip"
+          else
+            curl -L --retry 3 --retry-delay 10 --fail -o "$source_root/codex-app.zip" "$url"
+            cp "$source_root/codex-app.zip" "$cache_zip"
+          fi
           size="$(stat -f%z "$source_root/codex-app.zip")"
           if [ "$size" -lt 104857600 ]; then
             echo "Downloaded Codex macOS app zip is unexpectedly small: $size bytes" >&2

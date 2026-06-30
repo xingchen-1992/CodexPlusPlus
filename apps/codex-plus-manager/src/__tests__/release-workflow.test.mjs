@@ -15,12 +15,24 @@ test("release workflow publishes a Windows ZIP with bundled Codex MSIX", () => {
   assert.match(workflowSource, /Download Codex Windows MSIX/);
   assert.match(workflowSource, /CodexOfficialApp-x64\.msix/);
   assert.match(workflowSource, /package-root/);
-  assert.match(workflowSource, /Copy-Item \$setup "\$packageRoot\/"/);
-  assert.match(workflowSource, /Copy-Item \$msix "\$packageRoot\/"/);
+  assert.match(workflowSource, /\$resourcesDir = "\$packageRoot\/安装资源"/);
+  assert.match(workflowSource, /Copy-Item \$setup "\$packageRoot\/双击安装\.exe"/);
+  assert.match(workflowSource, /Copy-Item \$msix "\$resourcesDir\/CodexOfficialApp-x64\.msix"/);
+  assert.equal(workflowSource.includes("请先解压后运行安装程序"), false);
   assert.match(workflowSource, /Compress-Archive/);
   assert.match(workflowSource, /-Path "\$packageRoot\/\*"/);
   assert.match(workflowSource, /CodexPlusOfficial-\$\{version\}-windows-x64\.zip/);
   assert.match(workflowSource, /files: dist\/windows\/\*\.zip/);
+});
+
+test("release workflow caches heavyweight dependencies and official app downloads", () => {
+  assert.match(workflowSource, /cache: npm/);
+  assert.match(workflowSource, /actions\/cache@v4/);
+  assert.match(workflowSource, /mozilla-actions\/sccache-action/);
+  assert.match(workflowSource, /Cache Codex Windows MSIX/);
+  assert.match(workflowSource, /Cache Codex macOS app zip/);
+  assert.match(workflowSource, /npm ci --prefer-offline --no-audit --no-fund/);
+  assert.equal(workflowSource.includes("npm install --package-lock=false"), false);
 });
 
 test("release workflow bundles official Codex app into macOS DMGs", () => {

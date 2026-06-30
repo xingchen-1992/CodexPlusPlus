@@ -326,35 +326,36 @@ fn download_asset_to_writes_bytes() {
 }
 
 #[test]
-fn update_zip_is_extracted_and_launches_root_setup() {
+fn update_zip_is_extracted_and_launches_visible_root_setup() {
     let dir = tempfile::tempdir().unwrap();
     let zip_path = dir
         .path()
-        .join("CodexPlusOfficial-1.0.13-official.4-windows-x64.zip");
+        .join("CodexPlusOfficial-1.0.13-official.5-windows-x64.zip");
     let file = std::fs::File::create(&zip_path).unwrap();
     let mut zip = zip::ZipWriter::new(file);
     let options = zip::write::SimpleFileOptions::default();
-    zip.start_file(
-        "CodexPlusOfficial-1.0.13-official.4-windows-x64-setup.exe",
-        options,
-    )
-    .unwrap();
+    zip.start_file("双击安装.exe", options).unwrap();
     zip.write_all(b"fake setup").unwrap();
-    zip.start_file("CodexOfficialApp-x64.msix", options)
+    zip.start_file("安装资源/CodexOfficialApp-x64.msix", options)
         .unwrap();
     zip.write_all(b"fake msix").unwrap();
+    zip.start_file("安装资源/manifest.json", options).unwrap();
+    zip.write_all(b"{}").unwrap();
     zip.finish().unwrap();
 
     let launch_path = prepare_installer_for_launch(&zip_path).unwrap();
 
     assert_eq!(
         launch_path.file_name().and_then(|name| name.to_str()),
-        Some("CodexPlusOfficial-1.0.13-official.4-windows-x64-setup.exe")
+        Some("双击安装.exe")
     );
     assert!(launch_path.exists());
     assert!(
         launch_path
-            .with_file_name("CodexOfficialApp-x64.msix")
+            .parent()
+            .unwrap()
+            .join("安装资源")
+            .join("CodexOfficialApp-x64.msix")
             .exists()
     );
 }

@@ -1915,7 +1915,6 @@ export function App() {
       await refreshEnvConflicts(true);
       await refreshProviderSyncTargets(true);
       await refreshPendingProviderImport(true);
-      await checkPluginMarketplacePrompt();
       void ensureManagedSkillsForCodex({ silent: true, settingsOverride: startupSettings });
     })();
   }, []);

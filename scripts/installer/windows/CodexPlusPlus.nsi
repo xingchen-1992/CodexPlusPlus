@@ -6,6 +6,7 @@
 !endif
 !define ROOT "..\..\.."
 !define CODEX_MSIX_FILENAME "CodexOfficialApp-x64.msix"
+!define CODEX_MSIX_DIR "安装资源"
 
 Name "Codex官方管理工具"
 OutFile "${ROOT}\dist\windows\CodexPlusOfficial-${VERSION}-windows-x64-setup.exe"
@@ -69,16 +70,21 @@ Section "安装主程序" SEC_MAIN
 SectionEnd
 
 Section "安装 Codex 应用" SEC_CODEX_APP
-  IfFileExists "$EXEDIR\${CODEX_MSIX_FILENAME}" 0 codex_msix_missing
+  StrCpy $0 "$EXEDIR\${CODEX_MSIX_DIR}\${CODEX_MSIX_FILENAME}"
+  IfFileExists "$0" codex_msix_found 0
+  StrCpy $0 "$EXEDIR\${CODEX_MSIX_FILENAME}"
+  IfFileExists "$0" codex_msix_found codex_msix_missing
+
+  codex_msix_found:
   DetailPrint "Installing OpenAI Codex app package..."
-  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop'; $$msix='$EXEDIR\${CODEX_MSIX_FILENAME}'; try { Add-AppxPackage -Path $$msix -ForceApplicationShutdown; exit 0 } catch { $$existing=Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue; if ($$existing) { exit 0 }; Write-Error $$_; exit 1 }"`
-  Pop $0
-  StrCmp $0 "0" codex_msix_done 0
-  MessageBox MB_ICONEXCLAMATION "Codex 应用安装失败。请确认已完整解压压缩包；如果仍失败，请重新下载完整安装包后再运行。"
+  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop'; $$msix='$0'; try { Add-AppxPackage -Path $$msix -ForceApplicationShutdown; exit 0 } catch { $$existing=Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue; if ($$existing) { exit 0 }; Write-Error $$_; exit 1 }"`
+  Pop $1
+  StrCmp $1 "0" codex_msix_done 0
+  MessageBox MB_ICONEXCLAMATION "Codex 应用安装失败。请重新下载完整安装包后再运行。"
   Goto codex_msix_done
 
   codex_msix_missing:
-    MessageBox MB_ICONEXCLAMATION "未找到同目录下的 ${CODEX_MSIX_FILENAME}。请先解压完整压缩包后再运行安装程序。"
+    MessageBox MB_ICONEXCLAMATION "未找到 Codex 应用安装文件。请重新下载完整安装包后再运行。"
 
   codex_msix_done:
 SectionEnd

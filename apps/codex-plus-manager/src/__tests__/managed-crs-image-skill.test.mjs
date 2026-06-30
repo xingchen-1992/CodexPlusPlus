@@ -38,6 +38,12 @@ test("opening or restarting Codex syncs managed skills first", () => {
   assert.match(ready[0], /await ensureManagedSkillsForCodex\(\{ silent: true \}\)/);
 });
 
+test("startup syncs managed skill without prompting for plugin marketplace repair", () => {
+  const startup = appSource.match(/useEffect\(\(\) => \{[\s\S]*?void ensureManagedSkillsForCodex\(\{ silent: true, settingsOverride: startupSettings \}\);[\s\S]*?\n\s*\}, \[\]\);/);
+  assert.ok(startup, "startup effect should sync managed skills");
+  assert.equal(startup[0].includes("checkPluginMarketplacePrompt"), false);
+});
+
 test("managed crs-image node detection does not flash a Windows console", () => {
   const nodeDetected = commandsSource.match(/fn node_detected\(\) -> bool \{[\s\S]*?\n\}/);
   assert.ok(nodeDetected, "node_detected should exist");
