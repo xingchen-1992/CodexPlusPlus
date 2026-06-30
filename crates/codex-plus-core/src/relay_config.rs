@@ -469,6 +469,24 @@ pub fn apply_pure_api_config_to_home_with_protocol(
     protocol: RelayProtocol,
     proxy_port: u16,
 ) -> anyhow::Result<RelayApplyResult> {
+    apply_named_pure_api_config_to_home_with_protocol(
+        home,
+        base_url,
+        bearer_token,
+        protocol,
+        proxy_port,
+        "",
+    )
+}
+
+pub fn apply_named_pure_api_config_to_home_with_protocol(
+    home: &Path,
+    base_url: &str,
+    bearer_token: &str,
+    protocol: RelayProtocol,
+    proxy_port: u16,
+    provider_name: &str,
+) -> anyhow::Result<RelayApplyResult> {
     let base_url = base_url.trim();
     if base_url.is_empty() {
         anyhow::bail!("中转 Base URL 不能为空");
@@ -478,7 +496,8 @@ pub fn apply_pure_api_config_to_home_with_protocol(
         anyhow::bail!("中转 Key 不能为空");
     }
     let codex_base_url = codex_base_url_for_protocol(base_url, protocol, proxy_port);
-    let updated = upsert_model_provider_config("", &codex_base_url, bearer_token)?;
+    let updated =
+        upsert_model_provider_config_with_name("", &codex_base_url, bearer_token, provider_name)?;
     let auth_contents = serde_json::to_string_pretty(&json!({
         "OPENAI_API_KEY": bearer_token
     }))?;
@@ -2457,6 +2476,15 @@ fn upsert_model_provider_config(
     base_url: &str,
     bearer_token: &str,
 ) -> anyhow::Result<String> {
+    upsert_model_provider_config_with_name(contents, base_url, bearer_token, "")
+}
+
+fn upsert_model_provider_config_with_name(
+    contents: &str,
+    base_url: &str,
+    bearer_token: &str,
+    provider_name: &str,
+) -> anyhow::Result<String> {
     let mut doc = parse_toml_document(contents)?;
     let provider_id = active_or_default_provider_id(&doc);
     set_provider_id(&mut doc, &provider_id);
@@ -2468,7 +2496,12 @@ fn upsert_model_provider_config(
     }
 
     let provider = ensure_provider_table(&mut doc, &provider_id)?;
-    provider["name"] = toml_edit::value(provider_id.as_str());
+    let display_name = provider_name.trim();
+    provider["name"] = toml_edit::value(if display_name.is_empty() {
+        provider_id.as_str()
+    } else {
+        display_name
+    });
     provider["wire_api"] = toml_edit::value("responses");
     provider["requires_openai_auth"] = toml_edit::value(true);
     provider["base_url"] = toml_edit::value(base_url);

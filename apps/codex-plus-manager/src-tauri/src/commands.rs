@@ -25,6 +25,9 @@ const CODEX_WINDOWS_INSTALL_COMMAND: &str = "winget install --id 9PLM9XGG6VKS --
 const CODEX_OFFICIAL_INSTALL_URL: &str = "https://developers.openai.com/codex/app";
 const CODEX_WINDOWS_STORE_URL: &str =
     "https://apps.microsoft.com/detail/9plm9xgg6vks?hl=zh-CN&gl=SC";
+const OFFICIAL_RELAY_ID: &str = "official";
+const OFFICIAL_RELAY_NAME: &str = "总量包";
+const OFFICIAL_BASE_URL: &str = "https://www.leishen-ai.cn/openai";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CommandResult<T>
@@ -426,10 +429,6 @@ pub async fn official_balance(
 
 #[tauri::command]
 pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> CommandResult<Value> {
-    const OFFICIAL_RELAY_ID: &str = "official";
-    const OFFICIAL_RELAY_NAME: &str = "官方";
-    const OFFICIAL_BASE_URL: &str = "https://www.leishen-ai.cn/openai";
-
     let api_key = request.api_key.trim().to_string();
     if api_key.is_empty() {
         return failed("API Key 不能为空。", json!({}));
@@ -437,63 +436,23 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
 
     let store = SettingsStore::default();
     let mut settings = store.load().unwrap_or_default();
-    let already_configured_settings = settings.relay_profiles_enabled
-        && settings.active_relay_id == OFFICIAL_RELAY_ID
-        && settings.relay_profiles.iter().any(|profile| {
-            profile.id == OFFICIAL_RELAY_ID
-                && profile.base_url.trim_end_matches('/') == OFFICIAL_BASE_URL
-                && profile.api_key == api_key
-        });
-
-    if !already_configured_settings {
-        let mut profile = codex_plus_core::settings::RelayProfile::default();
-        profile.id = OFFICIAL_RELAY_ID.to_string();
-        profile.name = OFFICIAL_RELAY_NAME.to_string();
-        profile.model = "gpt-5.4".to_string();
-        profile.base_url = OFFICIAL_BASE_URL.to_string();
-        profile.upstream_base_url = OFFICIAL_BASE_URL.to_string();
-        profile.api_key = api_key.clone();
-        profile.protocol = codex_plus_core::settings::RelayProtocol::Responses;
-        profile.relay_mode = codex_plus_core::settings::RelayMode::PureApi;
-        profile.official_mix_api_key = false;
-        profile.test_model = "gpt-5.4-mini".to_string();
-        profile.use_common_config = true;
-        profile.context_selection_initialized = true;
-
-        let mut profiles = std::mem::take(&mut settings.relay_profiles)
-            .into_iter()
-            .filter(|profile| profile.id != OFFICIAL_RELAY_ID)
-            .collect::<Vec<_>>();
-        profiles.insert(0, profile);
-        settings.relay_profiles = profiles;
-        settings.active_relay_id = OFFICIAL_RELAY_ID.to_string();
-        settings.relay_profiles_enabled = true;
-        settings.launch_mode = codex_plus_core::settings::LaunchMode::Patch;
-        settings.relay_base_url = OFFICIAL_BASE_URL.to_string();
-        settings.relay_api_key = api_key.clone();
-        settings.relay_test_model = "gpt-5.4-mini".to_string();
-        settings.cli_wrapper_enabled = true;
-        settings.cli_wrapper_base_url = OFFICIAL_BASE_URL.to_string();
-        settings.cli_wrapper_api_key = api_key.clone();
-        settings.cli_wrapper_api_key_env = codex_plus_core::settings::default_api_key_env();
-
-        if let Err(error) = store.save(&settings) {
-            return failed(&format!("保存官方配置失败：{error}"), json!({}));
-        }
+    upsert_official_api_key_settings(&mut settings, &api_key);
+    if let Err(error) = store.save(&settings) {
+        return failed(&format!("保存总量包配置失败：{error}"), json!({}));
     }
 
     let home = codex_plus_core::relay_config::default_codex_home_dir();
-    let before_status = codex_plus_core::relay_config::relay_status_from_home(&home);
-    let applied = !already_configured_settings || !before_status.configured;
-    let apply_result = if applied {
-        match codex_plus_core::relay_config::apply_pure_api_config_to_home_with_protocol(
+    let applied = true;
+    let apply_result =
+        match codex_plus_core::relay_config::apply_named_pure_api_config_to_home_with_protocol(
             &home,
             OFFICIAL_BASE_URL,
             &api_key,
             codex_plus_core::settings::RelayProtocol::Responses,
             codex_plus_core::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT,
+            OFFICIAL_RELAY_NAME,
         ) {
-            Ok(result) => Some(result),
+            Ok(result) => result,
             Err(error) => {
                 let status = codex_plus_core::relay_config::relay_status_from_home(&home);
                 return failed(
@@ -505,12 +464,34 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
                     }),
                 );
             }
-        }
-    } else {
-        None
-    };
+        };
 
-    let _ = codex_plus_core::cli_wrapper::ensure_cli_wrapper(&settings);
+    let mut settings_for_wrapper = settings.clone();
+    if let Some(active_profile) = settings_for_wrapper
+        .relay_profiles
+        .iter_mut()
+        .find(|profile| profile.id == OFFICIAL_RELAY_ID)
+    {
+        match codex_plus_core::relay_config::backfill_relay_profile_from_home(&home, active_profile)
+        {
+            Ok(updated) => *active_profile = updated,
+            Err(error) => {
+                return failed(
+                    &format!("回填总量包配置失败：{error}"),
+                    json!({
+                        "configured": false,
+                        "applied": true,
+                        "entrypointsInstalled": false,
+                    }),
+                );
+            }
+        }
+    }
+    if let Err(error) = store.save(&settings_for_wrapper) {
+        return failed(&format!("保存总量包配置快照失败：{error}"), json!({}));
+    }
+
+    let _ = codex_plus_core::cli_wrapper::ensure_cli_wrapper(&settings_for_wrapper);
 
     let entrypoints_before = install::inspect_entrypoints();
     let entrypoints_needed = !entrypoints_before.silent_shortcut.installed
@@ -529,7 +510,7 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
     let status = codex_plus_core::relay_config::relay_status_from_home(&home);
     if !status.configured {
         return failed(
-            "官方配置已保存，但 Codex config.toml/auth.json 尚未完整写入。",
+            "总量包配置已保存，但 Codex config.toml/auth.json 尚未完整写入。",
             json!({
                 "configured": false,
                 "applied": applied,
@@ -540,17 +521,13 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
     }
 
     let entrypoints_ok = entrypoints.status == "ok";
-    let message = if applied {
-        "官方 API Key 已写入 Codex 配置。"
-    } else {
-        "官方 API Key 已配置，本次只刷新额度。"
-    };
+    let message = "总量包 API Key 已写入 Codex 配置。";
     let payload = json!({
         "configured": true,
         "applied": applied,
         "entrypointsInstalled": entrypoints_ok,
         "entrypointsMessage": entrypoints.message,
-        "backupPath": apply_result.and_then(|result| result.backup_path),
+        "backupPath": apply_result.backup_path,
     });
     if entrypoints_ok {
         ok(message, payload)
@@ -560,6 +537,39 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
             payload,
         )
     }
+}
+
+fn upsert_official_api_key_settings(settings: &mut BackendSettings, api_key: &str) {
+    let mut profile = codex_plus_core::settings::RelayProfile::default();
+    profile.id = OFFICIAL_RELAY_ID.to_string();
+    profile.name = OFFICIAL_RELAY_NAME.to_string();
+    profile.model = "gpt-5.4".to_string();
+    profile.base_url = OFFICIAL_BASE_URL.to_string();
+    profile.upstream_base_url = OFFICIAL_BASE_URL.to_string();
+    profile.api_key = api_key.trim().to_string();
+    profile.protocol = codex_plus_core::settings::RelayProtocol::Responses;
+    profile.relay_mode = codex_plus_core::settings::RelayMode::PureApi;
+    profile.official_mix_api_key = false;
+    profile.test_model = "gpt-5.4-mini".to_string();
+    profile.use_common_config = true;
+    profile.context_selection_initialized = true;
+
+    let mut profiles = std::mem::take(&mut settings.relay_profiles)
+        .into_iter()
+        .filter(|profile| profile.id != OFFICIAL_RELAY_ID)
+        .collect::<Vec<_>>();
+    profiles.insert(0, profile);
+    settings.relay_profiles = profiles;
+    settings.active_relay_id = OFFICIAL_RELAY_ID.to_string();
+    settings.relay_profiles_enabled = true;
+    settings.launch_mode = codex_plus_core::settings::LaunchMode::Patch;
+    settings.relay_base_url = OFFICIAL_BASE_URL.to_string();
+    settings.relay_api_key = api_key.trim().to_string();
+    settings.relay_test_model = "gpt-5.4-mini".to_string();
+    settings.cli_wrapper_enabled = true;
+    settings.cli_wrapper_base_url = OFFICIAL_BASE_URL.to_string();
+    settings.cli_wrapper_api_key = api_key.trim().to_string();
+    settings.cli_wrapper_api_key_env = codex_plus_core::settings::default_api_key_env();
 }
 
 pub fn startup_should_show_update() -> bool {
@@ -3742,6 +3752,58 @@ mod tests {
                 assert!(!version.trim().is_empty());
             }
         }
+    }
+
+    #[test]
+    fn official_api_key_settings_use_topup_provider_profile() {
+        let mut settings = BackendSettings {
+            relay_profiles_enabled: false,
+            active_relay_id: "manual".to_string(),
+            relay_profiles: vec![
+                RelayProfile {
+                    id: "manual".to_string(),
+                    name: "手动供应商".to_string(),
+                    api_key: "sk-manual".to_string(),
+                    ..RelayProfile::default()
+                },
+                RelayProfile {
+                    id: "official".to_string(),
+                    name: "官方".to_string(),
+                    api_key: "sk-old".to_string(),
+                    ..RelayProfile::default()
+                },
+            ],
+            ..BackendSettings::default()
+        };
+
+        upsert_official_api_key_settings(&mut settings, "sk-new-topup");
+
+        assert!(settings.relay_profiles_enabled);
+        assert_eq!(settings.active_relay_id, "official");
+        assert_eq!(settings.relay_profiles.len(), 2);
+        assert_eq!(settings.relay_profiles[0].id, "official");
+        assert_eq!(settings.relay_profiles[0].name, "总量包");
+        assert_eq!(settings.relay_profiles[0].api_key, "sk-new-topup");
+        assert_eq!(
+            settings.relay_profiles[0].base_url,
+            "https://www.leishen-ai.cn/openai"
+        );
+        assert_eq!(
+            settings.relay_profiles[0].protocol,
+            codex_plus_core::settings::RelayProtocol::Responses
+        );
+        assert_eq!(
+            settings.relay_profiles[0].relay_mode,
+            codex_plus_core::settings::RelayMode::PureApi
+        );
+        assert_eq!(settings.relay_profiles[1].id, "manual");
+        assert_eq!(settings.relay_base_url, "https://www.leishen-ai.cn/openai");
+        assert_eq!(settings.relay_api_key, "sk-new-topup");
+        assert_eq!(
+            settings.cli_wrapper_base_url,
+            "https://www.leishen-ai.cn/openai"
+        );
+        assert_eq!(settings.cli_wrapper_api_key, "sk-new-topup");
     }
 
     #[test]

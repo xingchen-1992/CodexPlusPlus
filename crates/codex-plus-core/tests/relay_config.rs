@@ -1,8 +1,9 @@
 use codex_plus_core::codex_sqlite::codex_session_db_path_from_home;
 use codex_plus_core::relay_config::{
-    apply_pure_api_config_to_home, apply_relay_config_file_to_home, apply_relay_config_to_home,
-    apply_relay_files_to_home, apply_relay_files_to_home_with_common,
-    apply_relay_profile_files_to_home_with_context, apply_relay_profile_to_home_with_switch_rules,
+    apply_named_pure_api_config_to_home_with_protocol, apply_pure_api_config_to_home,
+    apply_relay_config_file_to_home, apply_relay_config_to_home, apply_relay_files_to_home,
+    apply_relay_files_to_home_with_common, apply_relay_profile_files_to_home_with_context,
+    apply_relay_profile_to_home_with_switch_rules,
     apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard,
     backfill_relay_profile_from_home, backfill_relay_profile_from_home_with_common,
     chatgpt_auth_status_from_home, clear_relay_config_to_home,
@@ -470,6 +471,33 @@ fn apply_pure_api_config_switches_auth_json_and_writes_provider_token() {
     assert!(config.contains("requires_openai_auth = true"));
     assert!(config.contains(r#"base_url = "http://192.168.188.245:3001/v1""#));
     assert!(config.contains(r#"experimental_bearer_token = "sk-test-redacted""#));
+}
+
+#[test]
+fn apply_named_pure_api_config_writes_topup_provider_display_name() {
+    let temp = tempfile::tempdir().unwrap();
+
+    let result = apply_named_pure_api_config_to_home_with_protocol(
+        temp.path(),
+        "https://www.leishen-ai.cn/openai",
+        "sk-topup-test",
+        RelayProtocol::Responses,
+        57321,
+        "总量包",
+    )
+    .unwrap();
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    let auth: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(temp.path().join("auth.json")).unwrap())
+            .unwrap();
+    assert!(result.configured);
+    assert!(config.contains(r#"model_provider = "custom""#));
+    assert!(config.contains("[model_providers.custom]"));
+    assert!(config.contains(r#"name = "总量包""#));
+    assert!(config.contains(r#"base_url = "https://www.leishen-ai.cn/openai""#));
+    assert!(config.contains(r#"experimental_bearer_token = "sk-topup-test""#));
+    assert_eq!(auth, serde_json::json!({"OPENAI_API_KEY": "sk-topup-test"}));
 }
 
 #[test]
