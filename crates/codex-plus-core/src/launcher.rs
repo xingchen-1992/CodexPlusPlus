@@ -697,7 +697,9 @@ impl LaunchHooks for DefaultLaunchHooks {
             let executable = command
                 .first()
                 .ok_or_else(|| anyhow::anyhow!("macOS open command is empty"))?;
-            let child = Command::new(executable)
+            let mut child_command = Command::new(executable);
+            add_user_tool_dirs_to_command(&mut child_command);
+            let child = child_command
                 .args(&command[1..])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -728,6 +730,7 @@ impl LaunchHooks for DefaultLaunchHooks {
             .first()
             .ok_or_else(|| anyhow::anyhow!("Codex command is empty"))?;
         let mut child_command = Command::new(executable);
+        add_user_tool_dirs_to_command(&mut child_command);
         child_command
             .args(&command[1..])
             .stdout(Stdio::null())
@@ -2062,6 +2065,7 @@ async fn start_app_server_runtime() -> anyhow::Result<AppServerRuntime> {
     let port = reserve_app_server_port()?;
     let codex = resolve_codex_cli_path();
     let mut command = Command::new(&codex);
+    add_user_tool_dirs_to_command(&mut command);
     command
         .arg("app-server")
         .arg("--listen")
@@ -2092,6 +2096,28 @@ fn resolve_codex_cli_path() -> String {
             crate::cli_wrapper::resolve_real_codex().map(|path| path.to_string_lossy().to_string())
         })
         .unwrap_or_else(|| "codex".to_string())
+}
+
+fn add_user_tool_dirs_to_command(command: &mut Command) {
+    if let Some(path) = user_tool_path_env() {
+        command.env("PATH", path);
+    }
+}
+
+fn user_tool_path_env() -> Option<std::ffi::OsString> {
+    let home = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf())?;
+    let image_home = std::env::var_os("CRS_IMAGE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".crs-image"));
+    let mut paths = if cfg!(windows) {
+        vec![image_home.join("bin")]
+    } else {
+        vec![home.join(".local").join("bin"), image_home.join("bin")]
+    };
+    if let Some(current) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&current));
+    }
+    std::env::join_paths(paths).ok()
 }
 
 fn reserve_app_server_port() -> anyhow::Result<u16> {

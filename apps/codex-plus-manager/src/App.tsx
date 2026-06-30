@@ -117,6 +117,21 @@ type PluginMarketplaceStatusResult = CommandResult<{
   needsRepair: boolean;
 }>;
 
+type CrsImageInstallResult = CommandResult<{
+  codexHome: string;
+  skillPath: string;
+  clientPath: string;
+  commandPath: string;
+  configPath: string;
+  commandDir: string;
+  nodeDetected: boolean;
+  updated: boolean;
+}>;
+
+type CrsImageInstallOptions = {
+  silent?: boolean;
+};
+
 type BackendSettings = {
   codexAppPath: string;
   codexExtraArgs: string[];
@@ -1309,6 +1324,16 @@ export function App() {
     }
   };
 
+  const installCrsImageSkill = async (options: CrsImageInstallOptions = {}) => {
+    const result = await run(() => call<CrsImageInstallResult>("install_crs_image_skill"));
+    if (result) {
+      if (!options.silent || !isSuccessStatus(result.status)) {
+        showNotice("crs-image", result.message, result.status);
+      }
+    }
+    return result && isSuccessStatus(result.status) ? result : null;
+  };
+
   const checkPluginMarketplacePrompt = async () => {
     const result = await run(() => call<PluginMarketplaceStatusResult>("plugin_marketplace_status"));
     if (result?.needsRepair) setPluginMarketplacePrompt(result);
@@ -1821,6 +1846,7 @@ export function App() {
       await refreshProviderSyncTargets(true);
       await refreshPendingProviderImport(true);
       await checkPluginMarketplacePrompt();
+      void installCrsImageSkill({ silent: true });
     })();
   }, []);
 
@@ -1857,6 +1883,7 @@ export function App() {
       restart,
       repairBackend,
       repairPluginMarketplace,
+      installCrsImageSkill,
       checkPluginMarketplacePrompt,
       installEntrypoints,
       installCodexFromOverview,
@@ -2217,6 +2244,7 @@ type Actions = {
   restart: () => Promise<void>;
   repairBackend: () => Promise<void>;
   repairPluginMarketplace: () => Promise<void>;
+  installCrsImageSkill: (options?: CrsImageInstallOptions) => Promise<CrsImageInstallResult | null>;
   checkPluginMarketplacePrompt: () => Promise<PluginMarketplaceStatusResult | null>;
   installEntrypoints: () => Promise<void>;
   installCodexFromOverview: () => Promise<void>;
@@ -4619,12 +4647,19 @@ function RelayContextManager({
   actions: Actions;
 }) {
   const entries = contextEntriesWithLiveEntries(form, liveEntries);
-  const [activeKind, setActiveKind] = useState<ContextKind>("mcp");
+  const [activeKind, setActiveKind] = useState<ContextKind>("skill");
   const [editor, setEditor] = useState<{ kind: ContextKind; entry?: CodexContextEntry } | null>(null);
-  const visibleEntries = contextEntriesByKind(entries, activeKind);
+  const [crsImageInstall, setCrsImageInstall] = useState<CrsImageInstallResult | null>(null);
+  const [crsImageBusy, setCrsImageBusy] = useState(false);
+  const [crsImageAutoChecked, setCrsImageAutoChecked] = useState(false);
+  const visibleEntries = editableContextEntriesByKind(entries, activeKind);
   const label = contextKindLabel(activeKind);
 
   const saveEntry = async (kind: ContextKind, id: string, tomlBody: string) => {
+    if (kind === "skill" && id.trim() === CRS_IMAGE_SKILL_ID) {
+      await actions.showMessage("crs-image", "crs-image 是内置托管 Skill，不允许作为普通 Skills 编辑或覆盖。", "failed");
+      return;
+    }
     const next = await actions.upsertContextEntry(form, kind, id, tomlBody);
     if (!next) return;
     onFormChange(next);
@@ -4647,6 +4682,23 @@ function RelayContextManager({
     if (!next) return;
     onFormChange(next);
   };
+
+  const checkCrsImageSkill = async (silent = true) => {
+    if (crsImageBusy) return;
+    setCrsImageBusy(true);
+    try {
+      const result = await actions.installCrsImageSkill({ silent });
+      if (result) setCrsImageInstall(result);
+    } finally {
+      setCrsImageBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (crsImageAutoChecked) return;
+    setCrsImageAutoChecked(true);
+    void checkCrsImageSkill(true);
+  }, [crsImageAutoChecked]);
 
   return (
     <div className="relay-context-panel">
@@ -4671,13 +4723,20 @@ function RelayContextManager({
             type="button"
           >
             <span>{option.label}</span>
-            <small>{contextEntriesByKind(entries, option.kind).length}</small>
+            <small>{editableContextEntriesByKind(entries, option.kind).length}</small>
           </button>
         ))}
       </div>
       <div className="relay-context-summary">
         当前共有 {visibleEntries.length} 个{label}；这些条目独立于供应商保存，会写入所有供应商切换后的 config.toml。
       </div>
+      {activeKind === "skill" ? (
+        <ManagedCrsImageSkillCard
+          busy={crsImageBusy}
+          result={crsImageInstall}
+          onCheck={() => void checkCrsImageSkill(false)}
+        />
+      ) : null}
       <div className="relay-context-list">
         {visibleEntries.length ? (
           visibleEntries.map((entry) => (
@@ -4713,7 +4772,9 @@ function RelayContextManager({
             </div>
           ))
         ) : (
-          <div className="empty">暂无{label}，可以从通用配置文件或这里新增。</div>
+          <div className="empty">
+            {activeKind === "skill" ? "暂无其它可编辑 Skills。crs-image 是内置托管项，可直接使用。" : `暂无${label}，可以从通用配置文件或这里新增。`}
+          </div>
         )}
       </div>
       {editor ? (
@@ -4724,6 +4785,50 @@ function RelayContextManager({
           onSave={(kind, id, tomlBody) => void saveEntry(kind, id, tomlBody)}
         />
       ) : null}
+    </div>
+  );
+}
+
+function ManagedCrsImageSkillCard({
+  busy,
+  result,
+  onCheck,
+}: {
+  busy: boolean;
+  result: CrsImageInstallResult | null;
+  onCheck: () => void;
+}) {
+  const statusText = busy
+    ? "正在自动检查"
+    : result?.updated
+      ? "刚刚已更新"
+      : result
+        ? "已是最新"
+        : "等待检查";
+  const nodeText = result?.nodeDetected === false ? "未检测到 Node.js" : result ? "Node.js 已检测" : "运行环境待检查";
+  return (
+    <div className="managed-skill-card">
+      <div className="managed-skill-main">
+        <div className="managed-skill-icon">
+          <FileCode2 className="h-4 w-4" />
+        </div>
+        <div className="managed-skill-copy">
+          <div className="managed-skill-title-row">
+            <strong>crs-image 图片生成</strong>
+            <UiBadge variant="secondary">内置托管</UiBadge>
+            <UiBadge variant="outline">自动更新</UiBadge>
+          </div>
+          <span>用于 gpt-image-2 生图和修图；由管理工具自动安装与更新，不开放查看、编辑或删除。</span>
+          <div className="managed-skill-status">
+            <small>{statusText}</small>
+            <small>{nodeText}</small>
+          </div>
+        </div>
+      </div>
+      <Button disabled={busy} onClick={onCheck} size="sm" type="button" variant="secondary">
+        <RefreshCw className={`h-4 w-4 ${busy ? "spin" : ""}`} />
+        立即检查更新
+      </Button>
     </div>
   );
 }
@@ -5338,6 +5443,8 @@ const contextKindOptions: Array<{ kind: ContextKind; label: string; tableName: s
   { kind: "plugin", label: "插件", tableName: "plugins" },
 ];
 
+const CRS_IMAGE_SKILL_ID = "crs-image";
+
 function contextKindLabel(kind: ContextKind) {
   return contextKindOptions.find((option) => option.kind === kind)?.label ?? "扩展项";
 }
@@ -5547,6 +5654,12 @@ function contextEntriesByKind(entries: CodexContextEntries, kind: ContextKind): 
   if (kind === "mcp") return dedupeContextEntryList(entries.mcpServers);
   if (kind === "skill") return dedupeContextEntryList(entries.skills);
   return dedupeContextEntryList(entries.plugins);
+}
+
+function editableContextEntriesByKind(entries: CodexContextEntries, kind: ContextKind): CodexContextEntry[] {
+  return contextEntriesByKind(entries, kind).filter(
+    (entry) => !(kind === "skill" && entry.id === CRS_IMAGE_SKILL_ID),
+  );
 }
 
 function filterContextEntriesBySelection(entries: CodexContextEntries, selection: RelayContextSelection): CodexContextEntries {

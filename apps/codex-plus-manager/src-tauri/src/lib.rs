@@ -79,6 +79,7 @@ pub fn run() {
             commands::repair_backend,
             commands::plugin_marketplace_status,
             commands::repair_plugin_marketplace,
+            commands::install_crs_image_skill,
             commands::check_update,
             commands::perform_update,
             commands::load_watcher_state,

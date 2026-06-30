@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use anyhow::Context;
 use codex_plus_core::install::SILENT_BINARY;
 use codex_plus_core::models::{DeleteResult, SessionRef};
 use codex_plus_core::script_market::{self, MarketScript, ScriptMarketManifest};
@@ -15,6 +16,10 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::install::{self, InstallActionResult, InstallOptions};
+
+const CRS_IMAGE_CLIENT_URL: &str = "https://ls-qihang.cn/tools/crs-image.mjs";
+const CRS_IMAGE_SKILL_URL: &str = "https://ls-qihang.cn/tools/crs-image-skill/SKILL.md";
+const CRS_IMAGE_DEFAULT_BASE_URL: &str = "https://ls-qihang.cn/openai/v1";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CommandResult<T>
@@ -75,6 +80,19 @@ pub struct PluginMarketplaceStatusPayload {
     pub marketplace_root: Option<String>,
     pub config_registered: bool,
     pub needs_repair: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrsImageInstallPayload {
+    pub codex_home: String,
+    pub skill_path: String,
+    pub client_path: String,
+    pub command_path: String,
+    pub config_path: String,
+    pub command_dir: String,
+    pub node_detected: bool,
+    pub updated: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -631,6 +649,7 @@ fn spawn_codex_plus_launch(request: LaunchRequest, accepted_message: &str) -> Co
 fn spawn_silent_launcher(request: &LaunchRequest) -> anyhow::Result<()> {
     let launcher = codex_plus_core::install::companion_binary_path(SILENT_BINARY);
     let mut command = std::process::Command::new(&launcher);
+    add_crs_image_command_dir_to_process(&mut command);
     if !request.app_path.trim().is_empty() {
         command.arg("--app-path").arg(request.app_path.trim());
     }
@@ -648,6 +667,26 @@ fn spawn_silent_launcher(request: &LaunchRequest) -> anyhow::Result<()> {
         .spawn()
         .map(|_| ())
         .map_err(|error| anyhow::anyhow!("无法启动 {}：{error}", launcher.to_string_lossy()))
+}
+
+fn add_crs_image_command_dir_to_process(command: &mut std::process::Command) {
+    let paths = default_crs_image_install_paths();
+    if let Some(path) = prepend_path_entries([paths.command_dir]) {
+        command.env("PATH", path);
+    }
+}
+
+fn prepend_path_entries(entries: impl IntoIterator<Item = PathBuf>) -> Option<std::ffi::OsString> {
+    let mut paths = Vec::new();
+    for entry in entries {
+        if !entry.as_os_str().is_empty() {
+            paths.push(entry);
+        }
+    }
+    if let Some(current) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&current));
+    }
+    std::env::join_paths(paths).ok()
 }
 
 #[tauri::command]
@@ -1603,6 +1642,60 @@ pub async fn repair_plugin_marketplace() -> CommandResult<PluginMarketplaceRepai
                 needs_repair: true,
             },
         ),
+    }
+}
+
+#[tauri::command]
+pub async fn install_crs_image_skill() -> CommandResult<CrsImageInstallPayload> {
+    let paths = default_crs_image_install_paths();
+    let placeholder = crs_image_install_payload(&paths, node_detected(), false);
+    let client = match script_market::download_script(CRS_IMAGE_CLIENT_URL).await {
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Ok(text) => text,
+            Err(error) => {
+                return failed(
+                    &format!("crs-image 客户端不是有效 UTF-8：{error}"),
+                    placeholder,
+                );
+            }
+        },
+        Err(error) => {
+            return failed(&format!("下载 crs-image 客户端失败：{error}"), placeholder);
+        }
+    };
+    let skill = match script_market::download_script(CRS_IMAGE_SKILL_URL).await {
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Ok(text) => text,
+            Err(error) => {
+                return failed(
+                    &format!("crs-image Skill 文档不是有效 UTF-8：{error}"),
+                    placeholder,
+                );
+            }
+        },
+        Err(error) => {
+            return failed(
+                &format!("下载 crs-image Skill 文档失败：{error}"),
+                placeholder,
+            );
+        }
+    };
+
+    match install_crs_image_files_for_paths(&paths, &client, &skill) {
+        Ok(payload) => {
+            let action = if payload.updated {
+                "crs-image Skill 已自动安装/更新"
+            } else {
+                "crs-image Skill 已是最新版本"
+            };
+            let message = if payload.node_detected {
+                format!("{action}；重启 Codex 后生效。")
+            } else {
+                format!("{action}，但未检测到 Node.js；安装 Node.js 并重启 Codex 后生效。")
+            };
+            ok(&message, payload)
+        }
+        Err(error) => failed(&format!("安装 crs-image Skill 失败：{error}"), placeholder),
     }
 }
 
@@ -2728,6 +2821,191 @@ fn empty_context_entries() -> codex_plus_core::relay_config::CodexContextEntries
     }
 }
 
+#[derive(Debug, Clone)]
+struct CrsImageInstallPaths {
+    codex_home: PathBuf,
+    skill_path: PathBuf,
+    client_path: PathBuf,
+    command_path: PathBuf,
+    config_path: PathBuf,
+    command_dir: PathBuf,
+}
+
+fn default_crs_image_install_paths() -> CrsImageInstallPaths {
+    let codex_home = codex_plus_core::codex_home::default_codex_home_dir();
+    let user_home = user_home_dir();
+    crs_image_install_paths_from_home(&codex_home, &user_home)
+}
+
+fn crs_image_install_paths_from_home(codex_home: &Path, user_home: &Path) -> CrsImageInstallPaths {
+    let image_home = std::env::var_os("CRS_IMAGE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| user_home.join(".crs-image"));
+    let command_dir = if cfg!(windows) {
+        image_home.join("bin")
+    } else {
+        user_home.join(".local").join("bin")
+    };
+    let command_path = command_dir.join(if cfg!(windows) {
+        "crs-image.cmd"
+    } else {
+        "crs-image"
+    });
+    CrsImageInstallPaths {
+        codex_home: codex_home.to_path_buf(),
+        skill_path: codex_home.join("skills").join("crs-image").join("SKILL.md"),
+        client_path: image_home.join("crs-image.mjs"),
+        command_path,
+        config_path: image_home.join("config.json"),
+        command_dir,
+    }
+}
+
+fn user_home_dir() -> PathBuf {
+    directories::BaseDirs::new()
+        .map(|dirs| dirs.home_dir().to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn install_crs_image_files_for_paths(
+    paths: &CrsImageInstallPaths,
+    client: &str,
+    skill: &str,
+) -> anyhow::Result<CrsImageInstallPayload> {
+    validate_crs_image_downloads(client, skill)?;
+    let mut updated = false;
+    updated |= write_text_file_if_changed(&paths.client_path, client)?;
+    updated |= write_text_file_if_changed(&paths.skill_path, skill)?;
+    updated |= write_text_file_if_changed(
+        &paths.command_path,
+        &crs_image_command_shim(&paths.client_path),
+    )?;
+    updated |= write_crs_image_config(&paths.config_path)?;
+    set_executable(&paths.client_path)?;
+    set_executable(&paths.command_path)?;
+    Ok(crs_image_install_payload(paths, node_detected(), updated))
+}
+
+fn validate_crs_image_downloads(client: &str, skill: &str) -> anyhow::Result<()> {
+    if !client.contains("crs-image") || !client.contains("gpt-image-2") {
+        anyhow::bail!("下载到的客户端内容不符合 crs-image 预期");
+    }
+    if !skill.contains("name: crs-image") || !skill.contains("CRS Image") {
+        anyhow::bail!("下载到的 Skill 文档不符合 crs-image 预期");
+    }
+    Ok(())
+}
+
+fn write_text_file(path: &Path, contents: &str) -> anyhow::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("创建目录失败：{}", parent.display()))?;
+    }
+    fs::write(path, contents).with_context(|| format!("写入文件失败：{}", path.display()))?;
+    Ok(())
+}
+
+fn write_text_file_if_changed(path: &Path, contents: &str) -> anyhow::Result<bool> {
+    if fs::read_to_string(path).ok().as_deref() == Some(contents) {
+        return Ok(false);
+    }
+    write_text_file(path, contents)?;
+    Ok(true)
+}
+
+fn write_crs_image_config(path: &Path) -> anyhow::Result<bool> {
+    let mut object = match fs::read_to_string(path)
+        .ok()
+        .and_then(|contents| serde_json::from_str::<Value>(&contents).ok())
+    {
+        Some(Value::Object(object)) => object,
+        _ => serde_json::Map::new(),
+    };
+    object.insert(
+        "baseUrl".to_string(),
+        Value::String(CRS_IMAGE_DEFAULT_BASE_URL.to_string()),
+    );
+    let contents = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&Value::Object(object))?
+    );
+    let updated = write_text_file_if_changed(path, &contents)?;
+    set_owner_only_read_write(path)?;
+    Ok(updated)
+}
+
+fn crs_image_command_shim(client_path: &Path) -> String {
+    if cfg!(windows) {
+        format!("@echo off\r\nnode \"{}\" %*\r\n", client_path.display())
+    } else {
+        format!(
+            "#!/usr/bin/env sh\nexec node {} \"$@\"\n",
+            sh_single_quote(&client_path.to_string_lossy())
+        )
+    }
+}
+
+fn sh_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+#[cfg(unix)]
+fn set_executable(path: &Path) -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_executable(_path: &Path) -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_owner_only_read_write(path: &Path) -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(0o600);
+    fs::set_permissions(path, permissions)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_owner_only_read_write(_path: &Path) -> anyhow::Result<()> {
+    Ok(())
+}
+
+fn node_detected() -> bool {
+    std::process::Command::new("node")
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn crs_image_install_payload(
+    paths: &CrsImageInstallPaths,
+    node_detected: bool,
+    updated: bool,
+) -> CrsImageInstallPayload {
+    CrsImageInstallPayload {
+        codex_home: path_to_string(&paths.codex_home),
+        skill_path: path_to_string(&paths.skill_path),
+        client_path: path_to_string(&paths.client_path),
+        command_path: path_to_string(&paths.command_path),
+        config_path: path_to_string(&paths.config_path),
+        command_dir: path_to_string(&paths.command_dir),
+        node_detected,
+        updated,
+    }
+}
+
+fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
 fn relay_files_payload_from_home(home: &std::path::Path) -> anyhow::Result<RelayFilesPayload> {
     let config_path = home.join("config.toml");
     let auth_path = home.join("auth.json");
@@ -3606,6 +3884,67 @@ mod tests {
             "{}\n"
         );
         assert!(save_relay_file_in_home(temp.path(), "../bad", "").is_err());
+    }
+
+    #[test]
+    fn install_crs_image_files_writes_skill_client_command_and_preserves_config() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join("codex-home");
+        let user_home = temp.path().join("user-home");
+        std::fs::create_dir_all(&codex_home).unwrap();
+        std::fs::create_dir_all(&user_home).unwrap();
+        let paths = crs_image_install_paths_from_home(&codex_home, &user_home);
+        std::fs::create_dir_all(paths.config_path.parent().unwrap()).unwrap();
+        std::fs::write(&paths.config_path, "{\"apiKey\":\"keep\"}\n").unwrap();
+
+        let payload = install_crs_image_files_for_paths(
+            &paths,
+            "#!/usr/bin/env node\nconst MODEL = 'gpt-image-2'\nconsole.log('crs-image')\n",
+            "---\nname: crs-image\n---\n# CRS Image\n",
+        )
+        .unwrap();
+
+        assert!(payload.updated);
+        assert_eq!(
+            payload.skill_path,
+            paths.skill_path.to_string_lossy().to_string()
+        );
+        assert_eq!(
+            payload.client_path,
+            paths.client_path.to_string_lossy().to_string()
+        );
+        assert!(
+            std::fs::read_to_string(&paths.skill_path)
+                .unwrap()
+                .contains("name: crs-image")
+        );
+        assert!(
+            std::fs::read_to_string(&paths.client_path)
+                .unwrap()
+                .contains("gpt-image-2")
+        );
+        assert!(
+            std::fs::read_to_string(&paths.command_path)
+                .unwrap()
+                .contains("node")
+        );
+        let config: Value =
+            serde_json::from_str(&std::fs::read_to_string(&paths.config_path).unwrap()).unwrap();
+        assert_eq!(config["baseUrl"], CRS_IMAGE_DEFAULT_BASE_URL);
+        assert_eq!(config["apiKey"], "keep");
+        if cfg!(windows) {
+            assert!(paths.command_path.ends_with("crs-image.cmd"));
+        } else {
+            assert!(paths.command_path.ends_with("crs-image"));
+        }
+
+        let second_payload = install_crs_image_files_for_paths(
+            &paths,
+            "#!/usr/bin/env node\nconst MODEL = 'gpt-image-2'\nconsole.log('crs-image')\n",
+            "---\nname: crs-image\n---\n# CRS Image\n",
+        )
+        .unwrap();
+        assert!(!second_payload.updated);
     }
 
     #[test]
