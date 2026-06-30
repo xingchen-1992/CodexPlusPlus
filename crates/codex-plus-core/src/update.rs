@@ -125,27 +125,46 @@ pub fn release_from_github_payload(payload: &Value) -> anyhow::Result<Release> {
 }
 
 pub fn release_from_latest_json_payload(payload: &Value) -> anyhow::Result<Release> {
+    let base_url = payload
+        .get("url")
+        .or_else(|| payload.get("html_url"))
+        .and_then(Value::as_str);
+    release_from_latest_json_payload_with_base(payload, base_url)
+}
+
+pub fn release_from_latest_json_payload_with_base(
+    payload: &Value,
+    base_url: Option<&str>,
+) -> anyhow::Result<Release> {
     let version = payload
         .get("version")
         .or_else(|| payload.get("tag_name"))
         .and_then(Value::as_str)
         .ok_or_else(|| anyhow::anyhow!("latest.json missing version"))?
         .to_string();
-    let assets = payload
+    let mut assets = Vec::new();
+    for asset in payload
         .get("assets")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|asset| {
-            let name = asset.get("name")?.as_str()?.to_string();
-            let url = asset
-                .get("url")
-                .or_else(|| asset.get("browser_download_url"))?
-                .as_str()?
-                .to_string();
-            Some((name, url, asset_sha256(asset)))
-        })
-        .collect::<Vec<_>>();
+    {
+        let Some(name) = asset.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(url) = asset
+            .get("url")
+            .or_else(|| asset.get("browser_download_url"))
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        assets.push((
+            name.to_string(),
+            resolve_manifest_asset_url(url, base_url)?,
+            asset_sha256(asset),
+        ));
+    }
     let (selected, asset_sha256) = select_update_asset_with_sha256(&assets);
     Ok(Release {
         version,
@@ -166,6 +185,36 @@ pub fn release_from_latest_json_payload(payload: &Value) -> anyhow::Result<Relea
         asset_url: selected.map(|asset| asset.browser_download_url),
         asset_sha256,
     })
+}
+
+pub fn resolve_manifest_asset_url(raw_url: &str, base_url: Option<&str>) -> anyhow::Result<String> {
+    let raw_url = raw_url.trim();
+    if raw_url.is_empty() {
+        anyhow::bail!("更新清单中的下载地址为空");
+    }
+    if let Ok(url) = reqwest::Url::parse(raw_url) {
+        validate_download_url(&url)?;
+        return Ok(url.to_string());
+    }
+
+    let base_url = base_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("更新清单中的下载地址不是完整 URL: {raw_url}"))?;
+    let base = reqwest::Url::parse(base_url)
+        .map_err(|error| anyhow::anyhow!("更新清单基础 URL 无效：{error}"))?;
+    let url = base
+        .join(raw_url)
+        .map_err(|error| anyhow::anyhow!("更新清单下载地址无效：{error}"))?;
+    validate_download_url(&url)?;
+    Ok(url.to_string())
+}
+
+fn validate_download_url(url: &reqwest::Url) -> anyhow::Result<()> {
+    match url.scheme() {
+        "http" | "https" => Ok(()),
+        scheme => anyhow::bail!("更新清单下载地址协议不支持：{scheme}"),
+    }
 }
 
 fn asset_sha256(asset: &Value) -> Option<String> {
@@ -241,7 +290,7 @@ pub async fn fetch_latest_release(latest_json_url: &str) -> anyhow::Result<Relea
         .error_for_status()?
         .json::<Value>()
         .await?;
-    release_from_latest_json_payload(&payload)
+    release_from_latest_json_payload_with_base(&payload, Some(latest_json_url))
 }
 
 pub async fn check_for_update(current_version: &str) -> anyhow::Result<UpdateCheck> {
@@ -266,10 +315,11 @@ pub async fn perform_update(
         .asset_url
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("没有可下载的 Release asset"))?;
+    let url = resolve_manifest_asset_url(url, Some(&release.url))?;
     expected_asset_sha256(release)?;
     let backup_path = create_pre_update_backup()?;
     let bytes = crate::http_client::proxied_client(&format!("Codex/{}", crate::version::VERSION))?
-        .get(url)
+        .get(&url)
         .send()
         .await?
         .error_for_status()?

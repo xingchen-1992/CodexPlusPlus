@@ -43,8 +43,41 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.10
 
-      - name: Install NSIS
-        run: choco install nsis -y
+      - name: Install NSIS with retry
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $installed = $false
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            choco install nsis -y --no-progress
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Chocolatey failed to install NSIS on attempt $attempt."
+              Start-Sleep -Seconds (10 * $attempt)
+              continue
+            }
+            $installed = $true
+            break
+          }
+          if (-not $installed) {
+            throw "Chocolatey failed to install NSIS after retries."
+          }
+
+          $candidatePaths = @(
+            "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
+            "${env:ProgramFiles}\NSIS\makensis.exe",
+            "C:\ProgramData\chocolatey\bin\makensis.exe"
+          )
+          $makensis = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $makensis) {
+            $command = Get-Command makensis -ErrorAction SilentlyContinue
+            if ($command) {
+              $makensis = $command.Source
+            }
+          }
+          if (-not $makensis) {
+            throw "NSIS makensis.exe was not found"
+          }
+          "NSIS_MAKENSIS=$makensis" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Install frontend dependencies
         working-directory: apps/codex-plus-manager
@@ -80,9 +113,15 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.event.release.tag_name }}".TrimStart("v", "V")
-          $makensis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
-          if (-not (Test-Path $makensis)) {
-            $makensis = "makensis"
+          $makensis = $env:NSIS_MAKENSIS
+          if (-not $makensis -or -not (Test-Path $makensis)) {
+            $command = Get-Command makensis -ErrorAction SilentlyContinue
+            if ($command) {
+              $makensis = $command.Source
+            }
+          }
+          if (-not $makensis -or -not (Test-Path $makensis)) {
+            throw "NSIS makensis.exe was not found"
           }
           Push-Location scripts/installer/windows
           & $makensis "/INPUTCHARSET" "UTF8" "/DVERSION=$version" CodexPlusPlus.nsi

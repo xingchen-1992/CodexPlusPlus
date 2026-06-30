@@ -1,7 +1,8 @@
 use codex_plus_core::update::{
     DEFAULT_LATEST_JSON_URL, Release, create_pre_update_backup_from_sources, download_asset_to,
     is_newer_version, parse_version_tag, release_from_github_payload,
-    release_from_latest_json_payload, safe_asset_name, select_update_asset, validate_asset_sha256,
+    release_from_latest_json_payload, resolve_manifest_asset_url, safe_asset_name,
+    select_update_asset, validate_asset_sha256,
 };
 use serde_json::json;
 use std::path::PathBuf;
@@ -172,6 +173,28 @@ fn latest_json_payload_selects_platform_installer_without_github_api_shape() {
     } else {
         assert_eq!(release.asset_name.as_deref(), None);
     }
+}
+
+#[test]
+fn manifest_asset_urls_are_resolved_before_download() {
+    let base = "https://www.leishen-ai.cn/tools/codex-plus/latest.json";
+
+    assert_eq!(
+        resolve_manifest_asset_url(
+            "/tools/codex-plus/releases/v1.0.11-official.1/CodexPlusOfficial-1.0.11-official.1-windows-x64-setup.exe",
+            Some(base),
+        )
+        .unwrap(),
+        "https://www.leishen-ai.cn/tools/codex-plus/releases/v1.0.11-official.1/CodexPlusOfficial-1.0.11-official.1-windows-x64-setup.exe"
+    );
+    assert_eq!(
+        resolve_manifest_asset_url("releases/v1.0.11-official.1/pkg.exe", Some(base)).unwrap(),
+        "https://www.leishen-ai.cn/tools/codex-plus/releases/v1.0.11-official.1/pkg.exe"
+    );
+    assert_eq!(
+        resolve_manifest_asset_url("https://example.test/pkg.exe", Some(base)).unwrap(),
+        "https://example.test/pkg.exe"
+    );
 }
 
 #[test]
