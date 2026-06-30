@@ -2978,7 +2978,13 @@ fn set_owner_only_read_write(_path: &Path) -> anyhow::Result<()> {
 }
 
 fn node_detected() -> bool {
-    std::process::Command::new("node")
+    let mut command = std::process::Command::new("node");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(codex_plus_core::windows_create_no_window());
+    }
+    command
         .arg("--version")
         .output()
         .map(|output| output.status.success())

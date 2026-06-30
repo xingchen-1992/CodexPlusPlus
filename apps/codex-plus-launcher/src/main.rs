@@ -145,11 +145,29 @@ async fn activate_existing_codex_app(options: &LaunchOptions) -> anyhow::Result<
             &settings.codex_extra_args,
         )
         .await;
+    let mut helper_started = false;
     if settings.enhancements_enabled {
-        hooks.start_helper(options.helper_port).await?;
+        match hooks.start_helper(options.helper_port).await {
+            Ok(()) => {
+                helper_started = true;
+            }
+            Err(error) if helper_start_error_is_existing_helper(&error) => {
+                let _ = codex_plus_core::diagnostic_log::append_diagnostic_log(
+                    "launcher.existing_helper_reused",
+                    json!({
+                        "helper_port": options.helper_port,
+                        "message": error.to_string()
+                    }),
+                );
+            }
+            Err(error) => return Err(error),
+        }
     }
     let process_ids = codex_plus_core::watcher::find_codex_processes();
+    #[cfg(windows)]
     let mut activated = false;
+    #[cfg(not(windows))]
+    let activated = false;
     #[cfg(windows)]
     {
         for process_id in &process_ids {
@@ -184,10 +202,34 @@ async fn activate_existing_codex_app(options: &LaunchOptions) -> anyhow::Result<
             "activated": activated,
             "injection_ready": injection_ready,
             "launch_ok": launch_result.is_ok(),
-            "launch_error": launch_result.as_ref().err().map(|error| error.to_string())
+            "launch_error": launch_result.as_ref().err().map(|error| error.to_string()),
+            "helper_started": helper_started
         }),
     );
-    launch_result.map(|_| ())
+    match launch_result {
+        Ok(launch) => {
+            if helper_started {
+                let result = hooks.wait_for_codex_exit(&launch).await;
+                hooks.shutdown_helper(options.helper_port).await;
+                result?;
+            }
+            Ok(())
+        }
+        Err(error) => {
+            if helper_started {
+                hooks.shutdown_helper(options.helper_port).await;
+            }
+            Err(error)
+        }
+    }
+}
+
+fn helper_start_error_is_existing_helper(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io_error| io_error.kind() == std::io::ErrorKind::AddrInUse)
+    })
 }
 
 fn log_launcher_already_running(debug_port: u16) {
@@ -805,6 +847,16 @@ mod tests {
         assert!(source.contains("acquire_single_instance_guard(options.debug_port)?"));
         assert!(source.contains("launcher_guard_port"));
         assert!(source.contains("launcher.already_running"));
+    }
+
+    #[test]
+    fn existing_launcher_helper_port_conflict_is_nonfatal() {
+        let error = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            "helper already listening",
+        ));
+
+        assert!(helper_start_error_is_existing_helper(&error));
     }
 
     #[test]

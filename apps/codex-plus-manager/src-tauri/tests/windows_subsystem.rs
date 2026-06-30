@@ -178,6 +178,15 @@ fn overview_and_environment_checks_do_not_flash_console_windows() {
     assert!(commands_rs.contains("fn read_command_version(command: &str, arg: &str)"));
     assert!(commands_rs.contains("codex_plus_core::windows_create_no_window()"));
     assert!(commands_rs.contains("command.creation_flags"));
+    let node_detected = commands_rs
+        .split("fn node_detected() -> bool")
+        .nth(1)
+        .and_then(|tail| tail.split("fn crs_image_install_payload").next())
+        .expect("node_detected helper should exist");
+    assert!(
+        node_detected.contains("codex_plus_core::windows_create_no_window()"),
+        "crs-image startup/open checks call node --version and must not flash a console window"
+    );
     assert!(app_paths.contains("fn find_latest_codex_app_dir_from_appx_package()"));
     assert!(app_paths.contains("crate::windows_integration::CREATE_NO_WINDOW"));
     assert!(app_paths.contains("command.creation_flags"));

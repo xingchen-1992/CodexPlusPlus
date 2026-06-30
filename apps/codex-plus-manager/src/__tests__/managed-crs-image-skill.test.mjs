@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 const appSource = fs.readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const commandsSource = fs.readFileSync(new URL("../../src-tauri/src/commands.rs", import.meta.url), "utf8");
 
 test("tools page puts Skills before MCP", () => {
   const options = appSource.match(/const contextKindOptions[\s\S]*?=\s*\[([\s\S]*?)\];/);
@@ -35,6 +36,13 @@ test("opening or restarting Codex syncs managed skills first", () => {
   const ready = appSource.match(/const ensureTaiyingReadyForLaunch[\s\S]*?return true;\n\s*};/);
   assert.ok(ready, "ensureTaiyingReadyForLaunch should exist");
   assert.match(ready[0], /await ensureManagedSkillsForCodex\(\{ silent: true \}\)/);
+});
+
+test("managed crs-image node detection does not flash a Windows console", () => {
+  const nodeDetected = commandsSource.match(/fn node_detected\(\) -> bool \{[\s\S]*?\n\}/);
+  assert.ok(nodeDetected, "node_detected should exist");
+  assert.match(nodeDetected[0], /windows_create_no_window/);
+  assert.match(nodeDetected[0], /creation_flags/);
 });
 
 test("update button appears from automatic startup check and gives immediate installing state", () => {
