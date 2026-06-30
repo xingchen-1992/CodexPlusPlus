@@ -14,8 +14,6 @@ jobs:
       CARGO_INCREMENTAL: "0"
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
-      CODEX_MACOS_ARM64_ZIP_URL: "https://github.com/Wangnov/codex-app-mirror/releases/latest/download/Codex-darwin-arm64-26.623.70822.zip"
-      CODEX_MACOS_X64_ZIP_URL: "https://github.com/Wangnov/codex-app-mirror/releases/latest/download/Codex-darwin-x64-26.623.70822.zip"
       CODEX_WINDOWS_X64_MSIX_URL: "https://codexapp.agentsmirror.com/latest/win-x64"
     steps:
       - name: Checkout release tag
@@ -186,6 +184,8 @@ jobs:
       CARGO_INCREMENTAL: "0"
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
+      CODEX_MACOS_ARM64_ZIP_URL: "https://github.com/Wangnov/codex-app-mirror/releases/latest/download/Codex-darwin-arm64-26.623.70822.zip"
+      CODEX_MACOS_X64_ZIP_URL: "https://github.com/Wangnov/codex-app-mirror/releases/latest/download/Codex-darwin-x64-26.623.70822.zip"
     strategy:
       fail-fast: false
       matrix:
