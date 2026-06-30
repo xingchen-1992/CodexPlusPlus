@@ -278,7 +278,7 @@ experimental_bearer_token = "sk-..."
 
 ## 自动更新与安装包
 
-Codex 通过泰盈服务器发布更新清单和安装包。Windows 会生成 NSIS 安装程序，macOS 会生成 Intel x64 和 Apple Silicon arm64 两个 DMG。
+Codex 通过官方服务器发布更新清单和安装包。Windows 会生成 NSIS 安装程序，macOS 会生成 Intel x64 和 Apple Silicon arm64 两个 DMG。
 
 管理工具的“关于”页可以检查并启动更新。静默启动器发现新版本时会拉起管理工具并进入更新提示。
 

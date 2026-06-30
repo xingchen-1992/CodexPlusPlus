@@ -1434,7 +1434,7 @@ export function App() {
         );
         if (confirmed) await performUpdate(result);
       } else if (!silent) {
-        showNotice("泰盈更新检查", result.message, result.status);
+        showNotice("官方更新检查", result.message, result.status);
       } else if (result.updateAvailable === true && options.notifyAvailable !== false) {
         showNotice("发现可用更新", "可在概览右上角点击“更新版本”安装。", "ok");
       }
@@ -3218,7 +3218,7 @@ function UserScriptsScreen({ settings, market, actions }: { settings: SettingsRe
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title="市场脚本" detail={market?.market.updatedAt ? `清单更新时间：${market.market.updatedAt}` : "从 泰盈远端清单加载"} />
+        <CardHead title="市场脚本" detail={market?.market.updatedAt ? `清单更新时间：${market.market.updatedAt}` : "从 官方远端清单加载"} />
         <CardContent>
           {marketScripts.length ? (
             <div className="script-market-grid">
@@ -3717,7 +3717,7 @@ function AboutScreen({
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title="泰盈更新通道" detail={`当前版本 ${overview?.current_version ?? update?.currentVersion ?? "-"}`} />
+        <CardHead title="官方更新通道" detail={`当前版本 ${overview?.current_version ?? update?.currentVersion ?? "-"}`} />
         <CardContent>
           <div className="metric-list">
             <Metric label="状态" value={update?.status ?? "not_checked"} />
@@ -3725,7 +3725,7 @@ function AboutScreen({
             <Metric label="资源" value={update?.assetName ?? "-"} />
             <Metric label="进度" value={`${update?.progress ?? 0}%`} />
           </div>
-          <Textarea className="log-view" readOnly value={update?.releaseSummary || update?.message || "尚未检查泰盈更新通道；更新会下载并启动安装包。"} />
+          <Textarea className="log-view" readOnly value={update?.releaseSummary || update?.message || "尚未检查官方更新通道；更新会下载并启动安装包。"} />
           <Toolbar>
             <Button onClick={() => void actions.checkUpdate()}>检查更新</Button>
           </Toolbar>
@@ -5520,7 +5520,7 @@ function routeSubtitle(route: Route) {
     zedRemote: "管理 Codex SSH 项目并加入 Zed workspace",
     userScripts: "内置和用户自定义脚本清单",
     maintenance: "入口安装、修复、Watcher 与手动启动",
-    about: "版本信息、项目链接、泰盈更新、日志与诊断",
+    about: "版本信息、项目链接、官方更新、日志与诊断",
     settings: "主题、命令包装器和启动参数",
   };
   return subtitles[route];

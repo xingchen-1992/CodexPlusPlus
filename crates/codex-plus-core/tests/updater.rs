@@ -43,6 +43,16 @@ fn taiying_version_comparison_uses_suffix_increment_for_same_base() {
 }
 
 #[test]
+fn official_version_comparison_uses_suffix_increment_for_same_base() {
+    assert!(is_newer_version("v1.0.0-official.2", "v1.0.0-official.1").unwrap());
+}
+
+#[test]
+fn official_base_version_updates_old_taiying_builds() {
+    assert!(is_newer_version("v1.0.6-official.1", "v1.0.5-taiying.7").unwrap());
+}
+
+#[test]
 fn github_payload_selects_platform_installer() {
     let release = release_from_github_payload(&json!({
         "tag_name": "v1.0.9",
@@ -110,18 +120,18 @@ fn latest_json_payload_stores_selected_asset_sha256() {
     let windows_sha = "2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824";
     let macos_sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
     let release = release_from_latest_json_payload(&json!({
-        "version": "v1.0.1-taiying.1",
-        "url": "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-taiying.1",
-        "body": "泰盈定制版更新",
+        "version": "v1.0.1-official.1",
+        "url": "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-official.1",
+        "body": "官方版更新",
         "assets": [
             {
-                "name": "CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe",
-                "url": "https://ls-qihang.cn/tools/codex-plus/CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe",
+                "name": "CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe",
+                "url": "https://ls-qihang.cn/tools/codex-plus/CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe",
                 "sha256": windows_sha
             },
             {
-                "name": "CodexPlusTaiying-1.0.1-taiying.1-macos-x64.dmg",
-                "url": "https://ls-qihang.cn/tools/codex-plus/CodexPlusTaiying-1.0.1-taiying.1-macos-x64.dmg",
+                "name": "CodexPlusOfficial-1.0.1-official.1-macos-x64.dmg",
+                "url": "https://ls-qihang.cn/tools/codex-plus/CodexPlusOfficial-1.0.1-official.1-macos-x64.dmg",
                 "sha256": macos_sha
             }
         ]
@@ -169,18 +179,18 @@ fn latest_json_payload_selects_platform_installer_without_github_api_shape() {
 }
 
 #[test]
-fn asset_selection_accepts_taiying_style_desktop_artifacts() {
+fn asset_selection_accepts_official_style_desktop_artifacts() {
     let assets = vec![
         (
-            "CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe".to_string(),
+            "CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe".to_string(),
             "https://ls-qihang.cn/tools/codex-plus/windows-setup.exe".to_string(),
         ),
         (
-            "CodexPlusTaiying-1.0.1-taiying.1-macos-arm64.dmg".to_string(),
+            "CodexPlusOfficial-1.0.1-official.1-macos-arm64.dmg".to_string(),
             "https://ls-qihang.cn/tools/codex-plus/macos-arm64.dmg".to_string(),
         ),
         (
-            "CodexPlusTaiying-1.0.1-taiying.1-macos-x64.dmg".to_string(),
+            "CodexPlusOfficial-1.0.1-official.1-macos-x64.dmg".to_string(),
             "https://ls-qihang.cn/tools/codex-plus/macos-x64.dmg".to_string(),
         ),
     ];
@@ -189,13 +199,13 @@ fn asset_selection_accepts_taiying_style_desktop_artifacts() {
         let selected = select_update_asset(&assets).unwrap();
         assert_eq!(
             selected.name,
-            "CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe"
+            "CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe"
         );
     } else if cfg!(target_os = "macos") {
         let selected = select_update_asset(&assets).unwrap();
         let expected = match std::env::consts::ARCH {
-            "x86_64" => "CodexPlusTaiying-1.0.1-taiying.1-macos-x64.dmg",
-            "aarch64" => "CodexPlusTaiying-1.0.1-taiying.1-macos-arm64.dmg",
+            "x86_64" => "CodexPlusOfficial-1.0.1-official.1-macos-x64.dmg",
+            "aarch64" => "CodexPlusOfficial-1.0.1-official.1-macos-arm64.dmg",
             other => panic!("unexpected target arch in test: {other}"),
         };
         assert_eq!(selected.name, expected);
@@ -298,9 +308,9 @@ fn download_asset_to_writes_bytes() {
 #[test]
 fn validate_asset_sha256_accepts_uppercase_manifest_hash() {
     let release = Release {
-        version: "v1.0.1-taiying.1".to_string(),
-        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-taiying.1".to_string(),
-        body: "泰盈定制版更新".to_string(),
+        version: "v1.0.1-official.1".to_string(),
+        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-official.1".to_string(),
+        body: "官方版更新".to_string(),
         asset_name: Some("pkg.zip".to_string()),
         asset_url: Some("https://ls-qihang.cn/tools/codex-plus/pkg.zip".to_string()),
         asset_sha256: Some(
@@ -314,9 +324,9 @@ fn validate_asset_sha256_accepts_uppercase_manifest_hash() {
 #[test]
 fn validate_asset_sha256_rejects_missing_manifest_hash() {
     let release = Release {
-        version: "v1.0.1-taiying.1".to_string(),
-        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-taiying.1".to_string(),
-        body: "泰盈定制版更新".to_string(),
+        version: "v1.0.1-official.1".to_string(),
+        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-official.1".to_string(),
+        body: "官方版更新".to_string(),
         asset_name: Some("pkg.zip".to_string()),
         asset_url: Some("https://ls-qihang.cn/tools/codex-plus/pkg.zip".to_string()),
         asset_sha256: None,
@@ -332,9 +342,9 @@ fn validate_asset_sha256_rejects_missing_manifest_hash() {
 #[test]
 fn validate_asset_sha256_rejects_mismatch() {
     let release = Release {
-        version: "v1.0.1-taiying.1".to_string(),
-        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-taiying.1".to_string(),
-        body: "泰盈定制版更新".to_string(),
+        version: "v1.0.1-official.1".to_string(),
+        url: "https://ls-qihang.cn/tools/codex-plus/releases/v1.0.1-official.1".to_string(),
+        body: "官方版更新".to_string(),
         asset_name: Some("pkg.zip".to_string()),
         asset_url: Some("https://ls-qihang.cn/tools/codex-plus/pkg.zip".to_string()),
         asset_sha256: Some(

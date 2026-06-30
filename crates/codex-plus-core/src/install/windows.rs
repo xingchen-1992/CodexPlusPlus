@@ -163,7 +163,7 @@ fn register_url_protocol(manager_path: &str) -> anyhow::Result<()> {
     crate::windows_integration::set_current_user_string_value(
         URL_PROTOCOL_SUBKEY,
         "",
-        "URL:Codex 泰盈定制版 Import Protocol",
+        "URL:Codex 官方版 Import Protocol",
     )?;
     crate::windows_integration::set_current_user_string_value(
         URL_PROTOCOL_SUBKEY,

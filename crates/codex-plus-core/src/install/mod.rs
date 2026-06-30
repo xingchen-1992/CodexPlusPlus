@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 pub mod macos;
 pub mod windows;
 
-pub const SILENT_NAME: &str = "Codex 泰盈定制版";
-pub const MANAGER_NAME: &str = "Codex 泰盈定制版管理工具";
-pub const INSTALL_PUBLISHER: &str = "泰盈";
+pub const SILENT_NAME: &str = "Codex 官方版";
+pub const MANAGER_NAME: &str = "Codex 官方管理工具";
+pub const INSTALL_PUBLISHER: &str = "官方";
 pub const MACOS_BUNDLE_ID_BASE: &str = "cn.ls-qihang.codexplusplus";
 pub const SILENT_BINARY: &str = "codex-plus-plus";
 pub const MANAGER_BINARY: &str = "codex-plus-plus-manager";
@@ -74,11 +74,11 @@ impl ShortcutState {
 }
 
 pub fn shortcut_names() -> (&'static str, &'static str) {
-    ("Codex 泰盈定制版.lnk", "Codex 泰盈定制版管理工具.lnk")
+    ("Codex 官方版.lnk", "Codex 官方管理工具.lnk")
 }
 
 pub fn app_bundle_names() -> (&'static str, &'static str) {
-    ("Codex 泰盈定制版.app", "Codex 泰盈定制版管理工具.app")
+    ("Codex 官方版.app", "Codex 官方管理工具.app")
 }
 
 pub fn inspect_entrypoints() -> EntryPointState {

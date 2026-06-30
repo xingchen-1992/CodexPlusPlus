@@ -379,11 +379,11 @@ mod tests {
 
     #[test]
     fn parses_codexplusplus_provider_url() {
-        let url = "codexplustaiying://v1/import/provider?resource=provider&name=%E6%B3%B0%E7%9B%88%20AI&baseUrl=https%3A%2F%2Fls-qihang.cn%2Fopenai&apiKey=sk-test&wireApi=responses&relayMode=pureApi&configContents=bW9kZWxfcHJvdmlkZXIgPSAiQ29kZXhQbHVzUGx1cyIK&authContents=eyJPUEVOQUlfQVBJX0tFWSI6InNrLXRlc3QifQo%3D";
+        let url = "codexplustaiying://v1/import/provider?resource=provider&name=%E5%AE%98%E6%96%B9%20AI&baseUrl=https%3A%2F%2Fls-qihang.cn%2Fopenai&apiKey=sk-test&wireApi=responses&relayMode=pureApi&configContents=bW9kZWxfcHJvdmlkZXIgPSAiQ29kZXhQbHVzUGx1cyIK&authContents=eyJPUEVOQUlfQVBJX0tFWSI6InNrLXRlc3QifQo%3D";
 
         let request = request_from_url(url).unwrap();
 
-        assert_eq!(request.name, "泰盈 AI");
+        assert_eq!(request.name, "官方 AI");
         assert_eq!(request.base_url, "https://ls-qihang.cn/openai");
         assert_eq!(request.api_key, "sk-test");
         assert_eq!(request.wire_api, "responses");
@@ -397,7 +397,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::new(dir.path().join("settings.json"));
         let request = ProviderImportRequest {
-            name: "泰盈 AI".to_string(),
+            name: "官方 AI".to_string(),
             base_url: "https://ls-qihang.cn/openai/".to_string(),
             api_key: "sk-test".to_string(),
             wire_api: "responses".to_string(),
@@ -431,7 +431,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("pending-provider-import.json");
         let request = ProviderImportRequest {
-            name: "泰盈 AI".to_string(),
+            name: "官方 AI".to_string(),
             base_url: "https://ls-qihang.cn/openai".to_string(),
             api_key: "sk-test".to_string(),
             wire_api: "responses".to_string(),
@@ -444,7 +444,7 @@ mod tests {
         let pending = load_pending_provider_import_at(&path).unwrap().unwrap();
         clear_pending_provider_import_at(&path).unwrap();
 
-        assert_eq!(pending.name, "泰盈 AI");
+        assert_eq!(pending.name, "官方 AI");
         assert_eq!(pending.base_url, "https://ls-qihang.cn/openai");
         assert!(load_pending_provider_import_at(&path).unwrap().is_none());
     }
@@ -457,7 +457,7 @@ mod tests {
         save_pending_provider_import_at(
             &pending_path,
             &ProviderImportRequest {
-                name: "泰盈 AI".to_string(),
+                name: "官方 AI".to_string(),
                 base_url: "https://ls-qihang.cn/openai".to_string(),
                 api_key: "sk-test".to_string(),
                 wire_api: "responses".to_string(),

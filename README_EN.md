@@ -195,7 +195,7 @@ When relay injection mode is active, plugin marketplace unlock and forced plugin
 
 ## Updates and Packages
 
-Codex publishes update manifests and installers through the Taiying server. Windows builds an NSIS installer, while macOS builds separate Intel x64 and Apple Silicon arm64 DMGs.
+Codex publishes update manifests and installers through the official server. Windows builds an NSIS installer, while macOS builds separate Intel x64 and Apple Silicon arm64 DMGs.
 
 The manager's About page can check and start updates. When the silent launcher finds a new version, it opens the manager directly on the update prompt.
 

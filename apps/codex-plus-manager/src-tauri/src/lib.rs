@@ -34,7 +34,7 @@ pub fn run() {
             };
             let main_window =
                 tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
-                    .title("Codex 泰盈定制版管理工具")
+                    .title("Codex 官方管理工具")
                     .inner_size(1180.0, 820.0)
                     .min_inner_size(960.0, 720.0)
                     .background_color(tauri::window::Color(24, 24, 24, 255))

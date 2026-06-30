@@ -409,7 +409,7 @@ pub async fn leishen_balance(
 #[tauri::command]
 pub fn configure_taiying_api_key(request: TaiyingApiKeyConfigureRequest) -> CommandResult<Value> {
     const TAIYING_RELAY_ID: &str = "taiying";
-    const TAIYING_RELAY_NAME: &str = "泰盈 AI";
+    const TAIYING_RELAY_NAME: &str = "官方 AI";
     const TAIYING_BASE_URL: &str = "https://ls-qihang.cn/openai";
 
     let api_key = request.api_key.trim().to_string();
@@ -460,7 +460,7 @@ pub fn configure_taiying_api_key(request: TaiyingApiKeyConfigureRequest) -> Comm
         settings.cli_wrapper_api_key_env = codex_plus_core::settings::default_api_key_env();
 
         if let Err(error) = store.save(&settings) {
-            return failed(&format!("保存泰盈配置失败：{error}"), json!({}));
+            return failed(&format!("保存官方配置失败：{error}"), json!({}));
         }
     }
 
@@ -511,7 +511,7 @@ pub fn configure_taiying_api_key(request: TaiyingApiKeyConfigureRequest) -> Comm
     let status = codex_plus_core::relay_config::relay_status_from_home(&home);
     if !status.configured {
         return failed(
-            "泰盈配置已保存，但 Codex config.toml/auth.json 尚未完整写入。",
+            "官方配置已保存，但 Codex config.toml/auth.json 尚未完整写入。",
             json!({
                 "configured": false,
                 "applied": applied,
@@ -523,9 +523,9 @@ pub fn configure_taiying_api_key(request: TaiyingApiKeyConfigureRequest) -> Comm
 
     let entrypoints_ok = entrypoints.status == "ok";
     let message = if applied {
-        "泰盈 API Key 已写入 Codex 配置。"
+        "官方 API Key 已写入 Codex 配置。"
     } else {
-        "泰盈 API Key 已配置，本次只刷新额度。"
+        "官方 API Key 已配置，本次只刷新额度。"
     };
     let payload = json!({
         "configured": true,
@@ -3555,11 +3555,11 @@ mod tests {
     #[test]
     fn check_update_payload_preserves_asset_sha256() {
         let payload = update_check_payload(codex_plus_core::update::UpdateCheck {
-            current_version: "1.0.0-taiying.0".to_string(),
-            latest_version: Some("v1.0.1-taiying.1".to_string()),
-            release_summary: "泰盈定制版更新".to_string(),
-            asset_name: Some("CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe".to_string()),
-            asset_url: Some("https://ls-qihang.cn/tools/codex-plus/CodexPlusTaiying-1.0.1-taiying.1-windows-x64-setup.exe".to_string()),
+            current_version: "1.0.0-official.0".to_string(),
+            latest_version: Some("v1.0.1-official.1".to_string()),
+            release_summary: "官方版更新".to_string(),
+            asset_name: Some("CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe".to_string()),
+            asset_url: Some("https://ls-qihang.cn/tools/codex-plus/CodexPlusOfficial-1.0.1-official.1-windows-x64-setup.exe".to_string()),
             asset_sha256: Some(
                 "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824".to_string(),
             ),

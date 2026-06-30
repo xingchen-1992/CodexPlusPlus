@@ -2269,7 +2269,7 @@
               <div><div class="codex-plus-row-title">关于 Codex</div><div class="codex-plus-about">Codex 是通过外部 launcher 注入的增强菜单，不修改 Codex App 原始安装文件。<br>Build: <span data-codex-plus-build="true">${codexPlusBuild}</span><br>服务中心: <a href="https://ls-qihang.cn/tools/codex-plus" target="_blank" rel="noreferrer">https://ls-qihang.cn/tools/codex-plus</a><br>订阅中心: <a href="https://ls-qihang.cn/user-next/console/subscription" target="_blank" rel="noreferrer">https://ls-qihang.cn/user-next/console/subscription</a></div></div>
             </div>
             <div class="codex-plus-row">
-              <div><div class="codex-plus-row-title">服务中心</div><div class="codex-plus-row-description">打开泰盈 Codex 工具页查看更新与使用入口。</div></div>
+              <div><div class="codex-plus-row-title">服务中心</div><div class="codex-plus-row-description">打开官方 Codex 工具页查看更新与使用入口。</div></div>
               <button type="button" class="codex-plus-action-button" data-codex-plus-discord="true">打开服务中心</button>
             </div>
             <div class="codex-plus-row">
@@ -2277,7 +2277,7 @@
               <button type="button" class="codex-plus-action-button" data-codex-plus-telegram="true">打开订阅中心</button>
             </div>
             <div class="codex-plus-row">
-              <div><div class="codex-plus-row-title">问题反馈</div><div class="codex-plus-row-description">打开泰盈 Codex 反馈入口。</div></div>
+              <div><div class="codex-plus-row-title">问题反馈</div><div class="codex-plus-row-description">打开官方 Codex 反馈入口。</div></div>
               <button type="button" class="codex-plus-issue-button" data-codex-plus-issue="true">提出问题</button>
             </div>
           </div>

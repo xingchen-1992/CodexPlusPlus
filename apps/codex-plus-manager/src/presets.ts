@@ -32,7 +32,7 @@ export interface ProviderPreset {
 export const PRESETS: ProviderPreset[] = [
   {
     id: "leishen",
-    name: "泰盈 AI",
+    name: "官方 AI",
     websiteUrl: "https://ls-qihang.cn/user-next/console/subscription",
     apiKeyUrl: "https://ls-qihang.cn/user-next/console/subscription",
     category: "aggregator",
