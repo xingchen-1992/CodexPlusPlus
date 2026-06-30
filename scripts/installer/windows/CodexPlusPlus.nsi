@@ -5,6 +5,7 @@
   !define VERSION "0.0.0"
 !endif
 !define ROOT "..\..\.."
+!define CODEX_MSIX_FILENAME "CodexOfficialApp-x64.msix"
 
 Name "Codex官方管理工具"
 OutFile "${ROOT}\dist\windows\CodexPlusOfficial-${VERSION}-windows-x64-setup.exe"
@@ -65,6 +66,21 @@ Section "安装主程序" SEC_MAIN
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexOfficialManager" "DisplayIcon" "$INSTDIR\app\codex-plus-plus-manager.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexOfficialManager" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexOfficialManager" "UninstallString" "$INSTDIR\app\uninstall.exe"
+SectionEnd
+
+Section "安装 Codex 应用" SEC_CODEX_APP
+  IfFileExists "$EXEDIR\${CODEX_MSIX_FILENAME}" 0 codex_msix_missing
+  DetailPrint "Installing OpenAI Codex app package..."
+  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop'; $$msix='$EXEDIR\${CODEX_MSIX_FILENAME}'; try { Add-AppxPackage -Path $$msix -ForceApplicationShutdown; exit 0 } catch { $$existing=Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue; if ($$existing) { exit 0 }; Write-Error $$_; exit 1 }"`
+  Pop $0
+  StrCmp $0 "0" codex_msix_done 0
+  MessageBox MB_ICONEXCLAMATION "Codex 应用安装失败。请确认已完整解压压缩包；如果仍失败，请重新下载完整安装包后再运行。"
+  Goto codex_msix_done
+
+  codex_msix_missing:
+    MessageBox MB_ICONEXCLAMATION "未找到同目录下的 ${CODEX_MSIX_FILENAME}。请先解压完整压缩包后再运行安装程序。"
+
+  codex_msix_done:
 SectionEnd
 
 Section "创建桌面快捷方式" SEC_DESKTOP_SHORTCUTS

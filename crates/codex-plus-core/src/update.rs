@@ -327,7 +327,8 @@ pub async fn perform_update(
         .await?;
     validate_asset_sha256(release, &bytes)?;
     let installer_path = download_asset_to(release, &bytes, download_dir)?;
-    launch_installer(&installer_path)?;
+    let launch_path = prepare_installer_for_launch(&installer_path)?;
+    launch_installer(&launch_path)?;
     Ok(UpdateInstall {
         release: release.clone(),
         installer_path,
@@ -512,6 +513,7 @@ fn is_windows_installer_asset(name: &str) -> bool {
     name.contains("codex")
         && name.contains("plus")
         && (name.ends_with(".msi")
+            || (name.contains("windows") && name.ends_with(".zip"))
             || name.ends_with("-setup.exe")
             || name.ends_with("_setup.exe")
             || name.ends_with("setup.exe")
@@ -522,6 +524,71 @@ fn is_macos_installer_asset(name: &str) -> bool {
     // Loose shape check; arch preference is handled by platform_asset_rank
     // via is_macos_native_arch_asset.
     name.contains("codex") && name.contains("plus") && name.ends_with(".dmg")
+}
+
+pub fn prepare_installer_for_launch(path: &Path) -> anyhow::Result<PathBuf> {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if extension != "zip" {
+        return Ok(path.to_path_buf());
+    }
+
+    let extract_dir = path.with_extension("");
+    if extract_dir.exists() {
+        fs::remove_dir_all(&extract_dir)?;
+    }
+    fs::create_dir_all(&extract_dir)?;
+
+    let file = fs::File::open(path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        let Some(enclosed_name) = entry.enclosed_name().map(PathBuf::from) else {
+            continue;
+        };
+        let output_path = extract_dir.join(enclosed_name);
+        if entry.is_dir() {
+            fs::create_dir_all(&output_path)?;
+            continue;
+        }
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut output = fs::File::create(&output_path)?;
+        std::io::copy(&mut entry, &mut output)?;
+    }
+
+    find_windows_setup_executable(&extract_dir)
+}
+
+fn find_windows_setup_executable(root: &Path) -> anyhow::Result<PathBuf> {
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let metadata = entry.metadata()?;
+            if metadata.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if file_name.contains("codexplusofficial")
+                && file_name.contains("windows")
+                && file_name.ends_with("setup.exe")
+            {
+                return Ok(path);
+            }
+        }
+    }
+    anyhow::bail!("Windows 更新压缩包中没有找到安装程序")
 }
 
 pub fn launch_installer(path: &Path) -> anyhow::Result<()> {

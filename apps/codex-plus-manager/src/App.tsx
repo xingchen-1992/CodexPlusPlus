@@ -763,7 +763,6 @@ export function App() {
   const [officialBalance, setOfficialBalance] = useState<OfficialBalance | null>(null);
   const [officialBalanceMessage, setOfficialBalanceMessage] = useState("输入你的 API Key 后即可读取套餐和总量包余额。");
   const [officialBalanceBusy, setOfficialBalanceBusy] = useState(false);
-  const [codexAppInstallBusy, setCodexAppInstallBusy] = useState(false);
   const [scriptMarket, setScriptMarket] = useState<ScriptMarketResult | null>(null);
   const [launchForm, setLaunchForm] = useState({
     appPath: "",
@@ -1302,21 +1301,6 @@ export function App() {
     if (result) {
       showNotice("重启 Codex", result.message, result.status);
       await refreshOverview(true);
-    }
-  };
-
-  const installCodexFromOverview = async () => {
-    if (codexAppInstallBusy) return;
-    setCodexAppInstallBusy(true);
-    showNotice("安装 Codex", "正在后台安装 Codex，请稍候。安装完成后会自动刷新概览。", "ok");
-    try {
-      const result = await run(() => call<CommandResult<Record<string, unknown>>>("install_codex_app"));
-      if (result) {
-        showNotice("安装 Codex", result.message, result.status);
-      }
-      await refreshOverview(true);
-    } finally {
-      setCodexAppInstallBusy(false);
     }
   };
 
@@ -2001,7 +1985,6 @@ export function App() {
       installCrsImageSkill,
       checkPluginMarketplacePrompt,
       installEntrypoints,
-      installCodexFromOverview,
       uninstallEntrypoints,
       repairShortcuts,
       checkUpdate,
@@ -2242,7 +2225,6 @@ export function App() {
               officialBalance={officialBalance}
               officialBalanceBusy={officialBalanceBusy}
               officialBalanceMessage={officialBalanceMessage}
-              codexAppInstallBusy={codexAppInstallBusy}
               onOfficialApiKeyChange={(value) => {
                 setOfficialApiKey(value);
                 if (!value.trim()) {
@@ -2369,7 +2351,6 @@ type Actions = {
   installCrsImageSkill: (options?: CrsImageInstallOptions) => Promise<CrsImageInstallResult | null>;
   checkPluginMarketplacePrompt: () => Promise<PluginMarketplaceStatusResult | null>;
   installEntrypoints: () => Promise<void>;
-  installCodexFromOverview: () => Promise<void>;
   uninstallEntrypoints: () => Promise<void>;
   repairShortcuts: () => Promise<void>;
   checkUpdate: (silent?: boolean, options?: UpdateCheckOptions) => Promise<UpdateResult | null>;
@@ -2693,7 +2674,6 @@ function OverviewScreen({
   officialBalance,
   officialBalanceBusy,
   officialBalanceMessage,
-  codexAppInstallBusy,
   onOfficialApiKeyChange,
   actions,
 }: {
@@ -2703,7 +2683,6 @@ function OverviewScreen({
   officialBalance: OfficialBalance | null;
   officialBalanceBusy: boolean;
   officialBalanceMessage: string;
-  codexAppInstallBusy: boolean;
   onOfficialApiKeyChange: (value: string) => void;
   actions: Actions;
 }) {
@@ -2715,12 +2694,9 @@ function OverviewScreen({
           apiKey={officialApiKey}
           balance={officialBalance}
           busy={officialBalanceBusy}
-          codexInstallBusy={codexAppInstallBusy}
-          codexReady={Boolean(overview?.codex_version || overview?.codex_app.status === "found")}
           message={officialBalanceMessage}
           onApiKeyChange={onOfficialApiKeyChange}
           onRefreshBalance={() => void actions.saveOfficialApiKey(officialApiKey, { refreshBalance: true })}
-          onInstallCodex={() => void actions.installCodexFromOverview()}
           onOpenCodex={() => void actions.launch()}
           onOpenSubscription={() => void actions.goSubscriptionCenter()}
         />

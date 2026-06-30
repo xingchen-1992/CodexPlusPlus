@@ -14,6 +14,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
+      CODEX_WINDOWS_X64_MSIX_URL: "https://codexapp.agentsmirror.com/latest/win-x64"
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v4
@@ -109,6 +110,18 @@ jobs:
             Write-Host "CODEX_APP_SOURCE not set; installer will rely on the management tool install flow."
           }
 
+      - name: Download Codex Windows MSIX
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force dist/windows/package | Out-Null
+          $msix = "dist/windows/package/CodexOfficialApp-x64.msix"
+          curl.exe -L --retry 3 --retry-delay 10 --fail -o $msix $env:CODEX_WINDOWS_X64_MSIX_URL
+          $size = (Get-Item $msix).Length
+          if ($size -lt 100MB) {
+            throw "Downloaded Codex MSIX is unexpectedly small: $size bytes"
+          }
+
       - name: Build Windows installer
         shell: pwsh
         run: |
@@ -127,11 +140,42 @@ jobs:
           & $makensis "/INPUTCHARSET" "UTF8" "/DVERSION=$version" CodexPlusPlus.nsi
           Pop-Location
 
-      - name: Upload Windows installer
+      - name: Build Windows ZIP package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "${{ github.event.release.tag_name }}".TrimStart("v", "V")
+          $setup = "dist/windows/CodexPlusOfficial-${version}-windows-x64-setup.exe"
+          $msix = "dist/windows/package/CodexOfficialApp-x64.msix"
+          if (-not (Test-Path $setup)) {
+            throw "Missing setup executable: $setup"
+          }
+          if (-not (Test-Path $msix)) {
+            throw "Missing Codex MSIX: $msix"
+          }
+          $packageRoot = "dist/windows/package-root"
+          if (Test-Path $packageRoot) {
+            Remove-Item $packageRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force $packageRoot | Out-Null
+          Copy-Item $setup "$packageRoot/"
+          Copy-Item $msix "$packageRoot/"
+          $readme = "$packageRoot/请先解压后运行安装程序.txt"
+          @"
+          Codex官方管理工具安装说明
+
+          1. 请先完整解压这个压缩包。
+          2. 双击 CodexPlusOfficial-${version}-windows-x64-setup.exe。
+          3. 安装程序会同时安装 Codex官方管理工具 和 OpenAI Codex 应用。
+          4. 安装完成后会自动打开 Codex官方管理工具，概览页点击“打开 Codex”即可使用。
+          "@ | Set-Content -Path $readme -Encoding UTF8
+          Compress-Archive -Force -Path "$packageRoot/*" -DestinationPath "dist/windows/CodexPlusOfficial-${version}-windows-x64.zip"
+
+      - name: Upload Windows ZIP package
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          files: dist/windows/*.exe
+          files: dist/windows/*.zip
 
   macos-dmg:
     name: macOS DMG (${{ matrix.arch }})
@@ -197,6 +241,46 @@ jobs:
         if: always()
         run: sccache --show-stats
 
+      - name: Download Codex macOS app bundle
+        env:
+          CODEX_DARWIN_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          source_root="dist/codex-source/${CODEX_DARWIN_ARCH}"
+          rm -rf "$source_root"
+          mkdir -p "$source_root"
+          url="$(
+            node --input-type=module <<'NODE'
+          const arch = process.env.CODEX_DARWIN_ARCH;
+          const response = await fetch("https://api.github.com/repos/Wangnov/codex-app-mirror/releases/latest", {
+            headers: { "User-Agent": "codex-plus-release-assets" }
+          });
+          if (!response.ok) {
+            throw new Error(`GitHub API failed: ${response.status} ${response.statusText}`);
+          }
+          const release = await response.json();
+          const pattern = new RegExp(`^Codex-darwin-${arch}-.*\\.zip$`);
+          const asset = (release.assets || []).find((item) => pattern.test(item.name));
+          if (!asset?.browser_download_url) {
+            throw new Error(`Missing Codex darwin asset for ${arch}`);
+          }
+          console.log(asset.browser_download_url);
+          NODE
+          )"
+          curl -L --retry 3 --retry-delay 10 --fail -o "$source_root/codex-app.zip" "$url"
+          size="$(stat -f%z "$source_root/codex-app.zip")"
+          if [ "$size" -lt 104857600 ]; then
+            echo "Downloaded Codex macOS app zip is unexpectedly small: $size bytes" >&2
+            exit 1
+          fi
+          unzip -q "$source_root/codex-app.zip" -d "$source_root/extracted"
+          app="$(find "$source_root/extracted" -type d -name "*.app" -print -quit)"
+          if [ -z "$app" ]; then
+            echo "No .app bundle found in Codex macOS zip" >&2
+            exit 1
+          fi
+          printf 'CODEX_APP_SOURCE=%s\n' "$PWD/$app" >> "$GITHUB_ENV"
+
       - name: Build macOS DMG
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -213,6 +297,7 @@ jobs:
           test -f "$app/Contents/PkgInfo"
           test -x "$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
           test -x "$app/Contents/MacOS/codex-plus-plus"
+          test -d "$app/Contents/Resources/Codex.app" || test -d "$app/Contents/Resources/OpenAI Codex.app" || test -d "$app/Contents/Resources/OpenAI.Codex.app"
           plutil -lint "$app/Contents/Info.plist" >/dev/null
           codesign -dv "$app" >/dev/null 2>&1
           echo "verified: $app"

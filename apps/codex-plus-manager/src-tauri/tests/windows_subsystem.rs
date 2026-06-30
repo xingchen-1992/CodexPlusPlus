@@ -444,9 +444,6 @@ fn overview_moves_subscription_and_codex_actions_into_balance_card() {
 
     assert!(!app_tsx.contains("Official 中转服务"));
     assert!(!app_tsx.contains("打开订阅中心"));
-    assert!(app_tsx.contains(
-        "codexReady={Boolean(overview?.codex_version || overview?.codex_app.status === \"found\")}"
-    ));
     assert!(app_tsx.contains("id: \"subscription\", label: \"订阅中心\""));
     assert!(app_tsx.contains("onOpenSubscription={() => void actions.goSubscriptionCenter()}"));
     assert!(app_tsx.contains("function SubscriptionCenterScreen"));
@@ -460,13 +457,14 @@ fn overview_moves_subscription_and_codex_actions_into_balance_card() {
     assert!(app_tsx.contains("onLoad={() => setFrameLoaded(true)}"));
     assert!(!app_tsx.contains("浏览器打开"));
     assert!(!app_tsx.contains("只使用官方订阅入口，不展示其它第三方平台。"));
-    assert!(app_tsx.contains("onInstallCodex={() => void actions.installCodexFromOverview()}"));
+    assert!(!app_tsx.contains("installCodexFromOverview"));
+    assert!(!app_tsx.contains("onInstallCodex"));
     assert!(app_tsx.contains("onOpenCodex={() => void actions.launch()}"));
     assert!(app_tsx.contains("saveOfficialApiKey"));
     assert!(app_tsx.contains("ensureOfficialReadyForLaunch"));
     assert!(balance_panel.contains("购买额度"));
     assert!(balance_panel.contains("打开 Codex"));
-    assert!(balance_panel.contains("安装 Codex"));
+    assert!(!balance_panel.contains("安装 Codex"));
     assert!(balance_panel.contains("placeholder=\"粘贴sk-\""));
     assert!(!balance_panel.contains("placeholder=\"粘贴 cr_... 或 sk-...\""));
     assert!(!balance_panel.contains("官方订阅"));

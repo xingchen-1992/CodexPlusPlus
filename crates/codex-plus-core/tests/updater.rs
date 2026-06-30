@@ -1,10 +1,11 @@
 use codex_plus_core::update::{
     DEFAULT_LATEST_JSON_URL, Release, create_pre_update_backup_from_sources, download_asset_to,
-    is_newer_version, parse_version_tag, release_from_github_payload,
+    is_newer_version, parse_version_tag, prepare_installer_for_launch, release_from_github_payload,
     release_from_latest_json_payload, resolve_manifest_asset_url, safe_asset_name,
     select_update_asset, validate_asset_sha256,
 };
 use serde_json::json;
+use std::io::Write;
 use std::path::PathBuf;
 
 #[test]
@@ -322,6 +323,40 @@ fn download_asset_to_writes_bytes() {
 
     assert_eq!(path, dir.path().join("pkg.zip"));
     assert_eq!(std::fs::read(path).unwrap(), b"abcdef");
+}
+
+#[test]
+fn update_zip_is_extracted_and_launches_root_setup() {
+    let dir = tempfile::tempdir().unwrap();
+    let zip_path = dir
+        .path()
+        .join("CodexPlusOfficial-1.0.13-official.1-windows-x64.zip");
+    let file = std::fs::File::create(&zip_path).unwrap();
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default();
+    zip.start_file(
+        "CodexPlusOfficial-1.0.13-official.1-windows-x64-setup.exe",
+        options,
+    )
+    .unwrap();
+    zip.write_all(b"fake setup").unwrap();
+    zip.start_file("CodexOfficialApp-x64.msix", options)
+        .unwrap();
+    zip.write_all(b"fake msix").unwrap();
+    zip.finish().unwrap();
+
+    let launch_path = prepare_installer_for_launch(&zip_path).unwrap();
+
+    assert_eq!(
+        launch_path.file_name().and_then(|name| name.to_str()),
+        Some("CodexPlusOfficial-1.0.13-official.1-windows-x64-setup.exe")
+    );
+    assert!(launch_path.exists());
+    assert!(
+        launch_path
+            .with_file_name("CodexOfficialApp-x64.msix")
+            .exists()
+    );
 }
 
 #[test]
