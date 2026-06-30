@@ -19,7 +19,7 @@ use crate::install::{self, InstallActionResult, InstallOptions};
 
 const CRS_IMAGE_CLIENT_URL: &str = "https://www.leishen-ai.cn/tools/crs-image.mjs?v=1.0.3";
 const CRS_IMAGE_SKILL_URL: &str =
-    "https://www.leishen-ai.cn/tools/crs-image-skill/SKILL.md?v=1.0.3";
+    "https://www.leishen-ai.cn/tools/crs-image-skill/SKILL.md?v=1.0.4";
 const CRS_IMAGE_DEFAULT_BASE_URL: &str = "https://www.leishen-ai.cn/openai/v1";
 const CODEX_WINDOWS_INSTALL_COMMAND: &str = "winget install --id 9PLM9XGG6VKS --exact --source msstore --accept-source-agreements --accept-package-agreements --silent --disable-interactivity";
 const CODEX_OFFICIAL_INSTALL_URL: &str = "https://developers.openai.com/codex/app";

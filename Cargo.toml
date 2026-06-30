@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.13-official.3"
+version = "1.0.13-official.4"
 edition = "2024"
 license = "MIT"
 repository = "https://www.leishen-ai.cn/tools/codex-plus"
