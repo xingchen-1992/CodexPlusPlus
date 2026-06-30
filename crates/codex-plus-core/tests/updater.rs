@@ -330,12 +330,12 @@ fn update_zip_is_extracted_and_launches_root_setup() {
     let dir = tempfile::tempdir().unwrap();
     let zip_path = dir
         .path()
-        .join("CodexPlusOfficial-1.0.13-official.1-windows-x64.zip");
+        .join("CodexPlusOfficial-1.0.13-official.2-windows-x64.zip");
     let file = std::fs::File::create(&zip_path).unwrap();
     let mut zip = zip::ZipWriter::new(file);
     let options = zip::write::SimpleFileOptions::default();
     zip.start_file(
-        "CodexPlusOfficial-1.0.13-official.1-windows-x64-setup.exe",
+        "CodexPlusOfficial-1.0.13-official.2-windows-x64-setup.exe",
         options,
     )
     .unwrap();
@@ -349,7 +349,7 @@ fn update_zip_is_extracted_and_launches_root_setup() {
 
     assert_eq!(
         launch_path.file_name().and_then(|name| name.to_str()),
-        Some("CodexPlusOfficial-1.0.13-official.1-windows-x64-setup.exe")
+        Some("CodexPlusOfficial-1.0.13-official.2-windows-x64-setup.exe")
     );
     assert!(launch_path.exists());
     assert!(

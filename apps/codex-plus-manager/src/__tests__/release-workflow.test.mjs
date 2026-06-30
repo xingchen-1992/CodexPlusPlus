@@ -26,7 +26,10 @@ test("release workflow publishes a Windows ZIP with bundled Codex MSIX", () => {
 test("release workflow bundles official Codex app into macOS DMGs", () => {
   assert.match(workflowSource, /Download Codex macOS app bundle/);
   assert.match(workflowSource, /CODEX_DARWIN_ARCH: \$\{\{ matrix\.arch \}\}/);
-  assert.match(workflowSource, /Codex-darwin-\$\{arch\}-\.\*\\\\\.zip/);
+  assert.match(workflowSource, /CODEX_MACOS_ARM64_ZIP_URL/);
+  assert.match(workflowSource, /Codex-darwin-arm64-26\.623\.70822\.zip/);
+  assert.match(workflowSource, /Codex-darwin-x64-26\.623\.70822\.zip/);
+  assert.match(workflowSource, /case "\$CODEX_DARWIN_ARCH" in/);
   assert.match(workflowSource, /CODEX_APP_SOURCE=%s/);
   assert.match(workflowSource, /Contents\/Resources\/Codex\.app/);
 });
