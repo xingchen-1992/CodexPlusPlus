@@ -1039,7 +1039,7 @@
   }
 
   function defaultCodexPlusSettings() {
-    return { pluginMarketplaceUnlock: true, forcePluginInstall: true, pluginAutoExpand: true, modelWhitelistUnlock: true, sessionDelete: true, markdownExport: true, pasteFix: false, projectMove: true, threadIdBadge: false, conversationView: false, conversationViewMaxWidth: conversationViewDefaultWidth, threadScrollRestore: true, zedRemoteOpen: true, upstreamWorktreeCreate: true, nativeMenuPlacement: true, serviceTierControls: false };
+    return { pluginMarketplaceUnlock: true, forcePluginInstall: false, pluginAutoExpand: true, modelWhitelistUnlock: true, sessionDelete: true, markdownExport: true, pasteFix: false, projectMove: true, threadIdBadge: false, conversationView: false, conversationViewMaxWidth: conversationViewDefaultWidth, threadScrollRestore: true, zedRemoteOpen: true, upstreamWorktreeCreate: true, nativeMenuPlacement: true, serviceTierControls: false };
   }
 
   const codexPlusBackendSettingMap = {
@@ -2822,7 +2822,7 @@
     sendCodexPlusDiagnostic("plugin_build_flavor_filter_patch_installed", {});
   }
 
-  function restorePluginMarketplaceRequestParams(params, method = "") {
+  function restorePluginMarketplaceRequestParams(params) {
     if (!params || typeof params !== "object") return params;
     let next = params;
     if (Array.isArray(params.marketplaceKinds)) {
@@ -2831,15 +2831,6 @@
         return restorePluginMarketplaceName(kind);
       });
       next = { ...next, marketplaceKinds: Array.from(new Set(nextKinds)) };
-    }
-    if (method === "install-plugin") {
-      next = next === params ? { ...params } : { ...next };
-      if (next.remoteMarketplaceName) next.remoteMarketplaceName = restorePluginMarketplaceName(next.remoteMarketplaceName);
-      if (typeof next.marketplacePath === "string" && next.marketplacePath.startsWith("remote:")) {
-        const remoteMarketplaceName = next.marketplacePath.slice("remote:".length);
-        delete next.marketplacePath;
-        next.remoteMarketplaceName = restorePluginMarketplaceName(remoteMarketplaceName);
-      }
     }
     return next;
   }
@@ -2985,36 +2976,9 @@
     client.__codexPluginMarketplaceOriginalSendRequest = originalSendRequest;
     client.sendRequest = async function codexPluginMarketplacePatchedSendRequest(method, params, options) {
       const requestMethod = appServerModelRequestMethod(String(method || ""), params);
-      const requestParams = patchPluginMarketplaceRequestParams(requestMethod, restorePluginMarketplaceRequestParams(params, requestMethod));
-      if (requestMethod === "install-plugin") {
-        sendCodexPlusDiagnostic("plugin_install_request_debug", {
-          method: String(method || ""),
-          requestMethod,
-          originalMarketplacePath: params?.marketplacePath || null,
-          originalRemoteMarketplaceName: params?.remoteMarketplaceName || null,
-          originalPluginName: params?.pluginName || null,
-          requestMarketplacePath: requestParams?.marketplacePath || null,
-          requestRemoteMarketplaceName: requestParams?.remoteMarketplaceName || null,
-          requestPluginName: requestParams?.pluginName || null,
-        });
-      }
-      try {
-        const result = await originalSendRequest(method, requestParams, options);
-        return patchPluginMarketplaceResult(requestMethod, result);
-      } catch (error) {
-        if (requestMethod === "install-plugin") {
-          sendCodexPlusDiagnostic("plugin_install_request_failed", {
-            method: String(method || ""),
-            requestMethod,
-            requestMarketplacePath: requestParams?.marketplacePath || null,
-            requestRemoteMarketplaceName: requestParams?.remoteMarketplaceName || null,
-            requestPluginName: requestParams?.pluginName || null,
-            errorName: error?.name || "",
-            errorMessage: error?.message || String(error),
-          });
-        }
-        throw error;
-      }
+      const requestParams = patchPluginMarketplaceRequestParams(requestMethod, restorePluginMarketplaceRequestParams(params));
+      const result = await originalSendRequest(method, requestParams, options);
+      return patchPluginMarketplaceResult(requestMethod, result);
     };
     client.__codexPluginMarketplaceUnlockPatch = codexPluginMarketplaceUnlockVersion;
     return true;
@@ -3024,7 +2988,7 @@
     if (!message || typeof message !== "object") return message;
     if (message.type === "fetch" && typeof message.url === "string") {
       const requestMethod = appServerModelRequestMethod(message.url, message.body);
-      if (requestMethod !== "list-plugins" && requestMethod !== "install-plugin") return message;
+      if (requestMethod !== "list-plugins") return message;
       let requestBody = message.body;
       let params = null;
       if (typeof requestBody === "string" && requestBody.trim()) {
@@ -3038,25 +3002,13 @@
       }
       const requestParams = patchPluginMarketplaceRequestParams(
         requestMethod,
-        restorePluginMarketplaceRequestParams(params, requestMethod)
+        restorePluginMarketplaceRequestParams(params)
       );
       if (requestMethod === "list-plugins" && message.requestId != null) {
         window.__codexPluginMarketplaceFetchRequestIds = window.__codexPluginMarketplaceFetchRequestIds || new Set();
         window.__codexPluginMarketplaceFetchRequestIds.add(String(message.requestId));
       }
       if (requestParams === params) return message;
-      if (requestMethod === "install-plugin") {
-        sendCodexPlusDiagnostic("plugin_install_request_debug", {
-          method: message.url,
-          requestMethod,
-          originalMarketplacePath: params?.marketplacePath || null,
-          originalRemoteMarketplaceName: params?.remoteMarketplaceName || null,
-          originalPluginName: params?.pluginName || null,
-          requestMarketplacePath: requestParams?.marketplacePath || null,
-          requestRemoteMarketplaceName: requestParams?.remoteMarketplaceName || null,
-          requestPluginName: requestParams?.pluginName || null,
-        });
-      }
       return {
         ...message,
         body: typeof requestBody === "string" ? JSON.stringify(requestParams) : requestParams,
@@ -3064,28 +3016,16 @@
     }
     if (message.type === "mcp-request" && message.request && typeof message.request === "object") {
       const requestMethod = appServerModelRequestMethod(String(message.request.method || ""), message.request.params);
-      if (requestMethod !== "list-plugins" && requestMethod !== "install-plugin") return message;
+      if (requestMethod !== "list-plugins") return message;
       const requestParams = patchPluginMarketplaceRequestParams(
         requestMethod,
-        restorePluginMarketplaceRequestParams(message.request.params, requestMethod)
+        restorePluginMarketplaceRequestParams(message.request.params)
       );
       if (requestMethod === "list-plugins" && message.request.id != null) {
         window.__codexPluginMarketplaceRequestIds = window.__codexPluginMarketplaceRequestIds || new Set();
         window.__codexPluginMarketplaceRequestIds.add(String(message.request.id));
       }
       if (requestParams === message.request.params) return message;
-      if (requestMethod === "install-plugin") {
-        sendCodexPlusDiagnostic("plugin_install_request_debug", {
-          method: String(message.request.method || ""),
-          requestMethod,
-          originalMarketplacePath: message.request.params?.marketplacePath || null,
-          originalRemoteMarketplaceName: message.request.params?.remoteMarketplaceName || null,
-          originalPluginName: message.request.params?.pluginName || null,
-          requestMarketplacePath: requestParams?.marketplacePath || null,
-          requestRemoteMarketplaceName: requestParams?.remoteMarketplaceName || null,
-          requestPluginName: requestParams?.pluginName || null,
-        });
-      }
       return { ...message, request: { ...message.request, params: requestParams } };
     }
     return message;

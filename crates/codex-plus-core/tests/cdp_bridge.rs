@@ -286,9 +286,8 @@ fn injection_script_expands_api_key_plugin_marketplace_requests() {
     assert!(script.contains("mergeLocalPluginMarketplaces(result)"));
     assert!(script.contains("plugin_marketplace_local_merged"));
     assert!(script.contains("restorePluginMarketplaceName"));
-    assert!(script.contains(
-        "next.remoteMarketplaceName = restorePluginMarketplaceName(next.remoteMarketplaceName)"
-    ));
+    assert!(!script.contains("delete next.marketplacePath"));
+    assert!(!script.contains("next.remoteMarketplaceName = restorePluginMarketplaceName"));
     assert!(!script.contains("marketplace.name = alias"));
     assert!(script.contains("if (name === \"openai-curated\") return \"OpenAI插件2(Codex)\""));
     assert!(
@@ -297,14 +296,22 @@ fn injection_script_expands_api_key_plugin_marketplace_requests() {
     assert!(script.contains("OpenAI插件1(Codex)"));
     assert!(script.contains("OpenAI插件2(Codex)"));
     assert!(script.contains("OpenAI插件3(Codex)"));
-    assert!(script.contains("method === \"install-plugin\""));
     assert!(script.contains("plugin_marketplace_response_expanded"));
     assert!(script.contains("plugin_build_flavor_filter_bypassed"));
-    assert!(script.contains("plugin_install_request_debug"));
-    assert!(script.contains("plugin_install_request_failed"));
     assert!(!script.contains("marketplace.path ="));
     assert!(!script.contains("codexPluginMarketplacePathAliasForName"));
     assert!(!script.contains("spoofAnyCodexAuthContext"));
+}
+
+#[test]
+fn injection_script_does_not_rewrite_plugin_install_requests() {
+    let script = assets::injection_script(57321);
+
+    assert!(script.contains("if (method === \"list-plugins\")"));
+    assert!(script.contains("return params;"));
+    assert!(!script.contains("delete next.marketplacePath"));
+    assert!(!script.contains("remoteMarketplaceName = restorePluginMarketplaceName"));
+    assert!(!script.contains("plugin_install_request_debug"));
 }
 
 #[test]
@@ -336,6 +343,14 @@ fn injection_script_keeps_force_install_unlock_visual_state_sticky() {
     assert!(script.contains("codexForcePluginInstallRefreshIntervalMs"));
     assert!(script.contains("refreshForcePluginInstallUnlockLoop"));
     assert!(script.contains("setInterval(() => {"));
+}
+
+#[test]
+fn injection_script_keeps_force_plugin_install_disabled_by_default() {
+    let script = assets::injection_script(57321);
+
+    assert!(script.contains("forcePluginInstall: false"));
+    assert!(!script.contains("forcePluginInstall: true"));
 }
 
 #[test]

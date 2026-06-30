@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.5-taiying.6"
+version = "1.0.5-taiying.7"
 edition = "2024"
 license = "MIT"
 repository = "https://ls-qihang.cn/tools/codex-plus"

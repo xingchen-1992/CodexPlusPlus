@@ -201,7 +201,7 @@ pub struct BackendSettings {
     pub computer_use_guard_enabled: bool,
     #[serde(rename = "codexAppPluginMarketplaceUnlock", default = "default_true")]
     pub codex_app_plugin_marketplace_unlock: bool,
-    #[serde(rename = "codexAppForcePluginInstall", default = "default_true")]
+    #[serde(rename = "codexAppForcePluginInstall", default)]
     pub codex_app_force_plugin_install: bool,
     #[serde(rename = "codexAppPluginAutoExpand", default = "default_true")]
     pub codex_app_plugin_auto_expand: bool,
@@ -310,7 +310,7 @@ impl Default for BackendSettings {
             enhancements_enabled: true,
             computer_use_guard_enabled: false,
             codex_app_plugin_marketplace_unlock: true,
-            codex_app_force_plugin_install: true,
+            codex_app_force_plugin_install: false,
             codex_app_plugin_auto_expand: true,
             codex_app_model_whitelist_unlock: true,
             codex_app_session_delete: true,
@@ -1042,7 +1042,7 @@ mod tests {
         assert!(settings.enhancements_enabled);
         assert!(!settings.computer_use_guard_enabled);
         assert!(settings.codex_app_plugin_marketplace_unlock);
-        assert!(settings.codex_app_force_plugin_install);
+        assert!(!settings.codex_app_force_plugin_install);
         assert!(settings.codex_app_plugin_auto_expand);
         assert!(!settings.codex_app_thread_id_badge);
         assert!(settings.codex_app_force_chinese_locale);
