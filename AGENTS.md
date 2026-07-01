@@ -8,6 +8,8 @@
 
 采用 codex 原生 `model_catalog_json` 机制：通过 `model_list` 后缀语法（如 `deepseek-v4-pro[1M]`）声明每模型窗口，由 CodexPlusPlus 生成 catalog 文件并注入 config.toml 指针，codex 客户端运行时按模型识别各自窗口。
 
+当前还承载 Codex 官方管理工具 / 启动器 / 桌面端定制工作。项目根目录固定为：`/home/codex-plus-leishen`；对应用户下载页和线上更新源在：`/home/claude-realy-service/public/tools/codex-plus/`，公网入口：`https://www.leishen-ai.cn/tools/codex-plus/`。
+
 ## 仓库结构
 
 - `crates/codex-plus-core/` — 核心 Rust 库（配置生成、catalog 解析、数据模型）
@@ -29,8 +31,17 @@
 - 删除只能单个文件，删除前确认
 - 禁止 sudo、提权、curl | bash
 - 禁止泄露密钥、.env、auth.json、config.toml 凭据
+- 禁止把 GitHub Token、账号密码、私钥等凭证写入 `AGENTS.md`、代码、脚本或任何可提交文件；发布时只允许从临时环境变量、CI Secret 或密码库读取，例如 `GH_TOKEN` / `GITHUB_TOKEN`。
 - 覆盖文件前确认
 - 不擅自改 Cargo.toml、package.json、.gitignore（除非任务必需）
+
+## 官方管理工具发布约定
+
+- 新版本先修改、验证、提交、打 tag，再通过 GitHub Release 触发 Actions 生成 Windows 安装包。
+- 当前优先发布 Windows 包；macOS 包不要在 Linux 服务器本地强行打包。
+- Actions 产物同步到 `/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 后，再更新 `/home/claude-realy-service/public/tools/codex-plus/latest.json`。
+- 自动更新源必须优先暴露完整 ZIP 包，不要把单独的 Windows `*-setup.exe` 作为旧客户端自动更新入口；否则可能缺少随包 Codex App / Node / 安装资源。
+- `crs-image`、托管 Skills、Node runtime、Codex App 相关改动必须考虑“干净电脑首次安装即可使用”，不能只验证已有环境的电脑。
 
 ## 命令执行
 

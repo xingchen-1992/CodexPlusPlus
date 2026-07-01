@@ -3138,16 +3138,15 @@ fn crs_image_tool_path_entries(paths: &CrsImageInstallPaths) -> Vec<PathBuf> {
 #[cfg(windows)]
 fn ensure_persistent_tool_path_entries(entries: &[PathBuf]) -> anyhow::Result<bool> {
     const ENV_SUBKEY: &str = "Environment";
-    let current =
-        codex_plus_core::windows_integration::read_current_user_string_values(ENV_SUBKEY)?
-            .into_iter()
-            .find_map(|(name, value)| name.eq_ignore_ascii_case("Path").then_some(value).flatten())
-            .unwrap_or_default();
+    let current = codex_plus_core::windows_read_current_user_string_values(ENV_SUBKEY)?
+        .into_iter()
+        .find_map(|(name, value)| name.eq_ignore_ascii_case("Path").then_some(value).flatten())
+        .unwrap_or_default();
     let next = windows_user_path_with_entries(&current, entries);
     if next == current {
         return Ok(false);
     }
-    codex_plus_core::windows_integration::set_current_user_string_value(ENV_SUBKEY, "Path", &next)?;
+    codex_plus_core::windows_set_current_user_string_value(ENV_SUBKEY, "Path", &next)?;
     Ok(true)
 }
 

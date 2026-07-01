@@ -86,6 +86,9 @@ test("managed skills install adds local command directories to the user environm
   assert.match(commandsSource, /managed_npm_global_bin_dir\(\)/);
   assert.match(commandsSource, /managed_node_bin_dirs\(\)/);
   assert.match(commandsSource, /fn windows_user_path_with_entries/);
+  assert.doesNotMatch(commandsSource, /codex_plus_core::windows_integration::/);
+  assert.match(commandsSource, /codex_plus_core::windows_read_current_user_string_values/);
+  assert.match(commandsSource, /codex_plus_core::windows_set_current_user_string_value/);
 });
 
 test("managed skill sync blocks launch when installation fails", () => {

@@ -60,3 +60,19 @@ pub fn windows_activate_process_window(process_id: u32) -> bool {
 pub fn windows_enumerate_processes() -> Vec<windows_integration::WindowsProcessInfo> {
     windows_integration::enumerate_processes()
 }
+
+#[cfg(windows)]
+pub fn windows_read_current_user_string_values(
+    subkey: &str,
+) -> anyhow::Result<Vec<(String, Option<String>)>> {
+    windows_integration::read_current_user_string_values(subkey)
+}
+
+#[cfg(windows)]
+pub fn windows_set_current_user_string_value(
+    subkey: &str,
+    name: &str,
+    value: &str,
+) -> anyhow::Result<()> {
+    windows_integration::set_current_user_string_value(subkey, name, value)
+}
