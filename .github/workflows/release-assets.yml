@@ -281,7 +281,7 @@ jobs:
             })
             .sort((left, right) => {
               const platformOrder = { windows: 0, macos: 1 };
-              const purposeOrder = { download: 0, updater: 1 };
+              const purposeOrder = { updater: 0, download: 1 };
               return (platformOrder[left.platform] ?? 9) - (platformOrder[right.platform] ?? 9)
                 || (purposeOrder[left.purpose] ?? 9) - (purposeOrder[right.purpose] ?? 9)
                 || left.name.localeCompare(right.name);
