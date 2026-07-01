@@ -22,8 +22,10 @@ test("Codex CLI installer opens a visible terminal instead of running silently",
   assert.match(commandsSource, /fn codex_cli_install_script_windows\(\) -> String/);
   assert.match(commandsSource, /fn codex_cli_install_script_unix\(\) -> String/);
   assert.match(commandsSource, /powershell_single_quote/);
-  assert.match(commandsSource, /\$env:PATH = \{path_line\}/);
-  assert.match(commandsSource, /export PATH=\{path_line\}/);
+  assert.match(commandsSource, /\$env:NPM_CONFIG_PREFIX = \$npmPrefix/);
+  assert.match(commandsSource, /\$env:PATH = "\$npmBin;" \+ \{path_line\}/);
+  assert.match(commandsSource, /export NPM_CONFIG_PREFIX="\$npm_prefix"/);
+  assert.match(commandsSource, /export PATH="\$npm_bin":\{path_line\}/);
   assert.match(commandsSource, /\)\) \{\{/);
   assert.match(commandsSource, /\n\}\}\nnode --version/);
 });
@@ -34,6 +36,7 @@ test("official setup detection uses an expanded command search path", () => {
   assert.match(commandsSource, /APPDATA/);
   assert.match(commandsSource, /ProgramFiles/);
   assert.match(commandsSource, /\.npm-global/);
+  assert.match(commandsSource, /managed_npm_global_bin_dir\(\)/);
   assert.match(commandsSource, /\/opt\/homebrew\/bin/);
 
   const readVersion = commandsSource.match(/fn read_command_version\(command: &str, arg: &str\) -> Option<String> \{[\s\S]*?\n\}/);

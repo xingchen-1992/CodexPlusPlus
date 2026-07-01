@@ -63,6 +63,16 @@ test("managed skills are installed from the official domain and hidden from manu
   assert.match(appSource, /MANAGED_SKILL_IDS\.has\(entry\.id\)/);
 });
 
+test("managed skills are installed before crs-image client setup can fail", () => {
+  const command = commandsSource.match(/pub async fn install_crs_image_skill\(\)[\s\S]*?\n}\n\nasync fn download_managed_skill_documents/);
+  assert.ok(command, "install_crs_image_skill command should exist");
+  assert.ok(
+    command[0].indexOf("install_managed_skill_documents") < command[0].indexOf("script_market::download_script(CRS_IMAGE_CLIENT_URL)"),
+    "managed skills should be written before downloading the crs-image client",
+  );
+  assert.match(command[0], /managed_install_result/);
+});
+
 test("managed crs-image node detection does not flash a Windows console", () => {
   const nodeDetected = commandsSource.match(/fn node_detected\(\) -> bool \{[\s\S]*?\n\}/);
   assert.ok(nodeDetected, "node_detected should exist");
@@ -78,9 +88,20 @@ test("managed crs-image can run on the bundled Node runtime", () => {
   assert.match(commandsSource, /resources.*node/);
 });
 
-test("update button appears from automatic startup check and gives immediate installing state", () => {
+test("codex cli installer uses bundled Node and a managed npm prefix", () => {
+  assert.match(commandsSource, /fn managed_npm_global_prefix\(\) -> PathBuf/);
+  assert.match(commandsSource, /fn managed_npm_global_bin_dir\(\) -> PathBuf/);
+  assert.match(commandsSource, /paths\.push\(managed_npm_global_bin_dir\(\)\)/);
+  assert.match(commandsSource, /\$env:NPM_CONFIG_PREFIX = \$npmPrefix/);
+  assert.match(commandsSource, /export NPM_CONFIG_PREFIX="\$npm_prefix"/);
+  assert.match(commandsSource, /npm install -g @openai\/codex/);
+});
+
+test("update button appears from startup check and gives immediate installing state after confirmation", () => {
   assert.match(appSource, /const \[updateInstalling, setUpdateInstalling\]/);
-  assert.match(appSource, /checkUpdate\(true,\s*\{[^}]*promptAvailable: true[^}]*\}\)/);
+  assert.match(appSource, /checkUpdate\(true,\s*\{[^}]*notifyAvailable: false[^}]*\}\)/);
+  assert.match(appSource, /confirmAndPerformUpdate/);
+  assert.match(appSource, /确定更新/);
   assert.match(appSource, /setUpdateInstalling\(true\)/);
   assert.match(appSource, /更新中/);
   assert.match(appSource, /disabled=\{updateInstalling\}/);

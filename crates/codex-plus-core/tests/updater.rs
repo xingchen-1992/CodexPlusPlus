@@ -1,8 +1,8 @@
 use codex_plus_core::update::{
     DEFAULT_LATEST_JSON_URL, Release, create_pre_update_backup_from_sources, download_asset_to,
-    is_newer_version, parse_version_tag, prepare_installer_for_launch, release_from_github_payload,
-    release_from_latest_json_payload, resolve_manifest_asset_url, safe_asset_name,
-    select_update_asset, validate_asset_sha256,
+    is_newer_version, is_update_available_for_release, parse_version_tag,
+    prepare_installer_for_launch, release_from_github_payload, release_from_latest_json_payload,
+    resolve_manifest_asset_url, safe_asset_name, select_update_asset, validate_asset_sha256,
 };
 use serde_json::json;
 use std::io::Write;
@@ -48,6 +48,34 @@ fn official_version_comparison_uses_suffix_increment_for_same_base() {
 #[test]
 fn official_base_version_updates_old_official_builds() {
     assert!(is_newer_version("v1.0.7-official.2", "v1.0.5-official.7").unwrap());
+}
+
+#[test]
+fn update_check_requires_a_platform_asset() {
+    let release = Release {
+        version: "v1.0.15-official.1".to_string(),
+        url: "https://www.leishen-ai.cn/tools/codex-plus/latest.json".to_string(),
+        body: "Windows-only".to_string(),
+        asset_name: None,
+        asset_url: None,
+        asset_sha256: None,
+    };
+
+    assert!(!is_update_available_for_release(&release, "1.0.14-official.2").unwrap());
+}
+
+#[test]
+fn update_check_accepts_a_newer_release_with_platform_asset() {
+    let release = Release {
+        version: "v1.0.15-official.1".to_string(),
+        url: "https://www.leishen-ai.cn/tools/codex-plus/latest.json".to_string(),
+        body: "Windows setup".to_string(),
+        asset_name: Some("CodexPlusOfficial-1.0.15-official.1-windows-x64-setup.exe".to_string()),
+        asset_url: Some("https://www.leishen-ai.cn/tools/codex-plus/setup.exe".to_string()),
+        asset_sha256: None,
+    };
+
+    assert!(is_update_available_for_release(&release, "1.0.14-official.2").unwrap());
 }
 
 #[test]

@@ -747,7 +747,6 @@ export function App() {
     helperPort: "57321",
   });
   const prevLaunchStatusRef = useRef<string | null>(null);
-  const updateAutoInstallStartedRef = useRef(false);
   const updateCheckInFlightRef = useRef(false);
   const [settingsForm, setSettingsForm] = useState<BackendSettings>({ ...defaultSettings });
   const [providerSyncProgress, setProviderSyncProgress] = useState<ProviderSyncProgress>({
@@ -1429,26 +1428,13 @@ export function App() {
       const result = await run(() => call<UpdateResult>("check_update"));
       if (result) {
         setUpdate(result);
-        if (result.updateAvailable === true && options.autoInstall === true && !updateAutoInstallStartedRef.current) {
-          updateAutoInstallStartedRef.current = true;
-          showNotice("自动更新", "发现新版本，正在下载并启动管理工具更新；不会影响 Codex 应用当前正常使用。", "ok");
-          await performUpdate(result);
-        } else {
-          const shouldPrompt = result.updateAvailable === true && (!silent || options.promptAvailable === true);
-          if (shouldPrompt) {
-            const versionText = result.latestVersion ? ` ${result.latestVersion}` : "";
-            const confirmed = await confirmAction(
-              "发现可用更新",
-              `发现可用更新${versionText}，是否现在更新？`,
-              "更新",
-              "稍后",
-            );
-            if (confirmed) await performUpdate(result);
-          } else if (!silent) {
-            showNotice("官方更新检查", result.message, result.status);
-          } else if (result.updateAvailable === true && options.notifyAvailable !== false) {
-            showNotice("发现可用更新", "可在概览右上角点击“更新版本”安装。", "ok");
-          }
+        const shouldPrompt = result.updateAvailable === true && (!silent || options.promptAvailable === true);
+        if (shouldPrompt) {
+          await confirmAndPerformUpdate(result);
+        } else if (!silent) {
+          showNotice("官方更新检查", result.message, result.status);
+        } else if (result.updateAvailable === true && options.notifyAvailable !== false) {
+          showNotice("发现可用更新", "可在右上角点击“更新版本”安装。", "ok");
         }
         return result;
       }
@@ -1484,6 +1470,7 @@ export function App() {
       progress: Math.max(targetUpdate?.progress ?? 0, 5),
       updateAvailable: true,
     });
+    showNotice("更新版本", "正在下载更新安装包，请稍等；Codex 应用当前使用不受影响。", "accepted");
     try {
       const result = await run(() => call<UpdateResult>("perform_update", { release }));
       if (result) {
@@ -1493,6 +1480,26 @@ export function App() {
     } finally {
       setUpdateInstalling(false);
     }
+  };
+
+  const confirmAndPerformUpdate = async (targetUpdate: UpdateResult | null = update) => {
+    if (updateInstalling) return;
+    let selected = targetUpdate;
+    if (!selected?.updateAvailable) {
+      selected = await checkUpdate(true, { notifyAvailable: false });
+    }
+    if (!selected?.updateAvailable) {
+      showNotice("更新版本", selected?.message || "当前没有可用更新。", selected?.status || "not_checked");
+      return;
+    }
+    const versionText = selected.latestVersion ? ` ${selected.latestVersion}` : "";
+    const confirmed = await confirmAction(
+      "更新版本",
+      `发现可用更新${versionText}，是否现在更新？更新管理工具不会影响 Codex 应用当前正常使用。`,
+      "确定更新",
+      "取消",
+    );
+    if (confirmed) await performUpdate(selected);
   };
 
   const saveSettings = async () => {
@@ -1911,7 +1918,7 @@ export function App() {
       if (startup?.showUpdate) {
         setRoute("about");
       }
-      void checkUpdate(true, { autoInstall: true, promptAvailable: true, notifyAvailable: false });
+      void checkUpdate(true, { notifyAvailable: false });
       await refreshOverview(true);
       const startupSettings = await refreshSettings(true);
       await refreshRelay(true);
@@ -1991,6 +1998,7 @@ export function App() {
       repairShortcuts,
       checkUpdate,
       performUpdate,
+      confirmAndPerformUpdate,
       saveOfficialApiKey,
       openNodeInstaller,
       installCodexCliEnvironment,
@@ -2144,19 +2152,6 @@ export function App() {
           <div className="brand-copy">
             <div className="brand-title-row">
               <div className="brand-title">Codex</div>
-              {hasUpdate ? (
-                <button
-                  className="update-dot"
-                  onClick={() => {
-                    setRoute("about");
-                    void checkUpdate(false);
-                  }}
-                  title={`发现新版本 ${update?.latestVersion ?? ""}`}
-                  type="button"
-                >
-                  <CircleArrowUp className="h-4 w-4" aria-hidden="true" />
-                </button>
-              ) : null}
             </div>
             <div className="brand-subtitle">管理控制台</div>
           </div>
@@ -2202,7 +2197,7 @@ export function App() {
                 aria-label={UPDATE_BUTTON_TOOLTIP}
                 className="topbar-update-version update-pulse"
                 disabled={updateInstalling}
-                onClick={() => void actions.performUpdate()}
+                onClick={() => void actions.confirmAndPerformUpdate()}
                 title={UPDATE_BUTTON_TOOLTIP}
               >
                 <CircleArrowUp className="h-4 w-4" />
@@ -2357,6 +2352,7 @@ type Actions = {
   repairShortcuts: () => Promise<void>;
   checkUpdate: (silent?: boolean, options?: UpdateCheckOptions) => Promise<UpdateResult | null>;
   performUpdate: (targetUpdate?: UpdateResult | null) => Promise<void>;
+  confirmAndPerformUpdate: (targetUpdate?: UpdateResult | null) => Promise<void>;
   saveOfficialApiKey: (apiKey: string, options?: OfficialSyncOptions) => Promise<OfficialSyncResult>;
   openNodeInstaller: () => Promise<void>;
   installCodexCliEnvironment: () => Promise<void>;
@@ -6319,13 +6315,19 @@ function isEmptyLegacyDefaultRelayProfile(profile: RelayProfile, settings: Backe
   return (
     profile.id === "default" &&
     profile.name === "默认中转" &&
-    !profile.apiKey.trim() &&
-    !settings.relayApiKey.trim() &&
+    !textValue(profile.apiKey).trim() &&
+    !textValue(settings.relayApiKey).trim() &&
     profile.relayMode === "official" &&
     !profile.officialMixApiKey &&
-    !profile.configContents.trim() &&
-    !profile.authContents.trim()
+    !textValue(profile.configContents).trim() &&
+    !textValue(profile.authContents).trim()
   );
+}
+
+function textValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  return String(value);
 }
 
 function relayProtocolLabel(protocol: RelayProtocol): string {

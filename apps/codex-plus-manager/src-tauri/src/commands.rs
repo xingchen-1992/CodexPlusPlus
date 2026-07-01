@@ -746,6 +746,7 @@ fn spawn_silent_launcher(request: &LaunchRequest) -> anyhow::Result<()> {
 fn add_crs_image_command_dir_to_process(command: &mut std::process::Command) {
     let paths = default_crs_image_install_paths();
     let mut entries = vec![paths.command_dir];
+    entries.push(managed_npm_global_bin_dir());
     entries.extend(managed_node_bin_dirs());
     if let Some(path) = prepend_path_entries(entries) {
         command.env("PATH", path);
@@ -1725,6 +1726,20 @@ pub async fn repair_plugin_marketplace() -> CommandResult<PluginMarketplaceRepai
 pub async fn install_crs_image_skill() -> CommandResult<CrsImageInstallPayload> {
     let paths = default_crs_image_install_paths();
     let placeholder = crs_image_install_payload(&paths, node_detected(), false);
+    let managed_skill_documents = match download_managed_skill_documents().await {
+        Ok(documents) => documents,
+        Err(error) => {
+            return failed(&format!("下载托管 Skills 失败：{error}"), placeholder);
+        }
+    };
+    let managed_install_result =
+        match install_managed_skill_documents(&paths.codex_home, &managed_skill_documents) {
+            Ok(updated) => updated,
+            Err(error) => {
+                return failed(&format!("安装托管 Skills 失败：{error}"), placeholder);
+            }
+        };
+
     let client = match script_market::download_script(CRS_IMAGE_CLIENT_URL).await {
         Ok(bytes) => match String::from_utf8(bytes) {
             Ok(text) => text,
@@ -1756,34 +1771,22 @@ pub async fn install_crs_image_skill() -> CommandResult<CrsImageInstallPayload> 
             );
         }
     };
-    let managed_skill_documents = match download_managed_skill_documents().await {
-        Ok(documents) => documents,
-        Err(error) => {
-            return failed(&format!("下载托管 Skills 失败：{error}"), placeholder);
-        }
-    };
 
     match install_crs_image_files_for_paths(&paths, &client, &skill) {
-        Ok(mut payload) => match install_managed_skill_documents(
-            Path::new(&payload.codex_home),
-            &managed_skill_documents,
-        ) {
-            Ok(managed_updated) => {
-                payload.updated |= managed_updated;
-                let action = if payload.updated {
-                    "托管 Skills 已自动安装/更新"
-                } else {
-                    "托管 Skills 已是最新版本"
-                };
-                let message = if payload.node_detected {
-                    format!("{action}；重启 Codex 后生效。")
-                } else {
-                    format!("{action}，但未检测到 Node.js；安装 Node.js 并重启 Codex 后生效。")
-                };
-                ok(&message, payload)
-            }
-            Err(error) => failed(&format!("安装托管 Skills 失败：{error}"), placeholder),
-        },
+        Ok(mut payload) => {
+            payload.updated |= managed_install_result;
+            let action = if payload.updated {
+                "托管 Skills 已自动安装/更新"
+            } else {
+                "托管 Skills 已是最新版本"
+            };
+            let message = if payload.node_detected {
+                format!("{action}；重启 Codex 后生效。")
+            } else {
+                format!("{action}，但未检测到 Node.js；安装 Node.js 并重启 Codex 后生效。")
+            };
+            ok(&message, payload)
+        }
         Err(error) => failed(&format!("安装 crs-image Skill 失败：{error}"), placeholder),
     }
 }
@@ -3617,13 +3620,20 @@ Write-Host 'Codex install command completed. Return to Codex manager, refresh ov
 }
 
 fn codex_cli_install_script_windows() -> String {
+    let npm_prefix = powershell_single_quote(&managed_npm_global_prefix().to_string_lossy());
+    let npm_bin = powershell_single_quote(&managed_npm_global_bin_dir().to_string_lossy());
     let path_line = command_search_path()
         .map(|path| powershell_single_quote(&path.to_string_lossy()))
         .unwrap_or_else(|| "$env:PATH".to_string());
     format!(
         r#"$ErrorActionPreference = 'Stop'
-$env:PATH = {path_line}
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::UTF8
+$npmPrefix = {npm_prefix}
+$npmBin = {npm_bin}
+New-Item -ItemType Directory -Force -Path $npmPrefix | Out-Null
+$env:NPM_CONFIG_PREFIX = $npmPrefix
+$env:npm_config_prefix = $npmPrefix
+$env:PATH = "$npmBin;" + {path_line}
 Write-Host 'Codex CLI 安装维护'
 Write-Host '正在检查 Node.js 和 npm...'
 if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) {{
@@ -3644,13 +3654,20 @@ Read-Host '按回车关闭窗口'
 }
 
 fn codex_cli_install_script_unix() -> String {
+    let npm_prefix = sh_single_quote(&managed_npm_global_prefix().to_string_lossy());
+    let npm_bin = sh_single_quote(&managed_npm_global_bin_dir().to_string_lossy());
     let path_line = command_search_path()
         .map(|path| sh_single_quote(&path.to_string_lossy()))
         .unwrap_or_else(|| "\"$PATH\"".to_string());
     format!(
         r#"#!/bin/sh
 set -e
-export PATH={path_line}
+npm_prefix={npm_prefix}
+npm_bin={npm_bin}
+mkdir -p "$npm_prefix" "$npm_bin"
+export NPM_CONFIG_PREFIX="$npm_prefix"
+export npm_config_prefix="$npm_prefix"
+export PATH="$npm_bin":{path_line}
 echo 'Codex CLI 安装维护'
 echo '正在检查 Node.js 和 npm...'
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
@@ -3701,6 +3718,7 @@ fn apply_command_search_path(command: &mut std::process::Command) {
 
 fn command_search_path() -> Option<std::ffi::OsString> {
     let mut paths = Vec::<PathBuf>::new();
+    paths.push(managed_npm_global_bin_dir());
     paths.extend(managed_node_bin_dirs());
 
     if cfg!(windows) {
@@ -3748,6 +3766,19 @@ fn command_search_path() -> Option<std::ffi::OsString> {
         }
     }
     std::env::join_paths(deduped).ok()
+}
+
+fn managed_npm_global_prefix() -> PathBuf {
+    codex_plus_core::paths::default_app_state_dir().join("npm-global")
+}
+
+fn managed_npm_global_bin_dir() -> PathBuf {
+    let prefix = managed_npm_global_prefix();
+    if cfg!(windows) {
+        prefix
+    } else {
+        prefix.join("bin")
+    }
 }
 
 fn managed_node_executable() -> Option<PathBuf> {

@@ -3,7 +3,6 @@ import fs from "node:fs";
 import test from "node:test";
 
 const workflowSource = fs.readFileSync(new URL("../../../../.github/workflows/release-assets.yml", import.meta.url), "utf8");
-const macosPackageSource = fs.readFileSync(new URL("../../../../scripts/installer/macos/package-dmg.sh", import.meta.url), "utf8");
 
 test("release workflow verifies NSIS before building Windows installer", () => {
   assert.match(workflowSource, /Install NSIS with retry/);
@@ -23,7 +22,17 @@ test("release workflow publishes a Windows ZIP with bundled Codex MSIX", () => {
   assert.match(workflowSource, /Compress-Archive/);
   assert.match(workflowSource, /-Path "\$packageRoot\/\*"/);
   assert.match(workflowSource, /CodexPlusOfficial-\$\{version\}-windows-x64\.zip/);
-  assert.match(workflowSource, /files: dist\/windows\/\*\.zip/);
+  assert.match(workflowSource, /dist\/windows\/CodexPlusOfficial-\$\{version\}-windows-x64-setup\.exe/);
+  assert.match(workflowSource, /dist\/windows\/\*\.zip/);
+  assert.match(workflowSource, /dist\/windows\/\*-setup\.exe/);
+});
+
+test("release workflow only builds Windows assets for now", () => {
+  assert.match(workflowSource, /windows-installer:/);
+  assert.doesNotMatch(workflowSource, /^  macos-dmg:/m);
+  assert.doesNotMatch(workflowSource, /macos-15-intel/);
+  assert.match(workflowSource, /needs:\s*\n\s*- windows-installer/);
+  assert.doesNotMatch(workflowSource, /- macos-dmg/);
 });
 
 test("release workflow caches heavyweight dependencies and official app downloads", () => {
@@ -33,7 +42,6 @@ test("release workflow caches heavyweight dependencies and official app download
   assert.match(workflowSource, /Cache Rust build artifacts/);
   assert.match(workflowSource, /mozilla-actions\/sccache-action/);
   assert.match(workflowSource, /Cache Codex Windows MSIX/);
-  assert.match(workflowSource, /Cache Codex macOS app zip/);
   assert.match(workflowSource, /npm ci --prefer-offline --no-audit --no-fund/);
   assert.equal(workflowSource.includes("npm install --package-lock=false"), false);
 });
@@ -43,21 +51,4 @@ test("release workflow bundles a managed Node runtime for clean computers", () =
   assert.match(workflowSource, /Cache Node Windows runtime/);
   assert.match(workflowSource, /Download Node Windows runtime/);
   assert.match(workflowSource, /dist\/windows\/app\/resources\/node/);
-  assert.match(workflowSource, /NODE_MACOS_ARM64_TGZ_URL/);
-  assert.match(workflowSource, /Cache Node macOS runtime/);
-  assert.match(workflowSource, /Download Node macOS runtime/);
-  assert.match(workflowSource, /NODE_RUNTIME_SOURCE=%s/);
-  assert.match(macosPackageSource, /bundle_node_runtime_if_present/);
-  assert.match(macosPackageSource, /Contents\/Resources\/node/);
-});
-
-test("release workflow bundles official Codex app into macOS DMGs", () => {
-  assert.match(workflowSource, /Download Codex macOS app bundle/);
-  assert.match(workflowSource, /CODEX_DARWIN_ARCH: \$\{\{ matrix\.arch \}\}/);
-  assert.match(workflowSource, /CODEX_MACOS_ARM64_ZIP_URL/);
-  assert.match(workflowSource, /Codex-darwin-arm64-26\.623\.70822\.zip/);
-  assert.match(workflowSource, /Codex-darwin-x64-26\.623\.70822\.zip/);
-  assert.match(workflowSource, /case "\$CODEX_DARWIN_ARCH" in/);
-  assert.match(workflowSource, /CODEX_APP_SOURCE=%s/);
-  assert.match(workflowSource, /Contents\/Resources\/Codex\.app/);
 });

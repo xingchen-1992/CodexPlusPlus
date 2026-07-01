@@ -19,6 +19,11 @@ test("empty legacy default relay is not shown as a provider", () => {
   assert.match(appSource, /relayProfiles: \[\]/);
   assert.match(appSource, /isEmptyLegacyDefaultRelayProfile/);
   assert.match(appSource, /\.filter\(\(profile\) => !isEmptyLegacyDefaultRelayProfile\(profile, settings\)\)/);
+  const legacyDefaultFilter = appSource.match(/function isEmptyLegacyDefaultRelayProfile[\s\S]*?\n}\n/);
+  assert.ok(legacyDefaultFilter, "legacy default filter should exist");
+  assert.equal(legacyDefaultFilter[0].includes("profile.apiKey.trim()"), false);
+  assert.equal(legacyDefaultFilter[0].includes("profile.configContents.trim()"), false);
+  assert.equal(legacyDefaultFilter[0].includes("profile.authContents.trim()"), false);
   assert.match(appSource, /暂无供应商配置。购买总量包或在概览保存 API Key 后会自动生成“总量包”。/);
   assert.doesNotMatch(appSource, /scrubbedProfiles\.length \? scrubbedProfiles : defaultSettings\.relayProfiles/);
 });

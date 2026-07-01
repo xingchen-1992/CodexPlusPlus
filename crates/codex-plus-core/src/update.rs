@@ -295,7 +295,7 @@ pub async fn fetch_latest_release(latest_json_url: &str) -> anyhow::Result<Relea
 
 pub async fn check_for_update(current_version: &str) -> anyhow::Result<UpdateCheck> {
     let release = fetch_latest_release(DEFAULT_LATEST_JSON_URL).await?;
-    let update_available = is_newer_version(&release.version, current_version)?;
+    let update_available = is_update_available_for_release(&release, current_version)?;
     Ok(UpdateCheck {
         current_version: current_version.to_string(),
         latest_version: Some(release.version),
@@ -305,6 +305,25 @@ pub async fn check_for_update(current_version: &str) -> anyhow::Result<UpdateChe
         asset_sha256: release.asset_sha256,
         update_available,
     })
+}
+
+pub fn is_update_available_for_release(
+    release: &Release,
+    current_version: &str,
+) -> anyhow::Result<bool> {
+    Ok(is_newer_version(&release.version, current_version)?
+        && release
+            .asset_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some()
+        && release
+            .asset_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some())
 }
 
 pub async fn perform_update(
@@ -475,8 +494,13 @@ fn platform_asset_rank(name: &str) -> u8 {
         }
         return 1;
     }
-    if cfg!(windows) && is_windows_installer_asset(name) {
-        return 0;
+    if cfg!(windows) {
+        if is_windows_setup_asset(name) {
+            return 0;
+        }
+        if is_windows_full_package_asset(name) {
+            return 1;
+        }
     }
     2
 }
@@ -510,14 +534,24 @@ fn is_macos_native_arch_asset(name: &str) -> bool {
 }
 
 fn is_windows_installer_asset(name: &str) -> bool {
+    is_windows_setup_asset(name) || is_windows_full_package_asset(name)
+}
+
+fn is_windows_setup_asset(name: &str) -> bool {
     name.contains("codex")
         && name.contains("plus")
         && (name.ends_with(".msi")
-            || (name.contains("windows") && name.ends_with(".zip"))
             || name.ends_with("-setup.exe")
             || name.ends_with("_setup.exe")
             || name.ends_with("setup.exe")
             || name.ends_with("installer.exe"))
+}
+
+fn is_windows_full_package_asset(name: &str) -> bool {
+    name.contains("codex")
+        && name.contains("plus")
+        && name.contains("windows")
+        && name.ends_with(".zip")
 }
 
 fn is_macos_installer_asset(name: &str) -> bool {
