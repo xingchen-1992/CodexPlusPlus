@@ -40,6 +40,17 @@ test("opening or restarting Codex syncs managed skills first", () => {
   const ready = appSource.match(/const ensureOfficialReadyForLaunch[\s\S]*?return true;\n\s*};/);
   assert.ok(ready, "ensureOfficialReadyForLaunch should exist");
   assert.match(ready[0], /await ensureManagedSkillsForCodex\(\{ silent: false \}\)/);
+  assert.match(ready[0], /正在同步 crs-image、内置 Node 和 6 个托管 Skills/);
+  assert.match(ready[0], /crs-image 和托管 Skills 已就绪，跳过重复同步/);
+});
+
+test("launch buttons show progress and avoid duplicate launch requests", () => {
+  assert.match(appSource, /type LaunchProgress = TaskProgress/);
+  assert.match(appSource, /const \[launchProgress, setLaunchProgress\]/);
+  assert.match(appSource, /Codex 启动进度/);
+  assert.match(appSource, /disabled=\{launchProgress\.active\}/);
+  assert.match(appSource, /if \(launchProgress\.active\)/);
+  assert.match(appSource, /keepLaunchAcceptedVisible\("已发送启动请求，Codex 窗口正在打开/);
 });
 
 test("startup syncs managed skill and silently repairs plugin marketplace", () => {
@@ -51,6 +62,8 @@ test("startup syncs managed skill and silently repairs plugin marketplace", () =
   assert.ok(managedSync, "managed skill sync should exist");
   assert.equal(managedSync[0].includes("ensurePluginMarketplaceReadyForCodex"), false);
   assert.match(managedSync[0], /for \(const managedSkill of MANAGED_SKILLS\)/);
+  assert.match(managedSync[0], /managedSkillsSyncPromiseRef\.current/);
+  assert.match(managedSync[0], /setManagedSkillsReady\(true\)/);
 });
 
 test("managed skills are installed from bundled resources and hidden from manual editing", () => {
@@ -66,6 +79,14 @@ test("managed skills are installed from bundled resources and hidden from manual
   assert.match(commandsSource, /const CRS_IMAGE_CLIENT: &str = include_str!\("\.\.\/managed-skills\/crs-image\.mjs"\);/);
   assert.match(appSource, /MANAGED_SKILL_IDS\.has\(id\.trim\(\)\)/);
   assert.match(appSource, /MANAGED_SKILL_IDS\.has\(entry\.id\)/);
+});
+
+test("managed skills keep their saved enabled state before live config sync", () => {
+  const stateMerge = appSource.match(/function withLiveEntryState[\s\S]*?\n}\n/);
+  assert.ok(stateMerge, "withLiveEntryState should exist");
+  assert.match(stateMerge[0], /Missing from the live config means "not synced yet"/);
+  assert.match(stateMerge[0], /return live \? \{ \.\.\.entry, enabled: live\.enabled \} : entry;/);
+  assert.equal(stateMerge[0].includes("enabled: false"), false);
 });
 
 test("managed skills are installed before crs-image client setup can fail", () => {

@@ -147,6 +147,12 @@ fn windows_installer_optionally_bundles_codex_app() {
     assert!(script.contains("$EXEDIR\\${CODEX_MSIX_DIR}\\${CODEX_MSIX_FILENAME}"));
     assert!(script.contains("$EXEDIR\\${CODEX_MSIX_FILENAME}"));
     assert!(script.contains("Add-AppxPackage -Path $$msix"));
+    assert!(script.contains("!define PYTHON_INSTALLER_FILENAME \"python-3.13.14-amd64.exe\""));
+    assert!(script.contains("Section \"安装 Python\""));
+    assert!(script.contains("$EXEDIR\\${PYTHON_INSTALLER_DIR}\\${PYTHON_INSTALLER_FILENAME}"));
+    assert!(script.contains("InstallAllUsers=1"));
+    assert!(script.contains("PrependPath=1"));
+    assert!(script.contains("Include_pip=1"));
     assert!(!script.contains("请确认已完整解压压缩包"));
 }
 

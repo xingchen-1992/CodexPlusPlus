@@ -7,6 +7,8 @@
 !define ROOT "..\..\.."
 !define CODEX_MSIX_FILENAME "CodexOfficialApp-x64.msix"
 !define CODEX_MSIX_DIR "安装资源"
+!define PYTHON_INSTALLER_FILENAME "python-3.13.14-amd64.exe"
+!define PYTHON_INSTALLER_DIR "安装资源"
 
 Name "Codex官方管理工具"
 OutFile "${ROOT}\dist\windows\CodexPlusOfficial-${VERSION}-windows-x64-setup.exe"
@@ -90,6 +92,24 @@ Section "安装 Codex 应用" SEC_CODEX_APP
     MessageBox MB_ICONEXCLAMATION "未找到 Codex 应用安装文件。请重新下载完整安装包后再运行。"
 
   codex_msix_done:
+SectionEnd
+
+Section "安装 Python" SEC_PYTHON
+  StrCpy $0 "$EXEDIR\${PYTHON_INSTALLER_DIR}\${PYTHON_INSTALLER_FILENAME}"
+  IfFileExists "$0" python_installer_found python_installer_missing
+
+  python_installer_found:
+  DetailPrint "Installing Python runtime..."
+  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='SilentlyContinue'; function Test-Python3 { try { $$v = (& py -3 --version 2>&1); if ($$LASTEXITCODE -eq 0 -and ('' + $$v) -match '^Python 3\.') { return $$true } } catch {}; try { $$v = (& python --version 2>&1); if ($$LASTEXITCODE -eq 0 -and ('' + $$v) -match '^Python 3\.') { return $$true } } catch {}; return $$false }; if (Test-Python3) { exit 0 }; $$installer='$0'; $$args=@('/quiet','InstallAllUsers=1','PrependPath=1','Include_launcher=1','Include_pip=1','Include_test=0','Shortcuts=0','SimpleInstall=1'); $$p=Start-Process -FilePath $$installer -ArgumentList $$args -Wait -PassThru; if ($$p.ExitCode -eq 0 -or $$p.ExitCode -eq 3010) { exit 0 }; exit $$p.ExitCode"`
+  Pop $1
+  StrCmp $1 "0" python_done 0
+  MessageBox MB_ICONEXCLAMATION "Python 安装失败。管理工具仍可使用；如果需要 Python，请重新下载完整安装包后再运行。"
+  Goto python_done
+
+  python_installer_missing:
+    MessageBox MB_ICONEXCLAMATION "未找到 Python 安装文件。请重新下载完整安装包后再运行。"
+
+  python_done:
 SectionEnd
 
 Section "创建桌面快捷方式" SEC_DESKTOP_SHORTCUTS

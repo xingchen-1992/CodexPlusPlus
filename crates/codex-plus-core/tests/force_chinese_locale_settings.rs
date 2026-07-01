@@ -5,6 +5,7 @@ use codex_plus_core::settings::BackendSettings;
 fn force_chinese_locale_defaults_to_true() {
     let settings = BackendSettings::default();
     assert!(settings.codex_app_force_chinese_locale);
+    assert!(settings.codex_app_fast_startup);
 
     let json = serde_json::to_value(&settings).expect("serialize default settings");
     assert_eq!(
@@ -12,6 +13,11 @@ fn force_chinese_locale_defaults_to_true() {
             .and_then(|v| v.as_bool()),
         Some(true),
         "default BackendSettings JSON should include codexAppForceChineseLocale = true"
+    );
+    assert_eq!(
+        json.get("codexAppFastStartup").and_then(|v| v.as_bool()),
+        Some(true),
+        "default BackendSettings JSON should include codexAppFastStartup = true"
     );
 }
 
@@ -25,6 +31,7 @@ fn force_chinese_locale_missing_from_old_json_defaults_to_true() {
     let parsed: BackendSettings = serde_json::from_value(json)
         .expect("old settings JSON without codexAppForceChineseLocale should still load");
     assert!(parsed.codex_app_force_chinese_locale);
+    assert!(parsed.codex_app_fast_startup);
 }
 
 #[test]
@@ -63,14 +70,35 @@ fn force_chinese_locale_config_reflects_setting() {
 fn injection_script_includes_force_chinese_locale_global_and_patch() {
     let mut settings = BackendSettings::default();
     settings.codex_app_force_chinese_locale = true;
+    settings.codex_app_fast_startup = true;
     let script = injection_script_with_settings(0, &settings);
     assert!(script.contains(
         "window.__CODEX_PLUS_FORCE_CHINESE_LOCALE__ = {\"enabled\":true,\"locale\":\"zh-CN\"};"
     ));
+    assert!(script.contains(
+        "window.__CODEX_PLUS_FAST_STARTUP__ = {\"enabled\":true,\"statsigTimeoutMs\":800};"
+    ));
     assert!(script.contains("__codexPlusForceChineseLocaleInstalled"));
+    assert!(script.contains("__codexPlusFastStartupInstalled"));
+    assert!(script.contains("__codexPlusChineseTextFallbackInstalled"));
+    assert!(script.contains("__codexPlusSuppressOfficialAppUpdatesInstalled"));
+    assert!(script.contains("data-codex-plus-official-update-hidden"));
     assert!(script.contains("72216192"));
     assert!(script.contains("enable_i18n"));
     assert!(script.contains("locale_source"));
+    assert!(script.contains("What should we work on?"));
+    assert!(script.contains("选择项目"));
+    assert!(script.contains("Extend Codex's capabilities with task-specific skills"));
+    assert!(script.contains("通过任务专用技能扩展 Codex 的能力"));
+    assert!(script.contains("Back to app"));
+    assert!(script.contains("返回应用"));
+    assert!(script.contains("Default permissions"));
+    assert!(script.contains("默认权限"));
+    assert!(script.contains("Learn more"));
+    assert!(script.contains("了解更多"));
+    assert!(script.contains("moreSkillsMatch"));
+    assert!(script.contains("pendingRoots"));
+    assert!(script.contains("MutationObserver"));
     assert!(!script.contains("setItem(\"localeOverride\""));
 
     settings.codex_app_force_chinese_locale = false;

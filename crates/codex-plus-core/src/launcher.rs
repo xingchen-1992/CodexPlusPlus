@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -2101,27 +2102,72 @@ fn resolve_codex_cli_path() -> String {
 }
 
 fn add_user_tool_dirs_to_command(command: &mut Command) {
-    if let Some(path) = user_tool_path_env() {
+    if let Some(path) = codex_launch_path_env() {
         command.env("PATH", path);
     }
 }
 
-fn user_tool_path_env() -> Option<std::ffi::OsString> {
+fn codex_launch_path_env() -> Option<OsString> {
     let home = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf())?;
     let image_home = std::env::var_os("CRS_IMAGE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".crs-image"));
-    let mut paths = if cfg!(windows) {
-        vec![image_home.join("bin")]
-    } else {
-        vec![home.join(".local").join("bin"), image_home.join("bin")]
-    };
-    paths.push(managed_npm_global_bin_dir());
-    paths.extend(managed_node_bin_dirs_for_launcher());
+    let mut paths = Vec::new();
+    push_windows_system_tool_dirs(&mut paths);
+    if !cfg!(windows) {
+        push_unique_path(&mut paths, home.join(".local").join("bin"));
+    }
+    push_unique_path(&mut paths, image_home.join("bin"));
+    push_unique_path(&mut paths, managed_npm_global_bin_dir());
+    for path in managed_node_bin_dirs_for_launcher() {
+        push_unique_path(&mut paths, path);
+    }
     if let Some(current) = std::env::var_os("PATH") {
-        paths.extend(std::env::split_paths(&current));
+        for path in std::env::split_paths(&current) {
+            push_unique_path(&mut paths, path);
+        }
     }
     std::env::join_paths(paths).ok()
+}
+
+#[cfg(windows)]
+fn push_windows_system_tool_dirs(paths: &mut Vec<PathBuf>) {
+    let windows_dir = std::env::var_os("SystemRoot")
+        .or_else(|| std::env::var_os("WINDIR"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    let system32 = windows_dir.join("System32");
+    push_unique_path(paths, system32.clone());
+    push_unique_path(paths, windows_dir);
+    push_unique_path(paths, system32.join("Wbem"));
+}
+
+#[cfg(not(windows))]
+fn push_windows_system_tool_dirs(_paths: &mut Vec<PathBuf>) {}
+
+fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if path.as_os_str().is_empty() {
+        return;
+    }
+    if paths.iter().any(|existing| paths_equal(existing, &path)) {
+        return;
+    }
+    paths.push(path);
+}
+
+#[cfg(windows)]
+fn paths_equal(left: &Path, right: &Path) -> bool {
+    let normalize = |path: &Path| {
+        path.to_string_lossy()
+            .trim_end_matches(['\\', '/'])
+            .to_ascii_lowercase()
+    };
+    normalize(left) == normalize(right)
+}
+
+#[cfg(not(windows))]
+fn paths_equal(left: &Path, right: &Path) -> bool {
+    left == right
 }
 
 fn managed_npm_global_bin_dir() -> PathBuf {
@@ -3617,8 +3663,28 @@ pub fn effective_codex_extra_args(settings: &BackendSettings) -> Vec<String> {
     if settings.codex_app_force_chinese_locale && !has_language_arg {
         args.push("--lang=zh-CN".to_string());
     }
+    if settings.codex_app_fast_startup && !has_host_resolver_rules(&normalized) {
+        args.push(statsig_fast_fail_host_resolver_rule());
+    }
     args.extend(normalized);
     args
+}
+
+fn has_host_resolver_rules(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| arg.trim().starts_with("--host-resolver-rules"))
+}
+
+fn statsig_fast_fail_host_resolver_rule() -> String {
+    [
+        "--host-resolver-rules=MAP ab.chatgpt.com 127.0.0.1",
+        "MAP featureassets.org 127.0.0.1",
+        "MAP prodregistryv2.org 127.0.0.1",
+        "MAP api.statsigcdn.com 127.0.0.1",
+        "MAP statsigapi.net 127.0.0.1",
+        "MAP cloudflare-dns.com 127.0.0.1",
+    ]
+    .join(",")
 }
 
 pub fn build_codex_arguments_with_native_menu_inspector(
@@ -4175,11 +4241,45 @@ pub async fn activate_packaged_app(
 ) -> anyhow::Result<u32> {
     let app_user_model_id = app_user_model_id.to_string();
     let arguments = arguments.to_string();
+    let launch_path = codex_launch_path_env();
     tokio::task::spawn_blocking(move || {
+        let _path_guard = launch_path
+            .as_ref()
+            .map(|path| ScopedEnvironmentVariable::set("PATH", path));
         activate_packaged_app_blocking(&app_user_model_id, &arguments)
     })
     .await
     .context("packaged app activation task failed")?
+}
+
+#[cfg(windows)]
+struct ScopedEnvironmentVariable {
+    key: &'static str,
+    previous: Option<OsString>,
+}
+
+#[cfg(windows)]
+impl ScopedEnvironmentVariable {
+    fn set(key: &'static str, value: &OsString) -> Self {
+        let previous = std::env::var_os(key);
+        unsafe {
+            std::env::set_var(key, value);
+        }
+        Self { key, previous }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for ScopedEnvironmentVariable {
+    fn drop(&mut self) {
+        unsafe {
+            if let Some(previous) = &self.previous {
+                std::env::set_var(self.key, previous);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -4224,6 +4324,24 @@ fn activate_packaged_app_blocking(app_user_model_id: &str, arguments: &str) -> a
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_launch_path_prioritizes_system_tar_before_git_tar() {
+        let mut paths = Vec::new();
+        push_windows_system_tool_dirs(&mut paths);
+        push_unique_path(&mut paths, PathBuf::from(r"C:\Program Files\Git\usr\bin"));
+        push_unique_path(&mut paths, PathBuf::from(r"C:\Windows\System32"));
+
+        assert!(paths_equal(&paths[0], Path::new(r"C:\Windows\System32")));
+        assert_eq!(
+            paths
+                .iter()
+                .filter(|path| paths_equal(path, Path::new(r"C:\Windows\System32")))
+                .count(),
+            1
+        );
+    }
 
     #[test]
     fn post_launch_guard_stops_after_stable_ready_artifacts() {

@@ -11,6 +11,10 @@ type OfficialBalancePanelProps = {
   apiKey: string;
   balance: OfficialBalance | null;
   busy: boolean;
+  launchProgress: {
+    active: boolean;
+    message: string;
+  };
   message: string;
   onApiKeyChange: (value: string) => void;
   onRefreshBalance: () => void;
@@ -22,6 +26,7 @@ export function OfficialBalancePanel({
   apiKey,
   balance,
   busy,
+  launchProgress,
   message,
   onApiKeyChange,
   onRefreshBalance,
@@ -83,14 +88,15 @@ export function OfficialBalancePanel({
         </Button>
         <Button
           className="official-balance-action-open"
-          disabled={busy}
+          disabled={busy || launchProgress.active}
           onClick={onOpenCodex}
           type="button"
         >
           <Rocket className="h-4 w-4" />
-          打开 Codex
+          {launchProgress.active ? "打开中…" : "打开 Codex"}
         </Button>
       </div>
+      {launchProgress.active ? <p className="field-hint official-panel-hint">{launchProgress.message}</p> : null}
       {metrics.length ? (
         <div className="metric-list official-balance-metrics">
           {metrics.map((item) => (

@@ -13,7 +13,7 @@ use codex_plus_core::launcher::{
     build_codex_command_with_native_menu_inspector, build_macos_cleanup_command,
     build_macos_open_command, build_macos_open_command_with_native_menu_inspector,
     build_packaged_activation, build_packaged_activation_with_native_menu_inspector,
-    launch_and_inject_with_hooks,
+    effective_codex_extra_args, launch_and_inject_with_hooks,
 };
 #[cfg(windows)]
 use codex_plus_core::launcher::{WindowsProcessControlStrategy, windows_process_control_strategy};
@@ -270,6 +270,64 @@ fn launcher_appends_extra_codex_arguments_after_debug_arguments() {
     assert_eq!(command[2], "--remote-allow-origins=http://127.0.0.1:9229");
     assert_eq!(command[3], "--force_high_performance_gpu");
     assert_eq!(command[4], "--enable-features=UseOzonePlatform");
+}
+
+fn default_launch_event() -> String {
+    format!(
+        "launch:9229:{}",
+        effective_codex_extra_args(&BackendSettings::default()).join(",")
+    )
+}
+
+fn assert_launch_event_has(events: &[String], fragments: &[&str]) {
+    let event = events
+        .iter()
+        .find(|event| event.starts_with("launch:9229"))
+        .expect("launch event should be recorded");
+    for fragment in fragments {
+        assert!(
+            event.contains(fragment),
+            "launch event should contain {fragment}: {event}"
+        );
+    }
+}
+
+#[test]
+fn launcher_fast_startup_adds_statsig_fast_fail_argument_when_enabled() {
+    let settings = BackendSettings::default();
+    let args = effective_codex_extra_args(&settings);
+
+    assert!(args.contains(&"--lang=zh-CN".to_string()));
+    assert!(args.iter().any(|arg| {
+        arg.starts_with("--host-resolver-rules=")
+            && arg.contains("MAP ab.chatgpt.com 127.0.0.1")
+            && arg.contains("MAP featureassets.org 127.0.0.1")
+            && arg.contains("MAP cloudflare-dns.com 127.0.0.1")
+    }));
+
+    let settings = BackendSettings {
+        codex_app_fast_startup: true,
+        codex_extra_args: vec!["--host-resolver-rules=MAP example.test 127.0.0.1".to_string()],
+        ..BackendSettings::default()
+    };
+    let args = effective_codex_extra_args(&settings);
+    assert_eq!(
+        args.iter()
+            .filter(|arg| arg.starts_with("--host-resolver-rules="))
+            .count(),
+        1
+    );
+
+    let settings = BackendSettings {
+        codex_app_fast_startup: false,
+        ..BackendSettings::default()
+    };
+    let args = effective_codex_extra_args(&settings);
+    assert!(
+        !args
+            .iter()
+            .any(|arg| arg.starts_with("--host-resolver-rules="))
+    );
 }
 
 #[test]
@@ -568,6 +626,7 @@ async fn launch_lifecycle_runs_enabled_maintenance_without_applying_relay_profil
     .unwrap();
     handle.wait_for_codex_exit().await.unwrap();
 
+    let expected_launch = default_launch_event();
     assert_eq!(
         *events.lock().unwrap(),
         vec![
@@ -577,7 +636,7 @@ async fn launch_lifecycle_runs_enabled_maintenance_without_applying_relay_profil
             "provider-sync",
             "computer-use-guard",
             "start-helper:57321",
-            "launch:9229:--lang=zh-CN",
+            expected_launch.as_str(),
             "computer-use-guard-watchdog",
             "inject:9229:57321",
             "status:running",
@@ -627,11 +686,14 @@ async fn launch_lifecycle_passes_configured_extra_args_to_codex_launch() {
     .unwrap();
     handle.wait_for_codex_exit().await.unwrap();
 
-    assert!(
-        events
-            .lock()
-            .unwrap()
-            .contains(&"launch:9229:--lang=zh-CN,--force_high_performance_gpu".to_string())
+    let events = events.lock().unwrap().clone();
+    assert_launch_event_has(
+        &events,
+        &[
+            "--lang=zh-CN",
+            "--host-resolver-rules=",
+            "--force_high_performance_gpu",
+        ],
     );
 }
 
@@ -656,12 +718,8 @@ async fn launch_lifecycle_adds_chinese_locale_arg_by_default() {
     .unwrap();
     handle.wait_for_codex_exit().await.unwrap();
 
-    assert!(
-        events
-            .lock()
-            .unwrap()
-            .contains(&"launch:9229:--lang=zh-CN".to_string())
-    );
+    let events = events.lock().unwrap().clone();
+    assert_launch_event_has(&events, &["--lang=zh-CN", "--host-resolver-rules="]);
 }
 
 #[tokio::test]
@@ -689,11 +747,10 @@ async fn launch_lifecycle_passes_native_menu_localization_switch_to_codex_launch
     .unwrap();
     handle.wait_for_codex_exit().await.unwrap();
 
-    assert!(
-        events
-            .lock()
-            .unwrap()
-            .contains(&"launch:9229:--lang=zh-CN:native-menu-off".to_string())
+    let events = events.lock().unwrap().clone();
+    assert_launch_event_has(
+        &events,
+        &["--lang=zh-CN", "--host-resolver-rules=", ":native-menu-off"],
     );
 }
 
@@ -722,6 +779,7 @@ async fn launch_lifecycle_keeps_js_injection_in_relay_mode() {
     .unwrap();
     handle.wait_for_codex_exit().await.unwrap();
 
+    let expected_launch = default_launch_event();
     assert_eq!(
         *events.lock().unwrap(),
         vec![
@@ -729,7 +787,7 @@ async fn launch_lifecycle_keeps_js_injection_in_relay_mode() {
             "select-helper:57321",
             "load-settings",
             "start-helper:57321",
-            "launch:9229:--lang=zh-CN",
+            expected_launch.as_str(),
             "inject:9229:57321",
             "status:running",
             "wait-codex",
@@ -763,13 +821,14 @@ async fn launch_lifecycle_skips_helper_and_injection_when_enhancements_disabled(
     .unwrap();
     handle.wait_for_codex_exit().await.unwrap();
 
+    let expected_launch = default_launch_event();
     assert_eq!(
         *events.lock().unwrap(),
         vec![
             "select-debug:9229",
             "select-helper:57321",
             "load-settings",
-            "launch:9229:--lang=zh-CN",
+            expected_launch.as_str(),
             "status:running",
             "wait-codex",
         ]
@@ -801,6 +860,7 @@ async fn launch_lifecycle_runs_computer_use_guard_when_enabled() {
     .unwrap();
     handle.wait_for_codex_exit().await.unwrap();
 
+    let expected_launch = default_launch_event();
     assert_eq!(
         *events.lock().unwrap(),
         vec![
@@ -809,7 +869,7 @@ async fn launch_lifecycle_runs_computer_use_guard_when_enabled() {
             "load-settings",
             "computer-use-guard",
             "start-helper:57321",
-            "launch:9229:--lang=zh-CN",
+            expected_launch.as_str(),
             "computer-use-guard-watchdog",
             "inject:9229:57321",
             "status:running",
@@ -844,7 +904,7 @@ async fn launch_lifecycle_skips_computer_use_guard_by_default() {
     let events = events.lock().unwrap().clone();
     assert!(!events.contains(&"computer-use-guard".to_string()));
     assert!(!events.contains(&"computer-use-guard-watchdog".to_string()));
-    assert!(events.contains(&"launch:9229:--lang=zh-CN".to_string()));
+    assert_launch_event_has(&events, &["--lang=zh-CN", "--host-resolver-rules="]);
 }
 
 #[tokio::test]
@@ -874,7 +934,7 @@ async fn launch_lifecycle_does_not_apply_relay_profile_before_launching_codex() 
 
     let events = events.lock().unwrap().clone();
     assert!(!events.contains(&"apply-relay".to_string()));
-    assert!(events.contains(&"launch:9229:--lang=zh-CN".to_string()));
+    assert_launch_event_has(&events, &["--lang=zh-CN", "--host-resolver-rules="]);
 }
 
 #[tokio::test]
@@ -905,7 +965,7 @@ async fn launch_lifecycle_skips_active_relay_profile_when_supplier_config_disabl
     let events = events.lock().unwrap().clone();
     assert!(!events.contains(&"apply-relay".to_string()));
     assert!(!events.contains(&"computer-use-guard".to_string()));
-    assert!(events.contains(&"launch:9229:--lang=zh-CN".to_string()));
+    assert_launch_event_has(&events, &["--lang=zh-CN", "--host-resolver-rules="]);
 }
 
 #[tokio::test]
@@ -957,7 +1017,7 @@ experimental_bearer_token = "sk-test"
     let events = events.lock().unwrap().clone();
     assert!(!events.contains(&"apply-relay".to_string()));
     assert!(!events.contains(&"computer-use-guard".to_string()));
-    assert!(events.contains(&"launch:9229:--lang=zh-CN".to_string()));
+    assert_launch_event_has(&events, &["--lang=zh-CN", "--host-resolver-rules="]);
 }
 
 #[tokio::test]
@@ -981,6 +1041,7 @@ async fn launch_lifecycle_enters_degraded_mode_and_retries_when_injection_fails(
     .await
     .unwrap();
 
+    let expected_launch = default_launch_event();
     assert_eq!(
         *events.lock().unwrap(),
         vec![
@@ -988,7 +1049,7 @@ async fn launch_lifecycle_enters_degraded_mode_and_retries_when_injection_fails(
             "select-helper:57321",
             "load-settings",
             "start-helper:57321",
-            "launch:9229:--lang=zh-CN",
+            expected_launch.as_str(),
             "inject:9229:57321",
             "status:running_degraded",
         ]
@@ -1026,6 +1087,7 @@ async fn launch_lifecycle_cleans_helper_when_launch_fails_after_helper_started()
     .unwrap_err();
 
     assert!(error.to_string().contains("launch failed"));
+    let expected_launch = default_launch_event();
     assert_eq!(
         *events.lock().unwrap(),
         vec![
@@ -1033,7 +1095,7 @@ async fn launch_lifecycle_cleans_helper_when_launch_fails_after_helper_started()
             "select-helper:57321",
             "load-settings",
             "start-helper:57321",
-            "launch:9229:--lang=zh-CN",
+            expected_launch.as_str(),
             "shutdown-helper:57321",
             "status:failed",
         ]
@@ -1133,6 +1195,7 @@ async fn launch_lifecycle_cleans_helper_and_codex_when_status_save_fails() {
     .unwrap_err();
 
     assert!(error.to_string().contains("failed to create directory"));
+    let expected_launch = default_launch_event();
     assert_eq!(
         *events.lock().unwrap(),
         vec![
@@ -1140,7 +1203,7 @@ async fn launch_lifecycle_cleans_helper_and_codex_when_status_save_fails() {
             "select-helper:57321",
             "load-settings",
             "start-helper:57321",
-            "launch:9229:--lang=zh-CN",
+            expected_launch.as_str(),
             "inject:9229:57321",
             "shutdown-helper:57321",
             "terminate-packaged:4242",
@@ -1220,6 +1283,7 @@ async fn launch_continues_when_plugin_marketplace_config_fails() {
     .unwrap();
 
     assert_eq!(handle.debug_port, 9229);
+    let expected_launch = default_launch_event();
     assert_eq!(
         events.lock().unwrap().as_slice(),
         [
@@ -1228,7 +1292,7 @@ async fn launch_continues_when_plugin_marketplace_config_fails() {
             "load-settings",
             "plugin-marketplace",
             "start-helper:57321",
-            "launch:9229:--lang=zh-CN",
+            expected_launch.as_str(),
             "inject:9229:57321",
             "status:running"
         ]

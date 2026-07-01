@@ -77,12 +77,17 @@ fn acquire_single_instance_guard_with_retry(
         }
         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
             log_launcher_already_running(debug_port);
+            if allow_stale_recovery && should_recover_stale_launcher(debug_port) {
+                codex_plus_core::watcher::stop_launcher_processes_and_wait();
+                std::thread::sleep(std::time::Duration::from_millis(250));
+                return acquire_single_instance_guard_with_retry(debug_port, false);
+            }
             Ok(None)
         }
         Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
             log_launcher_already_running(debug_port);
             if allow_stale_recovery && should_recover_stale_launcher(debug_port) {
-                codex_plus_core::watcher::stop_launcher_processes();
+                codex_plus_core::watcher::stop_launcher_processes_and_wait();
                 std::thread::sleep(std::time::Duration::from_millis(250));
                 return acquire_single_instance_guard_with_retry(debug_port, false);
             }
@@ -137,9 +142,10 @@ async fn activate_existing_codex_app(options: &LaunchOptions) -> anyhow::Result<
     let hooks = LauncherHooks::default();
     let settings = hooks.load_settings().await?;
     let app_dir = hooks.resolve_app_dir(options.app_dir.as_deref(), &settings)?;
+    let debug_port = hooks.select_debug_port(options.debug_port);
     let codex_extra_args = codex_plus_core::launcher::effective_codex_extra_args(&settings);
     let launch_result = hooks
-        .launch_codex(&app_dir, options.debug_port, &settings, &codex_extra_args)
+        .launch_codex(&app_dir, debug_port, &settings, &codex_extra_args)
         .await;
     let mut helper_started = false;
     if settings.enhancements_enabled {
@@ -175,14 +181,14 @@ async fn activate_existing_codex_app(options: &LaunchOptions) -> anyhow::Result<
     }
     let injection_ready = if settings.enhancements_enabled {
         hooks
-            .ensure_injection(options.debug_port, options.helper_port, &app_dir)
+            .ensure_injection(debug_port, options.helper_port, &app_dir)
             .await
     } else {
         false
     };
     if injection_ready {
         hooks
-            .start_bridge_watchdog(options.debug_port, options.helper_port)
+            .start_bridge_watchdog(debug_port, options.helper_port)
             .await?;
         hooks.write_status("running").await;
     } else if settings.enhancements_enabled {
@@ -192,7 +198,8 @@ async fn activate_existing_codex_app(options: &LaunchOptions) -> anyhow::Result<
         "launcher.activate_existing_codex",
         json!({
             "app_dir": app_dir.to_string_lossy(),
-            "debug_port": options.debug_port,
+            "debug_port": debug_port,
+            "requested_debug_port": options.debug_port,
             "helper_port": options.helper_port,
             "process_ids": process_ids,
             "activated": activated,
@@ -843,6 +850,20 @@ mod tests {
         assert!(source.contains("acquire_single_instance_guard(options.debug_port)?"));
         assert!(source.contains("launcher_guard_port"));
         assert!(source.contains("launcher.already_running"));
+        assert!(source.contains("std::io::ErrorKind::WouldBlock"));
+        assert!(source.contains("should_recover_stale_launcher(debug_port)"));
+        assert!(source.contains("stop_launcher_processes_and_wait()"));
+    }
+
+    #[test]
+    fn activate_existing_codex_app_selects_effective_debug_port() {
+        let source = include_str!("main.rs");
+
+        assert!(source.contains("let debug_port = hooks.select_debug_port(options.debug_port);"));
+        assert!(source.contains(".launch_codex(&app_dir, debug_port"));
+        assert!(source.contains(".ensure_injection(debug_port"));
+        assert!(source.contains(".start_bridge_watchdog(debug_port"));
+        assert!(source.contains("\"requested_debug_port\": options.debug_port"));
     }
 
     #[test]

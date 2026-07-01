@@ -1,4 +1,95 @@
 (() => {
+  function installCodexPlusFastStartup() {
+    const config = window.__CODEX_PLUS_FAST_STARTUP__;
+    if (!config || config.enabled !== true) return;
+    if (window.__codexPlusFastStartupInstalled === "1") return;
+    window.__codexPlusFastStartupInstalled = "1";
+    const timeoutMs = Math.max(100, Math.min(Number(config.statsigTimeoutMs) || 800, 3000));
+    const statsigHosts = new Set([
+      "ab.chatgpt.com",
+      "featureassets.org",
+      "prodregistryv2.org",
+      "api.statsigcdn.com",
+      "statsigapi.net",
+      "cloudflare-dns.com",
+    ]);
+
+    const isStatsigUrl = (input) => {
+      try {
+        const url = new URL(typeof input === "string" ? input : input?.url ?? "", window.location.href);
+        return statsigHosts.has(url.hostname);
+      } catch {
+        return false;
+      }
+    };
+
+    const timeoutSignal = (signal) => {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+      const clear = () => window.clearTimeout(timer);
+      if (signal) {
+        if (signal.aborted) controller.abort();
+        else signal.addEventListener("abort", () => controller.abort(), { once: true });
+      }
+      return { signal: controller.signal, clear };
+    };
+
+    const patchFetch = () => {
+      if (typeof window.fetch !== "function" || window.fetch.__codexPlusFastStartupPatched) return;
+      const originalFetch = window.fetch.bind(window);
+      const patchedFetch = (input, init = undefined) => {
+        if (!isStatsigUrl(input)) return originalFetch(input, init);
+        const { signal, clear } = timeoutSignal(init?.signal);
+        const nextInit = { ...(init || {}), signal };
+        return originalFetch(input, nextInit).finally(clear);
+      };
+      patchedFetch.__codexPlusFastStartupPatched = true;
+      window.fetch = patchedFetch;
+    };
+
+    const markStatsigReady = (client) => {
+      if (!client || typeof client !== "object" || client.__codexPlusFastStartupReadyPatched) return;
+      client.__codexPlusFastStartupReadyPatched = true;
+      const markReady = () => {
+        try {
+          if (client.loadingStatus && client.loadingStatus !== "Ready") client.loadingStatus = "Ready";
+        } catch {
+        }
+        try {
+          if (typeof client.$emt === "function") client.$emt({ name: "values_updated" });
+        } catch {
+        }
+      };
+      if (typeof client.initializeAsync === "function") {
+        const originalInitializeAsync = client.initializeAsync.bind(client);
+        client.initializeAsync = (...args) => Promise.race([
+          originalInitializeAsync(...args).catch(() => null),
+          new Promise((resolve) => window.setTimeout(() => resolve(null), timeoutMs)),
+        ]).finally(markReady);
+      }
+      markReady();
+    };
+
+    const statsigClients = () => {
+      const root = window.__STATSIG__ || globalThis.__STATSIG__;
+      if (!root || typeof root !== "object") return [];
+      const clients = [root.firstInstance, typeof root.instance === "function" ? root.instance() : null];
+      if (root.instances && typeof root.instances === "object") clients.push(...Object.values(root.instances));
+      return clients.filter((client, index, array) => client && typeof client === "object" && array.indexOf(client) === index);
+    };
+
+    const patchStatsigRoot = () => statsigClients().forEach(markStatsigReady);
+
+    patchFetch();
+    patchStatsigRoot();
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      patchFetch();
+      patchStatsigRoot();
+      if (Date.now() - startedAt > 5000) window.clearInterval(timer);
+    }, 50);
+  }
+
   function installCodexPlusForceChineseLocale() {
     const config = window.__CODEX_PLUS_FORCE_CHINESE_LOCALE__;
     if (!config || config.enabled !== true) return;
@@ -138,7 +229,308 @@
     }, 50);
   }
 
+  function installCodexPlusChineseTextFallback() {
+    const config = window.__CODEX_PLUS_FORCE_CHINESE_LOCALE__;
+    if (!config || config.enabled !== true) return;
+    if (window.__codexPlusChineseTextFallbackInstalled === "1") return;
+    window.__codexPlusChineseTextFallbackInstalled = "1";
+
+    const translations = new Map([
+      ["New chat", "新建对话"],
+      ["Search", "搜索"],
+      ["Plugins", "插件"],
+      ["Skills", "技能"],
+      ["Project", "项目"],
+      ["Projects", "项目"],
+      ["Chats", "对话"],
+      ["Settings", "设置"],
+      ["Account", "账户"],
+      ["What should we work on?", "今天想做什么？"],
+      ["Do anything", "输入消息"],
+      ["Ask for approval", "需要确认"],
+      ["Choose project", "选择项目"],
+      ["Downloading", "下载中"],
+      ["Downloading update", "正在下载更新"],
+      ["Checking for updates", "正在检查更新"],
+      ["Installing update", "正在安装更新"],
+      ["Update", "更新"],
+      ["File", "文件"],
+      ["Edit", "编辑"],
+      ["View", "视图"],
+      ["Help", "帮助"],
+      ["Medium", "中等"],
+      ["Low", "低"],
+      ["High", "高"],
+      ["Auto", "自动"],
+      ["Send message", "发送消息"],
+      ["Attach file", "添加文件"],
+      ["Add context", "添加上下文"],
+      ["More actions", "更多操作"],
+      ["Manage", "管理"],
+      ["Close", "关闭"],
+      ["Minimize", "最小化"],
+      ["Maximize", "最大化"],
+      ["Restore", "还原"],
+      ["Refresh", "刷新"],
+      ["Recommended", "推荐"],
+      ["All", "全部"],
+      ["Local", "本地"],
+      ["Host", "主机"],
+      ["Source", "来源"],
+      ["Remove", "移除"],
+      ["Retry", "重试"],
+      ["Upgrade", "升级"],
+      ["Search chats", "搜索对话"],
+      ["Search projects", "搜索项目"],
+      ["Search skills", "搜索技能"],
+      ["Search settings", "搜索设置"],
+      ["Search settings…", "搜索设置…"],
+      ["No project selected", "未选择项目"],
+      ["Select project", "选择项目"],
+      ["Create project", "创建项目"],
+      ["Open project", "打开项目"],
+      ["Extend Codex's capabilities with task-specific skills", "通过任务专用技能扩展 Codex 的能力"],
+      ["Installed", "已安装"],
+      ["Personal", "个人"],
+      ["System", "系统"],
+      ["Back to app", "返回应用"],
+      ["General", "常规"],
+      ["Appearance", "外观"],
+      ["Configuration", "配置"],
+      ["Personalization", "个性化"],
+      ["Pets", "宠物"],
+      ["Keyboard shortcuts", "键盘快捷键"],
+      ["Integrations", "集成"],
+      ["MCP servers", "MCP 服务器"],
+      ["Browser", "浏览器"],
+      ["Computer use", "电脑操控"],
+      ["Coding", "编码"],
+      ["Hooks", "钩子"],
+      ["Git", "Git"],
+      ["Environments", "环境"],
+      ["Worktrees", "工作树"],
+      ["Archived", "已归档"],
+      ["Archived chats", "已归档对话"],
+      ["Work mode", "工作模式"],
+      ["Choose how much technical detail Codex shows", "选择 Codex 显示多少技术细节"],
+      ["For coding", "用于编程"],
+      ["More technical responses and control", "更具技术性的回复和控制"],
+      ["For everyday work", "用于日常工作"],
+      ["Same power, less technical detail", "同样强大，技术细节更少"],
+      ["Permissions", "权限"],
+      ["Default permissions", "默认权限"],
+      ["By default, Codex can read and edit files in its workspace. It can ask for additional access when needed", "默认情况下，Codex 可以读取并编辑其工作区中的文件。必要时，它可以请求额外的访问权限"],
+      ["Default permissions are always shown", "默认权限始终显示"],
+      ["Full access", "完全访问"],
+      ["When Codex runs with full access, it can edit any file on your computer and run commands with network, without your approval. This significantly increases the risk of data loss, leaks, or unexpected behavior.", "当 Codex 以完全访问权限运行时，无需你批准，即可编辑你的电脑上的任何文件并运行联网命令。这会显著增加数据丢失、泄露或意外行为的风险。"],
+      ["Learn more", "了解更多"],
+      ["about elevated risks.", "有关高风险的信息。"],
+      ["Show Full access in the composer", "在输入框中显示完全访问"],
+      ["Apps", "应用"],
+      ["Marketplace", "市场"],
+      ["MCPs", "MCP"],
+      ["New skill", "新技能"],
+      ["Loading skills...", "正在加载技能..."],
+      ["Loading skills…", "正在加载技能…"],
+      ["No skills found", "找不到技能"],
+      ["No skills match your filters", "没有符合筛选条件的技能"],
+      ["Try adjusting your search or scope filters", "尝试调整搜索内容或范围筛选条件"],
+      ["Open MCP settings", "打开 MCP 设置"],
+      ["Work with Codex across your favorite tools", "在你常用的工具中使用 Codex"],
+      ["Plugins are not available for this host", "此主机不支持插件"],
+      ["Choose another host to browse and manage plugins", "选择其他主机以浏览和管理插件"],
+      ["Use this skill when the user asks to...", "当用户提出相关请求时使用此技能..."],
+      ["Generate or edit images for websites,...", "为网站生成或编辑图像..."],
+      ["Reference OpenAI docs, Codex self-...", "查询 OpenAI 文档和 Codex 资料..."],
+      ["Scaffold plugins and marketplace...", "创建插件和市场配置..."],
+    ]);
+    const attributeNames = ["aria-label", "title", "placeholder", "data-placeholder"];
+    const translatedMarker = "codexPlusTranslatedZh";
+    const skipTextSelector = [
+      "textarea",
+      "input",
+      "select",
+      "option",
+      "pre",
+      "code",
+      "[contenteditable='true']",
+      "[contenteditable='']",
+      "[data-message-author-role]",
+      "[data-testid*='conversation']",
+      "[data-testid*='message']",
+      ".markdown",
+    ].join(",");
+
+    const translatePattern = (trimmed) => {
+      const moreSkillsMatch = trimmed.match(/^See (.+), and (\d+) more$/);
+      if (moreSkillsMatch) return `查看 ${moreSkillsMatch[1]}，另有 ${moreSkillsMatch[2]} 项`;
+      const compactMoreSkillsMatch = trimmed.match(/^See (.+) and (\d+) more$/);
+      if (compactMoreSkillsMatch) return `查看 ${compactMoreSkillsMatch[1]}，另有 ${compactMoreSkillsMatch[2]} 项`;
+      return null;
+    };
+
+    const translateString = (value) => {
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      const translated = translations.get(trimmed) || translatePattern(trimmed);
+      if (!translated || translated === trimmed) return null;
+      return value.replace(trimmed, translated);
+    };
+
+    const shouldSkipTextNode = (node) => {
+      const parent = node?.parentElement;
+      return !parent || parent.closest(skipTextSelector);
+    };
+
+    const translateTextNode = (node) => {
+      if (!node || node.nodeType !== Node.TEXT_NODE || shouldSkipTextNode(node)) return;
+      const translated = translateString(node.nodeValue);
+      if (translated && translated !== node.nodeValue) node.nodeValue = translated;
+    };
+
+    const translateAttributes = (element) => {
+      if (!element || element.nodeType !== Node.ELEMENT_NODE) return;
+      for (const name of attributeNames) {
+        if (!element.hasAttribute(name)) continue;
+        const value = element.getAttribute(name);
+        const translated = translateString(value);
+        if (translated && translated !== value) {
+          element.setAttribute(name, translated);
+          element.dataset[translatedMarker] = "1";
+        }
+      }
+    };
+
+    const translateTree = (root) => {
+      if (!root) return;
+      if (root.nodeType === Node.TEXT_NODE) {
+        translateTextNode(root);
+        return;
+      }
+      if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_NODE) return;
+      if (root.nodeType === Node.ELEMENT_NODE) translateAttributes(root);
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => shouldSkipTextNode(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+      });
+      while (walker.nextNode()) translateTextNode(walker.currentNode);
+      if (root.nodeType === Node.ELEMENT_NODE) {
+        root.querySelectorAll?.("[aria-label], [title], [placeholder], [data-placeholder]").forEach(translateAttributes);
+      }
+    };
+
+    const pendingRoots = new Set();
+    let scheduled = false;
+    const scheduleTranslate = (root = null) => {
+      if (root) pendingRoots.add(root);
+      if (scheduled) return;
+      scheduled = true;
+      window.requestAnimationFrame(() => {
+        scheduled = false;
+        const roots = pendingRoots.size
+          ? Array.from(pendingRoots)
+          : [document.body || document.documentElement];
+        pendingRoots.clear();
+        roots.forEach(translateTree);
+      });
+    };
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === "characterData") {
+          translateTextNode(mutation.target);
+        } else if (mutation.type === "attributes") {
+          translateAttributes(mutation.target);
+        } else {
+          mutation.addedNodes.forEach((node) => scheduleTranslate(node));
+        }
+      }
+    });
+
+    const start = () => {
+      translateTree(document.body || document.documentElement);
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: attributeNames,
+      });
+    };
+
+    if (document.documentElement) start();
+    else document.addEventListener("DOMContentLoaded", start, { once: true });
+    window.setInterval(() => scheduleTranslate(document.body || document.documentElement), 5000);
+  }
+
+  function installCodexPlusSuppressOfficialAppUpdates() {
+    if (window.__codexPlusSuppressOfficialAppUpdatesInstalled === "1") return;
+    window.__codexPlusSuppressOfficialAppUpdatesInstalled = "1";
+
+    const updateLabelPatterns = [
+      /^(Downloading|Downloading \d+%|Installing|Update)$/i,
+      /^(下载中|下载中 \d+%|安装中|更新)$/,
+    ];
+
+    const isOfficialUpdateButton = (element) => {
+      if (!(element instanceof HTMLButtonElement)) return false;
+      const label = (
+        element.getAttribute("aria-label")
+        || element.textContent
+        || ""
+      ).trim();
+      if (!updateLabelPatterns.some((pattern) => pattern.test(label))) return false;
+      const className = String(element.getAttribute("class") || "");
+      return className.includes("bg-token-charts-blue") && className.includes("rounded-full");
+    };
+
+    const suppressButton = (button) => {
+      button.disabled = true;
+      button.setAttribute("aria-hidden", "true");
+      button.setAttribute("data-codex-plus-official-update-hidden", "1");
+      button.style.display = "none";
+      button.style.pointerEvents = "none";
+    };
+
+    const suppressTree = (root) => {
+      if (!root) return;
+      if (isOfficialUpdateButton(root)) suppressButton(root);
+      if (root.querySelectorAll) {
+        root.querySelectorAll("button[aria-label], button").forEach((button) => {
+          if (isOfficialUpdateButton(button)) suppressButton(button);
+        });
+      }
+    };
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === "attributes") {
+          suppressTree(mutation.target);
+        } else {
+          mutation.addedNodes.forEach(suppressTree);
+        }
+      }
+    });
+
+    const start = () => {
+      suppressTree(document.body || document.documentElement);
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["aria-label", "class"],
+      });
+    };
+
+    if (document.documentElement) start();
+    else document.addEventListener("DOMContentLoaded", start, { once: true });
+    window.setInterval(() => suppressTree(document.body || document.documentElement), 2000);
+  }
+
+  installCodexPlusFastStartup();
   installCodexPlusForceChineseLocale();
+  installCodexPlusChineseTextFallback();
+  installCodexPlusSuppressOfficialAppUpdates();
 
   const helperBase = window.__CODEX_SESSION_DELETE_HELPER__ || "http://127.0.0.1:57321";
   const buttonClass = "codex-delete-button";

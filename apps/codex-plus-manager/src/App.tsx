@@ -155,6 +155,7 @@ type BackendSettings = {
   codexAppMarkdownExport: boolean;
   codexAppPasteFix: boolean;
   codexAppForceChineseLocale: boolean;
+  codexAppFastStartup: boolean;
   codexAppProjectMove: boolean;
   codexAppThreadIdBadge: boolean;
   codexAppConversationView: boolean;
@@ -277,6 +278,7 @@ const OFFICIAL_RELAY_NAME = "总量包";
 const OFFICIAL_BASE_URL = "https://www.leishen-ai.cn/openai";
 const NODE_INSTALLER_WINDOWS_URL = "https://www.leishen-ai.cn/tools/node/v24.18.0/node-v24.18.0-x64.msi";
 const NODE_INSTALLER_MACOS_URL = "https://www.leishen-ai.cn/tools/node/v24.18.0/node-v24.18.0.pkg";
+const LAUNCH_ACCEPTED_VISIBLE_MS = 12000;
 const CODEX_CLI_DESKTOP_PROMPT =
   "请帮我检查并安装 Codex CLI 环境：先确认 Node.js 和 npm 是否可用；如果缺失，请指导我安装 Node.js LTS；然后执行 npm install -g @openai/codex；最后运行 codex --version 验证安装结果。";
 const LOCAL_MOBILE_RELAY_URL = "ws://127.0.0.1:57323";
@@ -513,6 +515,17 @@ type TaskProgress = {
   message: string;
 };
 
+type LaunchProgress = TaskProgress & {
+  phase: "idle" | "checking" | "syncing" | "spawning" | "accepted" | "failed";
+};
+
+const idleLaunchProgress: LaunchProgress = {
+  active: false,
+  percent: 0,
+  message: "尚未启动 Codex。",
+  phase: "idle",
+};
+
 type LogsResult = CommandResult<{
   path: string;
   text: string;
@@ -673,6 +686,7 @@ const defaultSettings: BackendSettings = {
   codexAppMarkdownExport: true,
   codexAppPasteFix: false,
   codexAppForceChineseLocale: true,
+  codexAppFastStartup: true,
   codexAppProjectMove: true,
   codexAppThreadIdBadge: false,
   codexAppConversationView: false,
@@ -736,10 +750,14 @@ export function App() {
   const [update, setUpdate] = useState<UpdateResult | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [crsImageInstall, setCrsImageInstall] = useState<CrsImageInstallResult | null>(null);
+  const [managedSkillsReady, setManagedSkillsReady] = useState(false);
+  const managedSkillsSyncPromiseRef = useRef<Promise<CrsImageInstallResult | null> | null>(null);
   const [officialApiKey, setOfficialApiKey] = useState(() => loadSavedOfficialApiKey());
   const [officialBalance, setOfficialBalance] = useState<OfficialBalance | null>(null);
   const [officialBalanceMessage, setOfficialBalanceMessage] = useState("输入你的 API Key 后即可读取套餐和总量包余额。");
   const [officialBalanceBusy, setOfficialBalanceBusy] = useState(false);
+  const [launchProgress, setLaunchProgress] = useState<LaunchProgress>(idleLaunchProgress);
+  const launchProgressClearTimerRef = useRef<number | null>(null);
   const [scriptMarket, setScriptMarket] = useState<ScriptMarketResult | null>(null);
   const [launchForm, setLaunchForm] = useState({
     appPath: "",
@@ -1124,32 +1142,46 @@ export function App() {
   async function ensureManagedSkillsForCodex(
     options: ManagedSkillsSyncOptions = {},
   ): Promise<CrsImageInstallResult | null> {
-    const installResult = await installCrsImageSkill({ silent: true });
-    let nextSettings = normalizeSettings(options.settingsOverride ?? settingsForm);
-    for (const managedSkill of MANAGED_SKILLS) {
-      const entry = contextEntriesByKind(
-        contextEntriesFromSettings(nextSettings),
-        "skill",
-      ).find((candidate) => candidate.id === managedSkill.id);
-      if (!entry) {
-        const saved = await upsertContextEntry(
-          nextSettings,
-          "skill",
-          managedSkill.id,
-          "enabled = true\n",
-        );
-        if (saved) nextSettings = saved;
-      }
-    }
+    if (managedSkillsReady) return crsImageInstall;
+    if (managedSkillsSyncPromiseRef.current) return managedSkillsSyncPromiseRef.current;
 
-    const syncResult = await syncLiveContextEntries(nextSettings, true);
-    if (syncResult && isSuccessStatus(syncResult.status)) {
-      void refreshRelayFiles(true);
-      return installResult;
-    } else if (syncResult && !options.silent) {
-      showNotice("工具与插件", syncResult.message, syncResult.status);
+    const syncTask = (async () => {
+      const installResult = await installCrsImageSkill({ silent: true });
+      let nextSettings = normalizeSettings(options.settingsOverride ?? settingsForm);
+      for (const managedSkill of MANAGED_SKILLS) {
+        const entry = contextEntriesByKind(
+          contextEntriesFromSettings(nextSettings),
+          "skill",
+        ).find((candidate) => candidate.id === managedSkill.id);
+        if (!entry) {
+          const saved = await upsertContextEntry(
+            nextSettings,
+            "skill",
+            managedSkill.id,
+            "enabled = true\n",
+          );
+          if (saved) nextSettings = saved;
+        }
+      }
+
+      const syncResult = await syncLiveContextEntries(nextSettings, true);
+      if (installResult && syncResult && isSuccessStatus(syncResult.status)) {
+        setManagedSkillsReady(true);
+        void refreshRelayFiles(true);
+        return installResult;
+      } else if (syncResult && !options.silent) {
+        showNotice("工具与插件", syncResult.message, syncResult.status);
+      }
+      setManagedSkillsReady(false);
+      return null;
+    })();
+
+    managedSkillsSyncPromiseRef.current = syncTask;
+    try {
+      return await syncTask;
+    } finally {
+      managedSkillsSyncPromiseRef.current = null;
     }
-    return null;
   }
 
   const ensurePluginMarketplaceReadyForCodex = async (options: { silent?: boolean } = {}) => {
@@ -1178,14 +1210,17 @@ export function App() {
 
   const ensureOfficialReadyForLaunch = async () => {
     const normalized = officialApiKey.trim();
+    updateLaunchProgress("checking", 8, "正在检查 API Key...");
     if (!normalized) {
       const message = "请先在订阅中心购买额度，或在账户额度填写 API Key 并刷新额度；未配置 API Key 时不会打开 Codex。";
       setRoute("overview");
       setOfficialBalanceMessage(message);
       showNotice("打开 Codex", message, "failed");
+      updateLaunchProgress("failed", 100, message, false);
       return false;
     }
 
+    updateLaunchProgress("checking", 18, "正在读取供应商配置...");
     const currentSettings = await refreshSettings(true);
     const settingsForCheck = currentSettings ?? settingsForm;
     if (!isOfficialRelayConfigured(settingsForCheck, normalized)) {
@@ -1194,19 +1229,32 @@ export function App() {
           ? "当前供应商配置看起来是官方登录方式。继续打开会切换到账户额度里的 API Key，并写入本机 Codex 配置。"
           : "当前供应商配置不是账户额度里的 API Key。继续打开会切换到账户额度里的 API Key，并写入本机 Codex 配置。";
       const confirmed = await confirmAction("打开 Codex", prompt, "继续并配置", "取消");
-      if (!confirmed) return false;
+      if (!confirmed) {
+        updateLaunchProgress("failed", 100, "已取消打开 Codex。", false);
+        return false;
+      }
     }
 
+    updateLaunchProgress("checking", 38, "正在写入 API Key 和 Codex 配置...");
     const sync = await saveOfficialApiKey(normalized, { refreshBalance: false, silent: true });
     if (!sync.ok) {
       showNotice("打开 Codex", sync.message, "failed");
+      updateLaunchProgress("failed", 100, sync.message, false);
       return false;
     }
-    const managedSkills = await ensureManagedSkillsForCodex({ silent: false });
-    if (!managedSkills) {
-      showNotice("工具与插件", "托管 Skills 安装或同步失败，请先在工具与插件页面修复后再打开 Codex。", "failed");
-      return false;
+    if (!managedSkillsReady) {
+      updateLaunchProgress("syncing", 62, "正在同步 crs-image、内置 Node 和 6 个托管 Skills...");
+      const managedSkills = await ensureManagedSkillsForCodex({ silent: false });
+      if (!managedSkills) {
+        const message = "托管 Skills 安装或同步失败，请先在工具与插件页面修复后再打开 Codex。";
+        showNotice("工具与插件", message, "failed");
+        updateLaunchProgress("failed", 100, message, false);
+        return false;
+      }
+    } else {
+      updateLaunchProgress("syncing", 72, "crs-image 和托管 Skills 已就绪，跳过重复同步。");
     }
+    updateLaunchProgress("spawning", 88, "准备完成，正在拉起 Codex 窗口...");
     return true;
   };
 
@@ -1293,20 +1341,55 @@ export function App() {
   };
 
   const launch = async () => {
-    if (!(await ensureOfficialReadyForLaunch())) return;
-    const result = await launchCommand("launch_codex_plus");
-    if (result) {
-      showNotice("启动任务", result.message, result.status);
-      await refreshOverview(true);
+    if (launchProgress.active) {
+      showNotice("打开 Codex", launchProgress.message || "启动任务正在进行，请稍候。", "accepted");
+      return;
+    }
+    try {
+      if (!(await ensureOfficialReadyForLaunch())) return;
+      const result = await launchCommand("launch_codex_plus");
+      if (result) {
+        showNotice("启动任务", result.message, result.status);
+        if (isSuccessStatus(result.status)) {
+          keepLaunchAcceptedVisible("已发送启动请求，Codex 窗口正在打开；首次启动可能需要十几秒。");
+        } else {
+          updateLaunchProgress("failed", 100, result.message, false);
+        }
+        await refreshOverview(true);
+      } else {
+        updateLaunchProgress("failed", 100, "启动命令没有返回结果，请查看关于页日志后重试。", false);
+      }
+    } catch (error) {
+      const message = stringifyError(error);
+      updateLaunchProgress("failed", 100, message, false);
+      showNotice("打开 Codex", message, "failed");
     }
   };
 
   const restart = async () => {
-    if (!(await ensureOfficialReadyForLaunch())) return;
-    const result = await launchCommand("restart_codex_plus");
-    if (result) {
-      showNotice("重启 Codex", result.message, result.status);
-      await refreshOverview(true);
+    if (launchProgress.active) {
+      showNotice("重启 Codex", launchProgress.message || "启动任务正在进行，请稍候。", "accepted");
+      return;
+    }
+    try {
+      updateLaunchProgress("checking", 5, "正在准备重启 Codex...");
+      if (!(await ensureOfficialReadyForLaunch())) return;
+      const result = await launchCommand("restart_codex_plus");
+      if (result) {
+        showNotice("重启 Codex", result.message, result.status);
+        if (isSuccessStatus(result.status)) {
+          keepLaunchAcceptedVisible("已发送重启请求，Codex 正在重新打开；首次启动可能需要十几秒。");
+        } else {
+          updateLaunchProgress("failed", 100, result.message, false);
+        }
+        await refreshOverview(true);
+      } else {
+        updateLaunchProgress("failed", 100, "重启命令没有返回结果，请查看关于页日志后重试。", false);
+      }
+    } catch (error) {
+      const message = stringifyError(error);
+      updateLaunchProgress("failed", 100, message, false);
+      showNotice("重启 Codex", message, "failed");
     }
   };
 
@@ -1916,6 +1999,26 @@ export function App() {
     showNotice(title, result.message, result.status);
   };
 
+  const clearLaunchProgressTimer = () => {
+    if (launchProgressClearTimerRef.current !== null) {
+      window.clearTimeout(launchProgressClearTimerRef.current);
+      launchProgressClearTimerRef.current = null;
+    }
+  };
+
+  const updateLaunchProgress = (phase: LaunchProgress["phase"], percent: number, message: string, active = true) => {
+    clearLaunchProgressTimer();
+    setLaunchProgress({ active, percent, message, phase });
+  };
+
+  const keepLaunchAcceptedVisible = (message: string) => {
+    setLaunchProgress({ active: true, percent: 100, message, phase: "accepted" });
+    launchProgressClearTimerRef.current = window.setTimeout(() => {
+      setLaunchProgress(idleLaunchProgress);
+      launchProgressClearTimerRef.current = null;
+    }, LAUNCH_ACCEPTED_VISIBLE_MS);
+  };
+
   useEffect(() => {
     void (async () => {
       const startup = await run(() => call<StartupResult>("startup_options"));
@@ -1932,6 +2035,8 @@ export function App() {
       void ensureManagedSkillsForCodex({ silent: true, settingsOverride: startupSettings });
     })();
   }, []);
+
+  useEffect(() => () => clearLaunchProgressTimer(), []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -2144,7 +2249,7 @@ export function App() {
       disableWatcher: () => watcherAction("disable_watcher"),
       toggleTheme: () => setTheme((current) => (current === "dark" ? "light" : "dark")),
     }),
-    [route, launchForm, settingsForm, settings, removeOwnedData, update, updateInstalling, logs, diagnostics, theme, relayFiles, localSessions, zedRemoteProjects, selectedProviderSyncTarget, envConflicts, ccsProviders, officialApiKey],
+    [route, launchForm, launchProgress.active, launchProgress.message, managedSkillsReady, crsImageInstall, settingsForm, settings, removeOwnedData, update, updateInstalling, logs, diagnostics, theme, relayFiles, localSessions, zedRemoteProjects, selectedProviderSyncTarget, envConflicts, ccsProviders, officialApiKey],
   );
   const hasUpdate = update?.updateAvailable === true || updateInstalling;
 
@@ -2208,9 +2313,9 @@ export function App() {
                 {updateInstalling ? "更新中" : "更新版本"}
               </Button>
             ) : null}
-            <Button onClick={() => void actions.restart()} title="重启 Codex" variant="outline">
+            <Button disabled={launchProgress.active} onClick={() => void actions.restart()} title="重启 Codex" variant="outline">
               <Rocket className="h-4 w-4" />
-              重启 Codex
+              {launchProgress.active ? "启动中" : "重启 Codex"}
             </Button>
             <Button onClick={() => void actions.refreshCurrent()} size="icon" title="刷新当前页面" variant="outline">
               <RefreshCw className="h-4 w-4" />
@@ -2226,6 +2331,7 @@ export function App() {
               officialBalance={officialBalance}
               officialBalanceBusy={officialBalanceBusy}
               officialBalanceMessage={officialBalanceMessage}
+              launchProgress={launchProgress}
               onOfficialApiKeyChange={(value) => {
                 setOfficialApiKey(value);
                 if (!value.trim()) {
@@ -2292,6 +2398,7 @@ export function App() {
               watcher={watcher}
               settings={settings}
               launchForm={launchForm}
+              launchProgress={launchProgress}
               onLaunchFormChange={setLaunchForm}
               removeOwnedData={removeOwnedData}
               onRemoveOwnedDataChange={setRemoveOwnedData}
@@ -2676,6 +2783,7 @@ function OverviewScreen({
   officialBalance,
   officialBalanceBusy,
   officialBalanceMessage,
+  launchProgress,
   onOfficialApiKeyChange,
   actions,
 }: {
@@ -2685,6 +2793,7 @@ function OverviewScreen({
   officialBalance: OfficialBalance | null;
   officialBalanceBusy: boolean;
   officialBalanceMessage: string;
+  launchProgress: LaunchProgress;
   onOfficialApiKeyChange: (value: string) => void;
   actions: Actions;
 }) {
@@ -2696,6 +2805,7 @@ function OverviewScreen({
           apiKey={officialApiKey}
           balance={officialBalance}
           busy={officialBalanceBusy}
+          launchProgress={launchProgress}
           message={officialBalanceMessage}
           onApiKeyChange={onOfficialApiKeyChange}
           onRefreshBalance={() => void actions.saveOfficialApiKey(officialApiKey, { refreshBalance: true })}
@@ -2749,10 +2859,11 @@ function OverviewScreen({
         <CardHead title="最近启动" detail={overview?.logs_path ?? "暂无状态文件"} />
         <CardContent>
           <LatestLaunch status={overview?.latest_launch ?? null} />
+          <TaskProgressBox progress={launchProgress} title="Codex 启动进度" />
           <Toolbar>
-            <Button onClick={() => void actions.launch()}>
+            <Button disabled={launchProgress.active} onClick={() => void actions.launch()}>
               <Rocket className="h-4 w-4" />
-              启动 Codex
+              {launchProgress.active ? "启动中" : "启动 Codex"}
             </Button>
             <Button variant="secondary" onClick={() => void actions.goLogs()}>
               打开关于
@@ -3035,6 +3146,7 @@ function EnhanceScreen({
             <FeatureToggle title="Markdown 导出" detail="在会话列表显示导出按钮，导出带时间戳的 Markdown。" checked={form.codexAppMarkdownExport} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppMarkdownExport", value)} />
             <FeatureToggle title="粘贴修复" detail="从 Word 等富文本粘贴到 Codex composer 时只保留纯文本，避免被识别为图片/文件附件。需重启 Codex 才生效。" checked={form.codexAppPasteFix} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppPasteFix", value)} />
             <FeatureToggle title="强制中文界面" detail="强制启用 Codex App 内置 zh-CN 语言包，避免 Statsig/VPN 不通时回退英文。需重启 Codex 才能完整生效。" checked={form.codexAppForceChineseLocale} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppForceChineseLocale", value)} />
+            <FeatureToggle title="快速启动" detail="默认开启；无 VPN 时让 Statsig 初始化快速失败，减少启动时长并提高中文界面生效稳定性。需重启 Codex 才生效。" checked={form.codexAppFastStartup} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppFastStartup", value)} />
             <FeatureToggle title="会话项目移动" detail="把会话移动到普通对话或其他本地项目。" checked={form.codexAppProjectMove} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppProjectMove", value)} />
             <FeatureToggle title="会话 ID 标识" detail="在侧边栏会话标题前显示短 ID 和 UUIDv7 创建时间，方便定位历史会话。" checked={form.codexAppThreadIdBadge} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppThreadIdBadge", value)} />
             <FeatureToggle title="对话居中宽度" detail="把主对话和输入框限制到固定最大宽度，适合大屏阅读。" checked={form.codexAppConversationView} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppConversationView", value)} />
@@ -3510,6 +3622,7 @@ function MaintenanceScreen({
   watcher,
   settings,
   launchForm,
+  launchProgress,
   onLaunchFormChange,
   removeOwnedData,
   onRemoveOwnedDataChange,
@@ -3519,6 +3632,7 @@ function MaintenanceScreen({
   watcher: WatcherResult | null;
   settings: SettingsResult | null;
   launchForm: { appPath: string; debugPort: string; helperPort: string };
+  launchProgress: LaunchProgress;
   onLaunchFormChange: (next: { appPath: string; debugPort: string; helperPort: string }) => void;
   removeOwnedData: boolean;
   onRemoveOwnedDataChange: (value: boolean) => void;
@@ -3621,8 +3735,11 @@ function MaintenanceScreen({
               />
             </Field>
           </div>
+          <TaskProgressBox progress={launchProgress} title="Codex 启动进度" />
           <Toolbar>
-            <Button onClick={() => void actions.launch()}>启动 Codex</Button>
+            <Button disabled={launchProgress.active} onClick={() => void actions.launch()}>
+              {launchProgress.active ? "启动中…" : "启动 Codex"}
+            </Button>
             <Button variant="secondary" onClick={() => void actions.saveManualCodexAppPath()}>
               保存为默认路径
             </Button>
@@ -5540,7 +5657,10 @@ function mergeLiveContextEntries(entries: CodexContextEntry[], liveEntries: Map<
 }
 
 function withLiveEntryState(entry: CodexContextEntry, live?: CodexContextEntry): CodexContextEntry {
-  return live ? { ...entry, enabled: live.enabled } : { ...entry, enabled: false };
+  // Missing from the live config means "not synced yet", not "disabled".
+  // The manager page should show the intended saved state, especially for
+  // bundled managed Skills that are synced before launching Codex.
+  return live ? { ...entry, enabled: live.enabled } : entry;
 }
 
 function contextEntriesForProfile(settings: BackendSettings, profile: RelayProfile): CodexContextEntries {

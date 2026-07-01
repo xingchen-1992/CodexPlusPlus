@@ -116,6 +116,14 @@ fn windows_installer_uses_official_setup_filename() {
     assert!(windows_installer.contains("Codex*版.lnk"));
     assert!(windows_installer.contains("Codex*管理工具.lnk"));
     assert!(windows_installer.contains("CodexPlus*"));
+    assert!(
+        windows_installer
+            .contains("!define PYTHON_INSTALLER_FILENAME \"python-3.13.14-amd64.exe\"")
+    );
+    assert!(windows_installer.contains("Section \"安装 Python\""));
+    assert!(windows_installer.contains("InstallAllUsers=1"));
+    assert!(windows_installer.contains("PrependPath=1"));
+    assert!(windows_installer.contains("Include_pip=1"));
     assert!(windows_installer.contains("!define MUI_FINISHPAGE_RUN_FUNCTION LaunchInstalledApps"));
     assert!(
         windows_installer

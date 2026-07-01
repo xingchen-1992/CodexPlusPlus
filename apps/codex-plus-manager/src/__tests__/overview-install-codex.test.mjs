@@ -32,7 +32,9 @@ test("windows Codex install script is ascii-only and falls back to Microsoft Sto
 
 test("overview install Codex button uses a clear download/install label", () => {
   const panel = fs.readFileSync(new URL("../components/OfficialBalancePanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, />\s*打开 Codex\s*</);
+  assert.match(panel, /"打开 Codex"/);
+  assert.match(panel, /"打开中…"/);
+  assert.match(panel, /disabled=\{busy \|\| launchProgress\.active\}/);
   assert.match(panel, /onClick=\{onOpenCodex\}/);
   assert.doesNotMatch(panel, /安装 Codex/);
   assert.doesNotMatch(panel, /official-codex-install-guide/);
