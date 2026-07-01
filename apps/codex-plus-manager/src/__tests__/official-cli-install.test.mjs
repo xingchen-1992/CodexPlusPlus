@@ -24,6 +24,8 @@ test("Codex CLI installer opens a visible terminal instead of running silently",
   assert.match(commandsSource, /powershell_single_quote/);
   assert.match(commandsSource, /\$env:PATH = \{path_line\}/);
   assert.match(commandsSource, /export PATH=\{path_line\}/);
+  assert.match(commandsSource, /\)\) \{\{/);
+  assert.match(commandsSource, /\n\}\}\nnode --version/);
 });
 
 test("official setup detection uses an expanded command search path", () => {

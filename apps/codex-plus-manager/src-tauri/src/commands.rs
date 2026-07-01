@@ -3626,11 +3626,11 @@ $env:PATH = {path_line}
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::UTF8
 Write-Host 'Codex CLI 安装维护'
 Write-Host '正在检查 Node.js 和 npm...'
-if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) {{
   Write-Host '未检测到 Node.js/npm。请先安装 Node.js LTS，然后重新点击安装 Codex CLI。'
   Read-Host '按回车关闭窗口'
   exit 1
-}
+}}
 node --version
 npm --version
 Write-Host '正在执行 npm install -g @openai/codex ...'
