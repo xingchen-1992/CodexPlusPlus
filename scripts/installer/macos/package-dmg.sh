@@ -12,6 +12,7 @@ ICON_SOURCE="$ROOT/apps/codex-plus-manager/src-tauri/icons/icon.png"
 ICON_NAME="codex-plus-plus.icns"
 ICON_ICNS="$DIST/$ICON_NAME"
 CODEX_APP_SOURCE="${CODEX_APP_SOURCE:-}"
+NODE_RUNTIME_SOURCE="${NODE_RUNTIME_SOURCE:-}"
 
 rm -rf "$DIST"
 mkdir -p "$STAGE"
@@ -97,6 +98,9 @@ sign_app() {
   find "$app_dir/Contents/MacOS" -type f -perm -111 ! -name "$executable" -print0 | while IFS= read -r -d '' sidecar; do
     codesign --force --sign - "$sidecar"
   done
+  if [ -x "$app_dir/Contents/Resources/node/bin/node" ]; then
+    codesign --force --sign - "$app_dir/Contents/Resources/node/bin/node"
+  fi
   codesign --force --sign - "$app_dir/Contents/MacOS/$executable"
   codesign --force --sign - "$app_dir"
 }
@@ -141,11 +145,32 @@ bundle_codex_app_if_present() {
   fi
 }
 
+bundle_node_runtime_if_present() {
+  if [ -z "$NODE_RUNTIME_SOURCE" ]; then
+    echo "NODE_RUNTIME_SOURCE not set; skipping bundled Node runtime."
+    return 0
+  fi
+  if [ ! -d "$NODE_RUNTIME_SOURCE" ]; then
+    echo "error: NODE_RUNTIME_SOURCE does not exist: $NODE_RUNTIME_SOURCE" >&2
+    return 1
+  fi
+
+  local resources="$STAGE/Codex官方管理工具.app/Contents/Resources"
+  rm -rf "$resources/node"
+  mkdir -p "$resources/node"
+  cp -R "$NODE_RUNTIME_SOURCE"/. "$resources/node/"
+  if [ ! -x "$resources/node/bin/node" ]; then
+    echo "error: bundled Node runtime is missing bin/node" >&2
+    return 1
+  fi
+}
+
 prepare_icon
 create_app "Codex官方管理工具" "CodexPlusPlusManager" "$BINARY_DIR/codex-plus-plus-manager" "cn.ls-qihang.codexplusplus.manager" "false"
 cp "$BINARY_DIR/codex-plus-plus" "$STAGE/Codex官方管理工具.app/Contents/MacOS/codex-plus-plus"
 chmod +x "$STAGE/Codex官方管理工具.app/Contents/MacOS/codex-plus-plus"
 bundle_codex_app_if_present
+bundle_node_runtime_if_present
 
 sign_app "$STAGE/Codex官方管理工具.app"
 

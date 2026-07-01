@@ -15,9 +15,15 @@ test("Codex CLI installer opens a visible terminal instead of running silently",
   assert.match(commandsSource, /powershell(?:\.exe)?/i);
   assert.match(commandsSource, /"start",\s*"",\s*"powershell\.exe"/);
   assert.match(commandsSource, /Read-Host/);
-  assert.match(commandsSource, /open"\)\s*\.args\(\["-a",\s*"Terminal"/);
+  assert.match(commandsSource, /std::process::Command::new\("open"\)/);
+  assert.match(commandsSource, /command\.args\(\["-a",\s*"Terminal"\]\)/);
   assert.match(commandsSource, /npm install -g @openai\/codex/);
   assert.match(commandsSource, /codex --version/);
+  assert.match(commandsSource, /fn codex_cli_install_script_windows\(\) -> String/);
+  assert.match(commandsSource, /fn codex_cli_install_script_unix\(\) -> String/);
+  assert.match(commandsSource, /powershell_single_quote/);
+  assert.match(commandsSource, /\$env:PATH = \{path_line\}/);
+  assert.match(commandsSource, /export PATH=\{path_line\}/);
 });
 
 test("official setup detection uses an expanded command search path", () => {
@@ -39,7 +45,10 @@ test("official setup detection uses an expanded command search path", () => {
 
 test("managed crs-image assets are fetched from the official domain without cache", () => {
   assert.match(commandsSource, /CRS_IMAGE_CLIENT_URL: &str = "https:\/\/www\.leishen-ai\.cn\/tools\/crs-image\.mjs\?v=1\.0\.3"/);
-  assert.match(commandsSource, /https:\/\/www\.leishen-ai\.cn\/tools\/crs-image-skill\/SKILL\.md\?v=1\.0\.5/);
+  assert.match(
+    commandsSource,
+    /https:\/\/www\.leishen-ai\.cn\/tools\/codex-plus\/managed-skills\/crs-image\/SKILL\.md\?v=1\.0\.6/,
+  );
   assert.match(scriptMarketSource, /CACHE_CONTROL/);
   assert.match(scriptMarketSource, /PRAGMA/);
 });

@@ -48,6 +48,9 @@ Section "安装主程序" SEC_MAIN
 
   File "${ROOT}\dist\windows\app\codex-plus-plus.exe"
   File "${ROOT}\dist\windows\app\codex-plus-plus-manager.exe"
+  SetOutPath "$INSTDIR\app\resources\node"
+  File /nonfatal /r "${ROOT}\dist\windows\app\resources\node\*.*"
+  SetOutPath "$INSTDIR\app"
   SetOutPath "$INSTDIR\app\Codex"
   File /nonfatal /r "${ROOT}\dist\windows\app\Codex\*.*"
   SetOutPath "$INSTDIR\app"
@@ -114,6 +117,7 @@ Section "Uninstall"
   Delete "$INSTDIR\app\codex-plus-plus-manager.exe"
   Delete "$INSTDIR\app\uninstall.exe"
   RMDir /r "$INSTDIR\app\Codex"
+  RMDir /r "$INSTDIR\app\resources"
   RMDir "$INSTDIR\app"
   RMDir "$INSTDIR"
 

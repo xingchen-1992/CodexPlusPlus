@@ -16,6 +16,8 @@ jobs:
       SCCACHE_GHA_ENABLED: "true"
       CODEX_WINDOWS_X64_MSIX_URL: "https://codexapp.agentsmirror.com/latest/win-x64"
       CODEX_WINDOWS_X64_MSIX_CACHE_KEY: "2026-06-30"
+      NODE_RUNTIME_VERSION: "v24.18.0"
+      NODE_WINDOWS_X64_ZIP_URL: "https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip"
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v4
@@ -41,6 +43,14 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+          key: release-windows-x64-${{ hashFiles('Cargo.lock') }}
+          cache-on-failure: true
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.10
@@ -109,6 +119,50 @@ jobs:
             Copy-Item $env:CODEX_APP_SOURCE dist/windows/app/Codex -Recurse -Force
           } else {
             Write-Host "CODEX_APP_SOURCE not set; installer will rely on the management tool install flow."
+          }
+
+      - name: Cache Node Windows runtime
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/codex-plus-release/windows/node-${{ env.NODE_RUNTIME_VERSION }}-win-x64.zip
+          key: ${{ runner.os }}-node-${{ env.NODE_RUNTIME_VERSION }}-win-x64
+
+      - name: Download Node Windows runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $nodeRoot = "dist/windows/node"
+          $zip = "$nodeRoot/node-runtime.zip"
+          $cache = Join-Path $env:USERPROFILE ".cache\codex-plus-release\windows\node-${env:NODE_RUNTIME_VERSION}-win-x64.zip"
+          New-Item -ItemType Directory -Force $nodeRoot | Out-Null
+          New-Item -ItemType Directory -Force (Split-Path $cache) | Out-Null
+          if (Test-Path $cache) {
+            Copy-Item $cache $zip -Force
+          } else {
+            curl.exe -L --retry 3 --retry-delay 10 --fail -o $zip $env:NODE_WINDOWS_X64_ZIP_URL
+            Copy-Item $zip $cache -Force
+          }
+          $size = (Get-Item $zip).Length
+          if ($size -lt 20MB) {
+            throw "Downloaded Node runtime is unexpectedly small: $size bytes"
+          }
+          $extract = "$nodeRoot/extracted"
+          if (Test-Path $extract) {
+            Remove-Item $extract -Recurse -Force
+          }
+          Expand-Archive -Force -Path $zip -DestinationPath $extract
+          $source = Get-ChildItem $extract -Directory | Where-Object { $_.Name -like "node-v*-win-x64" } | Select-Object -First 1
+          if (-not $source) {
+            throw "No Node win-x64 runtime directory found"
+          }
+          $dest = "dist/windows/app/resources/node"
+          if (Test-Path $dest) {
+            Remove-Item $dest -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Copy-Item "$($source.FullName)\*" $dest -Recurse -Force
+          if (-not (Test-Path "$dest\node.exe")) {
+            throw "Bundled Node node.exe was not staged"
           }
 
       - name: Cache Codex Windows MSIX
@@ -194,6 +248,9 @@ jobs:
       CODEX_MACOS_APP_VERSION: "26.623.70822"
       CODEX_MACOS_ARM64_ZIP_URL: "https://github.com/Wangnov/codex-app-mirror/releases/latest/download/Codex-darwin-arm64-26.623.70822.zip"
       CODEX_MACOS_X64_ZIP_URL: "https://github.com/Wangnov/codex-app-mirror/releases/latest/download/Codex-darwin-x64-26.623.70822.zip"
+      NODE_RUNTIME_VERSION: "v24.18.0"
+      NODE_MACOS_ARM64_TGZ_URL: "https://nodejs.org/dist/v24.18.0/node-v24.18.0-darwin-arm64.tar.gz"
+      NODE_MACOS_X64_TGZ_URL: "https://nodejs.org/dist/v24.18.0/node-v24.18.0-darwin-x64.tar.gz"
     strategy:
       fail-fast: false
       matrix:
@@ -232,6 +289,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-cargo-
             ${{ runner.os }}-cargo-
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+          key: release-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          cache-on-failure: true
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.10
@@ -292,6 +357,47 @@ jobs:
           fi
           printf 'CODEX_APP_SOURCE=%s\n' "$PWD/$app" >> "$GITHUB_ENV"
 
+      - name: Cache Node macOS runtime
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/codex-plus-release/macos/${{ matrix.arch }}/node-${{ env.NODE_RUNTIME_VERSION }}.tar.gz
+          key: ${{ runner.os }}-${{ matrix.arch }}-node-${{ env.NODE_RUNTIME_VERSION }}
+
+      - name: Download Node macOS runtime
+        env:
+          NODE_DARWIN_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          source_root="dist/node-source/${NODE_DARWIN_ARCH}"
+          rm -rf "$source_root"
+          mkdir -p "$source_root"
+          cache_root="$HOME/.cache/codex-plus-release/macos/${NODE_DARWIN_ARCH}"
+          cache_tgz="$cache_root/node-${NODE_RUNTIME_VERSION}.tar.gz"
+          mkdir -p "$cache_root"
+          case "$NODE_DARWIN_ARCH" in
+            arm64) url="$NODE_MACOS_ARM64_TGZ_URL" ;;
+            x64) url="$NODE_MACOS_X64_TGZ_URL" ;;
+            *) echo "Unsupported Node macOS arch: $NODE_DARWIN_ARCH" >&2; exit 1 ;;
+          esac
+          if [ -f "$cache_tgz" ]; then
+            cp "$cache_tgz" "$source_root/node-runtime.tar.gz"
+          else
+            curl -L --retry 3 --retry-delay 10 --fail -o "$source_root/node-runtime.tar.gz" "$url"
+            cp "$source_root/node-runtime.tar.gz" "$cache_tgz"
+          fi
+          size="$(stat -f%z "$source_root/node-runtime.tar.gz")"
+          if [ "$size" -lt 20971520 ]; then
+            echo "Downloaded Node macOS runtime is unexpectedly small: $size bytes" >&2
+            exit 1
+          fi
+          tar -xzf "$source_root/node-runtime.tar.gz" -C "$source_root"
+          node_dir="$(find "$source_root" -maxdepth 1 -type d -name "node-v*-darwin-${NODE_DARWIN_ARCH}" -print -quit)"
+          if [ -z "$node_dir" ]; then
+            echo "No Node darwin runtime directory found" >&2
+            exit 1
+          fi
+          printf 'NODE_RUNTIME_SOURCE=%s\n' "$PWD/$node_dir" >> "$GITHUB_ENV"
+
       - name: Build macOS DMG
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -309,6 +415,7 @@ jobs:
           test -x "$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
           test -x "$app/Contents/MacOS/codex-plus-plus"
           test -d "$app/Contents/Resources/Codex.app" || test -d "$app/Contents/Resources/OpenAI Codex.app" || test -d "$app/Contents/Resources/OpenAI.Codex.app"
+          test -x "$app/Contents/Resources/node/bin/node"
           plutil -lint "$app/Contents/Info.plist" >/dev/null
           codesign -dv "$app" >/dev/null 2>&1
           echo "verified: $app"

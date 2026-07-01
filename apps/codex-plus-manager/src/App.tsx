@@ -273,6 +273,7 @@ const UPDATE_BUTTON_TOOLTIP = "更新管理工具，不会影响 Codex 应用当
 const API_KEY_BACKUP_REMINDER = "请务必保存好 API Key，丢失后无法在本工具中找回。";
 const OFFICIAL_API_KEY_STORAGE_KEY = "codex-plus-official-api-key";
 const OFFICIAL_RELAY_ID = "official";
+const OFFICIAL_RELAY_NAME = "总量包";
 const OFFICIAL_BASE_URL = "https://www.leishen-ai.cn/openai";
 const NODE_INSTALLER_WINDOWS_URL = "https://www.leishen-ai.cn/tools/node/v24.18.0/node-v24.18.0-x64.msi";
 const NODE_INSTALLER_MACOS_URL = "https://www.leishen-ai.cn/tools/node/v24.18.0/node-v24.18.0.pkg";
@@ -649,7 +650,6 @@ const routes: Array<{ id: Route; label: string; icon: LucideIcon; badge?: string
   { id: "sessions", label: "会话管理", icon: MessageCircle },
   { id: "context", label: "工具与插件", icon: Network },
   { id: "enhance", label: "Codex增强", icon: Hammer },
-  { id: "userScripts", label: "脚本市场", icon: FileCode2 },
   { id: "maintenance", label: "安装维护", icon: Wrench },
   { id: "about", label: "关于", icon: Info },
   { id: "settings", label: "设置", icon: Settings },
@@ -696,30 +696,7 @@ const defaultSettings: BackendSettings = {
   launchMode: "patch",
   relayBaseUrl: "",
   relayApiKey: "",
-  relayProfiles: [
-    {
-      id: "default",
-      name: "默认中转",
-      model: "",
-      baseUrl: "",
-      upstreamBaseUrl: "",
-      apiKey: "",
-      protocol: "responses",
-      relayMode: "official",
-      officialMixApiKey: false,
-      testModel: "",
-      configContents: "",
-      authContents: "",
-      useCommonConfig: true,
-      contextSelection: emptyContextSelection(),
-      contextSelectionInitialized: true,
-      contextWindow: "",
-      autoCompactLimit: "",
-      modelList: "",
-      modelWindows: "",
-      userAgent: "",
-    },
-  ],
+  relayProfiles: [],
   relayCommonConfigContents: "",
   relayContextConfigContents: "",
   activeRelayId: "default",
@@ -1148,21 +1125,23 @@ export function App() {
   async function ensureManagedSkillsForCodex(
     options: ManagedSkillsSyncOptions = {},
   ): Promise<CrsImageInstallResult | null> {
+    await ensurePluginMarketplaceReadyForCodex({ silent: true });
     const installResult = await installCrsImageSkill({ silent: true });
     let nextSettings = normalizeSettings(options.settingsOverride ?? settingsForm);
-    const crsImageEntry = contextEntriesByKind(
-      contextEntriesFromSettings(nextSettings),
-      "skill",
-    ).find((entry) => entry.id === CRS_IMAGE_SKILL_ID);
-
-    if (!crsImageEntry) {
-      const saved = await upsertContextEntry(
-        nextSettings,
+    for (const managedSkill of MANAGED_SKILLS) {
+      const entry = contextEntriesByKind(
+        contextEntriesFromSettings(nextSettings),
         "skill",
-        CRS_IMAGE_SKILL_ID,
-        "enabled = true\n",
-      );
-      if (saved) nextSettings = saved;
+      ).find((candidate) => candidate.id === managedSkill.id);
+      if (!entry) {
+        const saved = await upsertContextEntry(
+          nextSettings,
+          "skill",
+          managedSkill.id,
+          "enabled = true\n",
+        );
+        if (saved) nextSettings = saved;
+      }
     }
 
     const syncResult = await syncLiveContextEntries(nextSettings, true);
@@ -1173,6 +1152,30 @@ export function App() {
     }
     return installResult;
   }
+
+  const ensurePluginMarketplaceReadyForCodex = async (options: { silent?: boolean } = {}) => {
+    const status = await run(() => call<PluginMarketplaceStatusResult>("plugin_marketplace_status"));
+    if (status && !status.needsRepair) {
+      setPluginMarketplacePrompt(null);
+      return true;
+    }
+    if (status && !options.silent) {
+      setPluginMarketplacePrompt(status);
+    }
+
+    const result = await run(() => call<PluginMarketplaceRepairResult>("repair_plugin_marketplace"));
+    if (!result) return false;
+
+    if (isSuccessStatus(result.status) && !result.needsRepair) {
+      setPluginMarketplacePrompt(null);
+    } else if (status) {
+      setPluginMarketplacePrompt(status);
+    }
+    if (!options.silent || !isSuccessStatus(result.status)) {
+      showNotice("插件市场", result.message, result.status);
+    }
+    return isSuccessStatus(result.status) && !result.needsRepair;
+  };
 
   const ensureOfficialReadyForLaunch = async () => {
     const normalized = officialApiKey.trim();
@@ -3895,6 +3898,9 @@ function RelayProfileList({
     const next = reorderRelayProfiles(form, String(active.id), String(over.id));
     if (next !== form) onFormChange(next);
   };
+  if (!form.relayProfiles.length) {
+    return <div className="empty">暂无供应商配置。购买总量包或在概览保存 API Key 后会自动生成“总量包”。</div>;
+  }
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={form.relayProfiles.map((profile) => profile.id)} strategy={verticalListSortingStrategy}>
@@ -4672,15 +4678,14 @@ function RelayContextManager({
   const [managedSkillBusy, setManagedSkillBusy] = useState(false);
   const visibleEntries = editableContextEntriesByKind(entries, activeKind);
   const label = contextKindLabel(activeKind);
-  const managedCrsImageEntry = contextEntriesByKind(entries, "skill").find((entry) => entry.id === CRS_IMAGE_SKILL_ID);
-  const managedCrsImageEnabled = managedCrsImageEntry?.enabled ?? true;
-  const activeCount = activeKind === "skill" ? visibleEntries.length + 1 : visibleEntries.length;
+  const managedSkillEntries = new Map(contextEntriesByKind(entries, "skill").map((entry) => [entry.id, entry]));
+  const activeCount = activeKind === "skill" ? visibleEntries.length + MANAGED_SKILLS.length : visibleEntries.length;
   const contextKindCount = (kind: ContextKind) =>
-    kind === "skill" ? editableContextEntriesByKind(entries, kind).length + 1 : editableContextEntriesByKind(entries, kind).length;
+    kind === "skill" ? editableContextEntriesByKind(entries, kind).length + MANAGED_SKILLS.length : editableContextEntriesByKind(entries, kind).length;
 
   const saveEntry = async (kind: ContextKind, id: string, tomlBody: string) => {
-    if (kind === "skill" && id.trim() === CRS_IMAGE_SKILL_ID) {
-      await actions.showMessage("CRS Image 图片生成", "这个工具由管理工具维护，不支持编辑或覆盖。", "failed");
+    if (kind === "skill" && MANAGED_SKILL_IDS.has(id.trim())) {
+      await actions.showMessage("托管 Skill", "这个工具由管理工具维护，不支持编辑或覆盖。", "failed");
       return;
     }
     const next = await actions.upsertContextEntry(form, kind, id, tomlBody);
@@ -4706,16 +4711,17 @@ function RelayContextManager({
     onFormChange(next);
   };
 
-  const toggleManagedCrsImageSkill = async () => {
+  const toggleManagedSkill = async (skill: ManagedSkillDefinition) => {
     if (managedSkillBusy) return;
-    const nextEnabled = !managedCrsImageEnabled;
+    const managedEntry = managedSkillEntries.get(skill.id);
+    const nextEnabled = !(managedEntry?.enabled ?? true);
     setManagedSkillBusy(true);
     try {
       if (nextEnabled) {
         await actions.installCrsImageSkill({ silent: true });
       }
-      const nextBody = setContextEntryEnabled(managedCrsImageEntry?.tomlBody ?? "", nextEnabled);
-      const next = await actions.upsertContextEntry(form, "skill", CRS_IMAGE_SKILL_ID, nextBody);
+      const nextBody = setContextEntryEnabled(managedEntry?.tomlBody ?? "", nextEnabled);
+      const next = await actions.upsertContextEntry(form, "skill", skill.id, nextBody);
       if (!next) return;
       onFormChange(next);
       const syncResult = await actions.syncLiveContextEntries(next, true);
@@ -4758,13 +4764,20 @@ function RelayContextManager({
         当前共有 {activeCount} 个{label}；这些条目独立于供应商保存，会写入所有供应商切换后的 config.toml。
       </div>
       {activeKind === "skill" ? (
-        <ManagedCrsImageSkillCard
-          busy={managedSkillBusy}
-          enabled={managedCrsImageEnabled}
-          result={crsImageInstall}
-          onInstallNode={() => void actions.openNodeInstaller()}
-          onToggle={() => void toggleManagedCrsImageSkill()}
-        />
+        <div className="managed-skill-list">
+          {MANAGED_SKILLS.map((skill) => (
+            <ManagedSkillCard
+              busy={managedSkillBusy}
+              enabled={managedSkillEntries.get(skill.id)?.enabled ?? true}
+              key={skill.id}
+              title={skill.title}
+              onToggle={() => void toggleManagedSkill(skill)}
+            />
+          ))}
+          {crsImageInstall?.nodeDetected === false ? (
+            <div className="managed-skill-note">CRS Image 需要 Node.js；新版安装包已内置 Node，旧包可重新安装最新版。</div>
+          ) : null}
+        </div>
       ) : null}
       <div className="relay-context-list">
         {visibleEntries.length ? (
@@ -4818,20 +4831,17 @@ function RelayContextManager({
   );
 }
 
-function ManagedCrsImageSkillCard({
+function ManagedSkillCard({
   busy,
   enabled,
-  result,
-  onInstallNode,
+  title,
   onToggle,
 }: {
   busy: boolean;
   enabled: boolean;
-  result: CrsImageInstallResult | null;
-  onInstallNode: () => void;
+  title: string;
   onToggle: () => void;
 }) {
-  const needsNode = result?.nodeDetected === false;
   return (
     <div className="managed-skill-card">
       <div className="managed-skill-main">
@@ -4840,26 +4850,19 @@ function ManagedCrsImageSkillCard({
         </div>
         <div className="managed-skill-copy">
           <div className="managed-skill-title-row">
-            <strong>CRS Image 图片生成</strong>
+            <strong>{title}</strong>
           </div>
-          {needsNode ? <span>缺少 Node.js，图片生成暂不可用。</span> : null}
         </div>
       </div>
       <div className="managed-skill-actions">
-        {needsNode ? (
-          <Button disabled={busy} onClick={onInstallNode} size="sm" type="button" variant="secondary">
-            <Download className="h-4 w-4" />
-            安装 Node.js
-          </Button>
-        ) : null}
         <button
           aria-checked={enabled}
-          aria-label="CRS Image 图片生成开关"
+          aria-label={`${title} 开关`}
           className={`context-enabled-switch ${enabled ? "active" : ""}`}
           disabled={busy}
           onClick={onToggle}
           role="switch"
-          title={enabled ? "关闭 CRS Image 图片生成" : "开启 CRS Image 图片生成"}
+          title={enabled ? `关闭 ${title}` : `开启 ${title}`}
           type="button"
         >
           <span className="context-switch-track" aria-hidden="true">
@@ -5481,6 +5484,19 @@ const contextKindOptions: Array<{ kind: ContextKind; label: string; tableName: s
 ];
 
 const CRS_IMAGE_SKILL_ID = "crs-image";
+type ManagedSkillDefinition = {
+  id: string;
+  title: string;
+};
+const MANAGED_SKILLS: ManagedSkillDefinition[] = [
+  { id: CRS_IMAGE_SKILL_ID, title: "CRS Image" },
+  { id: "humanizer-zh", title: "Humanizer Zh" },
+  { id: "ppt-master", title: "PPT Master" },
+  { id: "slide-image-editable-pptx", title: "Slide Image - Editable PPTX" },
+  { id: "markitdown", title: "Markitdown" },
+  { id: "spreadsheets", title: "Spreadsheets" },
+];
+const MANAGED_SKILL_IDS = new Set(MANAGED_SKILLS.map((skill) => skill.id));
 
 function contextKindLabel(kind: ContextKind) {
   return contextKindOptions.find((option) => option.kind === kind)?.label ?? "扩展项";
@@ -5695,7 +5711,7 @@ function contextEntriesByKind(entries: CodexContextEntries, kind: ContextKind): 
 
 function editableContextEntriesByKind(entries: CodexContextEntries, kind: ContextKind): CodexContextEntry[] {
   return contextEntriesByKind(entries, kind).filter(
-    (entry) => !(kind === "skill" && entry.id === CRS_IMAGE_SKILL_ID),
+    (entry) => !(kind === "skill" && MANAGED_SKILL_IDS.has(entry.id)),
   );
 }
 
@@ -6158,38 +6174,14 @@ function normalizeSettings(settings: BackendSettings): BackendSettings {
     relayCommonConfigContents,
     relayContextConfigContents,
   });
-  const profiles =
-    settings.relayProfiles?.length
-      ? settings.relayProfiles.map((profile) =>
-          normalizeRelayProfile(hydrateAggregateRelayProfile(profile, backendAggregates.get(profile.id)), defaultContextSelection),
-        )
-      : [
-          {
-            id: settings.activeRelayId || "default",
-            name: "默认中转",
-            model: "",
-            baseUrl: settings.relayBaseUrl || defaultSettings.relayBaseUrl,
-            upstreamBaseUrl: settings.relayBaseUrl || defaultSettings.relayBaseUrl,
-            apiKey: settings.relayApiKey || "",
-            protocol: "responses" as RelayProtocol,
-            relayMode: "official" as RelayMode,
-            officialMixApiKey: false,
-            testModel: "",
-            configContents: "",
-            authContents: "",
-            useCommonConfig: true,
-            contextSelection: defaultContextSelection,
-            contextSelectionInitialized: true,
-            contextWindow: "",
-            autoCompactLimit: "",
-            modelList: "",
-            modelWindows: "",
-            userAgent: "",
-          },
-        ];
+  const profiles = (settings.relayProfiles ?? [])
+    .filter((profile) => !isEmptyLegacyDefaultRelayProfile(profile, settings))
+    .map((profile) =>
+      normalizeRelayProfile(hydrateAggregateRelayProfile(profile, backendAggregates.get(profile.id)), defaultContextSelection),
+    );
   const activeRelayId = profiles.some((profile) => profile.id === settings.activeRelayId)
     ? settings.activeRelayId
-    : profiles[0]?.id || "default";
+    : profiles[0]?.id || "";
   return syncLegacyRelayFields({
     ...defaultSettings,
     ...settings,
@@ -6294,7 +6286,45 @@ function activeRelayProfile(settings: BackendSettings): RelayProfile {
   return (
     settings.relayProfiles.find((profile) => profile.id === settings.activeRelayId) ||
     settings.relayProfiles[0] ||
-    defaultSettings.relayProfiles[0]
+    fallbackOfficialRelayProfile(settings)
+  );
+}
+
+function fallbackOfficialRelayProfile(settings: BackendSettings): RelayProfile {
+  return {
+    id: OFFICIAL_RELAY_ID,
+    name: OFFICIAL_RELAY_NAME,
+    model: "gpt-5.4",
+    baseUrl: settings.relayBaseUrl || OFFICIAL_BASE_URL,
+    upstreamBaseUrl: settings.relayBaseUrl || OFFICIAL_BASE_URL,
+    apiKey: settings.relayApiKey || "",
+    protocol: "responses",
+    relayMode: "pureApi",
+    officialMixApiKey: false,
+    testModel: "gpt-5.4-mini",
+    configContents: "",
+    authContents: "",
+    useCommonConfig: true,
+    contextSelection: emptyContextSelection(),
+    contextSelectionInitialized: true,
+    contextWindow: "",
+    autoCompactLimit: "",
+    modelList: "",
+    modelWindows: "",
+    userAgent: "",
+  };
+}
+
+function isEmptyLegacyDefaultRelayProfile(profile: RelayProfile, settings: BackendSettings): boolean {
+  return (
+    profile.id === "default" &&
+    profile.name === "默认中转" &&
+    !profile.apiKey.trim() &&
+    !settings.relayApiKey.trim() &&
+    profile.relayMode === "official" &&
+    !profile.officialMixApiKey &&
+    !profile.configContents.trim() &&
+    !profile.authContents.trim()
   );
 }
 
@@ -6834,15 +6864,15 @@ function syncLegacyRelayFields(settings: BackendSettings): BackendSettings {
   const relayProfiles = settings.relayProfiles.map((profile) =>
     isAggregateRelayProfile(profile) ? normalizeAggregateRelayProfile(profile, { ...settings, relayProfiles: settings.relayProfiles }) : deriveRelayProfileFromFiles(profile),
   );
-  const active = activeRelayProfile({ ...settings, relayProfiles });
+  const active = relayProfiles.length ? activeRelayProfile({ ...settings, relayProfiles }) : null;
   const aggregateRelayProfiles = normalizeAggregateProfilesFromRelayProfiles(relayProfiles);
-  const activeAggregateRelayId = isAggregateRelayProfile(active) ? active.id : "";
+  const activeAggregateRelayId = active && isAggregateRelayProfile(active) ? active.id : "";
   return {
     ...settings,
     relayProfiles,
-    activeRelayId: active.id,
-    relayBaseUrl: isAggregateRelayProfile(active) ? PROTOCOL_PROXY_BASE_URL : active.baseUrl,
-    relayApiKey: active.apiKey,
+    activeRelayId: active?.id || "",
+    relayBaseUrl: active ? (isAggregateRelayProfile(active) ? PROTOCOL_PROXY_BASE_URL : active.baseUrl) : settings.relayBaseUrl || "",
+    relayApiKey: active?.apiKey || "",
     aggregateRelayProfiles,
     activeAggregateRelayId,
   };
@@ -7010,8 +7040,8 @@ function removeRelayProfile(settings: BackendSettings, id: string): BackendSetti
   );
   return syncLegacyRelayFields({
     ...settings,
-    relayProfiles: scrubbedProfiles.length ? scrubbedProfiles : defaultSettings.relayProfiles,
-    activeRelayId: settings.activeRelayId === id ? scrubbedProfiles[0]?.id || "default" : settings.activeRelayId,
+    relayProfiles: scrubbedProfiles,
+    activeRelayId: settings.activeRelayId === id ? scrubbedProfiles[0]?.id || "" : settings.activeRelayId,
   });
 }
 

@@ -1499,6 +1499,11 @@ body {
   gap: 8px;
 }
 
+.managed-skill-list {
+  display: grid;
+  gap: 8px;
+}
+
 .managed-skill-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1560,6 +1565,12 @@ body {
   gap: 8px;
   align-items: center;
   justify-content: flex-end;
+}
+
+.managed-skill-note {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .relay-context-row {

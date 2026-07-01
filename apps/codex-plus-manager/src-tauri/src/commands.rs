@@ -19,8 +19,40 @@ use crate::install::{self, InstallActionResult, InstallOptions};
 
 const CRS_IMAGE_CLIENT_URL: &str = "https://www.leishen-ai.cn/tools/crs-image.mjs?v=1.0.3";
 const CRS_IMAGE_SKILL_URL: &str =
-    "https://www.leishen-ai.cn/tools/crs-image-skill/SKILL.md?v=1.0.5";
+    "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/crs-image/SKILL.md?v=1.0.6";
 const CRS_IMAGE_DEFAULT_BASE_URL: &str = "https://www.leishen-ai.cn/openai/v1";
+const MANAGED_SKILL_SOURCES: &[ManagedSkillSource] = &[
+    ManagedSkillSource {
+        id: "humanizer-zh",
+        title: "Humanizer Zh",
+        url: "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/humanizer-zh/SKILL.md?v=1.0.0",
+        required_marker: "name: humanizer-zh",
+    },
+    ManagedSkillSource {
+        id: "ppt-master",
+        title: "PPT Master",
+        url: "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/ppt-master/SKILL.md?v=1.0.0",
+        required_marker: "name: ppt-master",
+    },
+    ManagedSkillSource {
+        id: "slide-image-editable-pptx",
+        title: "Slide Image - Editable PPTX",
+        url: "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/slide-image-editable-pptx/SKILL.md?v=1.0.0",
+        required_marker: "name: slide-image-editable-pptx",
+    },
+    ManagedSkillSource {
+        id: "markitdown",
+        title: "Markitdown",
+        url: "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/markitdown/SKILL.md?v=1.0.0",
+        required_marker: "name: markitdown",
+    },
+    ManagedSkillSource {
+        id: "spreadsheets",
+        title: "Spreadsheets",
+        url: "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/spreadsheets/SKILL.md?v=1.0.0",
+        required_marker: "name: spreadsheets",
+    },
+];
 const CODEX_WINDOWS_INSTALL_COMMAND: &str = "winget install --id 9PLM9XGG6VKS --exact --source msstore --accept-source-agreements --accept-package-agreements --silent --disable-interactivity";
 const CODEX_OFFICIAL_INSTALL_URL: &str = "https://developers.openai.com/codex/app";
 const CODEX_WINDOWS_STORE_URL: &str =
@@ -28,6 +60,20 @@ const CODEX_WINDOWS_STORE_URL: &str =
 const OFFICIAL_RELAY_ID: &str = "official";
 const OFFICIAL_RELAY_NAME: &str = "总量包";
 const OFFICIAL_BASE_URL: &str = "https://www.leishen-ai.cn/openai";
+
+#[derive(Debug, Clone, Copy)]
+struct ManagedSkillSource {
+    id: &'static str,
+    title: &'static str,
+    url: &'static str,
+    required_marker: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct ManagedSkillDocument {
+    source: ManagedSkillSource,
+    contents: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CommandResult<T>
@@ -699,7 +745,9 @@ fn spawn_silent_launcher(request: &LaunchRequest) -> anyhow::Result<()> {
 
 fn add_crs_image_command_dir_to_process(command: &mut std::process::Command) {
     let paths = default_crs_image_install_paths();
-    if let Some(path) = prepend_path_entries([paths.command_dir]) {
+    let mut entries = vec![paths.command_dir];
+    entries.extend(managed_node_bin_dirs());
+    if let Some(path) = prepend_path_entries(entries) {
         command.env("PATH", path);
     }
 }
@@ -1708,23 +1756,78 @@ pub async fn install_crs_image_skill() -> CommandResult<CrsImageInstallPayload> 
             );
         }
     };
+    let managed_skill_documents = match download_managed_skill_documents().await {
+        Ok(documents) => documents,
+        Err(error) => {
+            return failed(&format!("下载托管 Skills 失败：{error}"), placeholder);
+        }
+    };
 
     match install_crs_image_files_for_paths(&paths, &client, &skill) {
-        Ok(payload) => {
-            let action = if payload.updated {
-                "crs-image Skill 已自动安装/更新"
-            } else {
-                "crs-image Skill 已是最新版本"
-            };
-            let message = if payload.node_detected {
-                format!("{action}；重启 Codex 后生效。")
-            } else {
-                format!("{action}，但未检测到 Node.js；安装 Node.js 并重启 Codex 后生效。")
-            };
-            ok(&message, payload)
-        }
+        Ok(mut payload) => match install_managed_skill_documents(
+            Path::new(&payload.codex_home),
+            &managed_skill_documents,
+        ) {
+            Ok(managed_updated) => {
+                payload.updated |= managed_updated;
+                let action = if payload.updated {
+                    "托管 Skills 已自动安装/更新"
+                } else {
+                    "托管 Skills 已是最新版本"
+                };
+                let message = if payload.node_detected {
+                    format!("{action}；重启 Codex 后生效。")
+                } else {
+                    format!("{action}，但未检测到 Node.js；安装 Node.js 并重启 Codex 后生效。")
+                };
+                ok(&message, payload)
+            }
+            Err(error) => failed(&format!("安装托管 Skills 失败：{error}"), placeholder),
+        },
         Err(error) => failed(&format!("安装 crs-image Skill 失败：{error}"), placeholder),
     }
+}
+
+async fn download_managed_skill_documents() -> anyhow::Result<Vec<ManagedSkillDocument>> {
+    let mut documents = Vec::with_capacity(MANAGED_SKILL_SOURCES.len());
+    for source in MANAGED_SKILL_SOURCES {
+        let bytes = script_market::download_script(source.url)
+            .await
+            .with_context(|| format!("下载 {} 失败", source.title))?;
+        let contents =
+            String::from_utf8(bytes).with_context(|| format!("{} 不是有效 UTF-8", source.title))?;
+        validate_managed_skill_document(source, &contents)?;
+        documents.push(ManagedSkillDocument {
+            source: *source,
+            contents,
+        });
+    }
+    Ok(documents)
+}
+
+fn validate_managed_skill_document(
+    source: &ManagedSkillSource,
+    contents: &str,
+) -> anyhow::Result<()> {
+    if !contents.contains(source.required_marker) {
+        anyhow::bail!("{} Skill 文档内容不符合预期", source.title);
+    }
+    Ok(())
+}
+
+fn install_managed_skill_documents(
+    codex_home: &Path,
+    documents: &[ManagedSkillDocument],
+) -> anyhow::Result<bool> {
+    let mut updated = false;
+    for document in documents {
+        let skill_path = codex_home
+            .join("skills")
+            .join(document.source.id)
+            .join("SKILL.md");
+        updated |= write_text_file_if_changed(&skill_path, &document.contents)?;
+    }
+    Ok(updated)
 }
 
 #[tauri::command]
@@ -2907,7 +3010,7 @@ fn install_crs_image_files_for_paths(
     updated |= write_text_file_if_changed(&paths.skill_path, skill)?;
     updated |= write_text_file_if_changed(
         &paths.command_path,
-        &crs_image_command_shim(&paths.client_path),
+        &crs_image_command_shim(&paths.client_path, managed_node_executable().as_deref()),
     )?;
     updated |= write_crs_image_config(&paths.config_path)?;
     set_executable(&paths.client_path)?;
@@ -2963,14 +3066,28 @@ fn write_crs_image_config(path: &Path) -> anyhow::Result<bool> {
     Ok(updated)
 }
 
-fn crs_image_command_shim(client_path: &Path) -> String {
+fn crs_image_command_shim(client_path: &Path, node_executable: Option<&Path>) -> String {
     if cfg!(windows) {
-        format!("@echo off\r\nnode \"{}\" %*\r\n", client_path.display())
+        match node_executable {
+            Some(node) => format!(
+                "@echo off\r\nset \"CRS_NODE={}\"\r\nif exist \"%CRS_NODE%\" (\r\n  \"%CRS_NODE%\" \"{}\" %*\r\n) else (\r\n  node \"{}\" %*\r\n)\r\n",
+                node.display(),
+                client_path.display(),
+                client_path.display()
+            ),
+            None => format!("@echo off\r\nnode \"{}\" %*\r\n", client_path.display()),
+        }
     } else {
-        format!(
-            "#!/usr/bin/env sh\nexec node {} \"$@\"\n",
-            sh_single_quote(&client_path.to_string_lossy())
-        )
+        let client = sh_single_quote(&client_path.to_string_lossy());
+        match node_executable {
+            Some(node) => format!(
+                "#!/usr/bin/env sh\nCRS_NODE={}\nif [ -x \"$CRS_NODE\" ]; then\n  exec \"$CRS_NODE\" {} \"$@\"\nfi\nexec node {} \"$@\"\n",
+                sh_single_quote(&node.to_string_lossy()),
+                client,
+                client
+            ),
+            None => format!("#!/usr/bin/env sh\nexec node {} \"$@\"\n", client),
+        }
     }
 }
 
@@ -3349,6 +3466,7 @@ fn open_codex_cli_install_terminal() -> anyhow::Result<Value> {
         let script_path = script_dir.join("install-codex-cli.ps1");
         fs::write(&script_path, codex_cli_install_script_windows())?;
         let mut command = std::process::Command::new("cmd");
+        apply_command_search_path(&mut command);
         command.args([
             "/C",
             "start",
@@ -3374,10 +3492,9 @@ fn open_codex_cli_install_terminal() -> anyhow::Result<Value> {
         let mut permissions = fs::metadata(&script_path)?.permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(&script_path, permissions)?;
-        std::process::Command::new("open")
-            .args(["-a", "Terminal"])
-            .arg(&script_path)
-            .spawn()?;
+        let mut command = std::process::Command::new("open");
+        apply_command_search_path(&mut command);
+        command.args(["-a", "Terminal"]).arg(&script_path).spawn()?;
         return Ok(json!({ "scriptPath": path_to_string(&script_path) }));
     }
 
@@ -3499,8 +3616,13 @@ Write-Host 'Codex install command completed. Return to Codex manager, refresh ov
 "#
 }
 
-fn codex_cli_install_script_windows() -> &'static str {
-    r#"$ErrorActionPreference = 'Stop'
+fn codex_cli_install_script_windows() -> String {
+    let path_line = command_search_path()
+        .map(|path| powershell_single_quote(&path.to_string_lossy()))
+        .unwrap_or_else(|| "$env:PATH".to_string());
+    format!(
+        r#"$ErrorActionPreference = 'Stop'
+$env:PATH = {path_line}
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::UTF8
 Write-Host 'Codex CLI 安装维护'
 Write-Host '正在检查 Node.js 和 npm...'
@@ -3518,11 +3640,17 @@ codex --version
 Write-Host 'Codex CLI 安装完成。'
 Read-Host '按回车关闭窗口'
 "#
+    )
 }
 
-fn codex_cli_install_script_unix() -> &'static str {
-    r#"#!/bin/sh
+fn codex_cli_install_script_unix() -> String {
+    let path_line = command_search_path()
+        .map(|path| sh_single_quote(&path.to_string_lossy()))
+        .unwrap_or_else(|| "\"$PATH\"".to_string());
+    format!(
+        r#"#!/bin/sh
 set -e
+export PATH={path_line}
 echo 'Codex CLI 安装维护'
 echo '正在检查 Node.js 和 npm...'
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
@@ -3541,6 +3669,11 @@ echo 'Codex CLI 安装完成。'
 printf '按回车关闭窗口'
 read _
 "#
+    )
+}
+
+fn powershell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 fn read_command_version(command: &str, arg: &str) -> Option<String> {
@@ -3568,6 +3701,7 @@ fn apply_command_search_path(command: &mut std::process::Command) {
 
 fn command_search_path() -> Option<std::ffi::OsString> {
     let mut paths = Vec::<PathBuf>::new();
+    paths.extend(managed_node_bin_dirs());
 
     if cfg!(windows) {
         if let Some(program_files) = std::env::var_os("ProgramFiles") {
@@ -3614,6 +3748,58 @@ fn command_search_path() -> Option<std::ffi::OsString> {
         }
     }
     std::env::join_paths(deduped).ok()
+}
+
+fn managed_node_executable() -> Option<PathBuf> {
+    let executable_name = if cfg!(windows) { "node.exe" } else { "node" };
+    managed_node_bin_dirs()
+        .into_iter()
+        .map(|dir| dir.join(executable_name))
+        .find(|path| path.is_file())
+}
+
+fn managed_node_bin_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    for root in managed_node_roots() {
+        if cfg!(windows) {
+            dirs.push(root);
+        } else {
+            dirs.push(root.join("bin"));
+        }
+    }
+    dirs
+}
+
+fn managed_node_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            roots.push(exe_dir.join("resources").join("node"));
+            if let Some(contents_dir) = exe_dir.parent() {
+                roots.push(contents_dir.join("Resources").join("node"));
+            }
+        }
+    }
+    if cfg!(windows) {
+        if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
+            roots.push(
+                PathBuf::from(local_appdata)
+                    .join("Programs")
+                    .join("Codex官方管理工具")
+                    .join("app")
+                    .join("resources")
+                    .join("node"),
+            );
+        }
+    }
+
+    let mut deduped = Vec::new();
+    for root in roots {
+        if !deduped.iter().any(|existing| existing == &root) {
+            deduped.push(root);
+        }
+    }
+    deduped
 }
 
 fn fallback_official_balance(

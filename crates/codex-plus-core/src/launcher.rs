@@ -567,13 +567,17 @@ impl LaunchHooks for DefaultLaunchHooks {
             return Ok(());
         }
         let home = crate::relay_config::default_codex_home_dir();
-        match crate::plugin_marketplace::ensure_openai_curated_marketplace_config(&home) {
-            Ok(configured) => {
-                if configured {
+        match crate::plugin_marketplace::initialize_openai_curated_marketplace_and_configure(&home)
+            .await
+        {
+            Ok(result) => {
+                if result.initialized || result.configured {
                     let _ = crate::diagnostic_log::append_diagnostic_log(
                         "launcher.openai_curated_marketplace_configured",
                         serde_json::json!({
                             "home": home,
+                            "initialized": result.initialized,
+                            "configured": result.configured,
                         }),
                     );
                 }
