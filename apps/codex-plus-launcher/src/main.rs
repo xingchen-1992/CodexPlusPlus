@@ -137,13 +137,9 @@ async fn activate_existing_codex_app(options: &LaunchOptions) -> anyhow::Result<
     let hooks = LauncherHooks::default();
     let settings = hooks.load_settings().await?;
     let app_dir = hooks.resolve_app_dir(options.app_dir.as_deref(), &settings)?;
+    let codex_extra_args = codex_plus_core::launcher::effective_codex_extra_args(&settings);
     let launch_result = hooks
-        .launch_codex(
-            &app_dir,
-            options.debug_port,
-            &settings,
-            &settings.codex_extra_args,
-        )
+        .launch_codex(&app_dir, options.debug_port, &settings, &codex_extra_args)
         .await;
     let mut helper_started = false;
     if settings.enhancements_enabled {

@@ -27,6 +27,11 @@ test("release workflow publishes a Windows ZIP with bundled Codex MSIX", () => {
   assert.match(workflowSource, /dist\/windows\/\*-setup\.exe/);
 });
 
+test("release latest manifest excludes standalone Windows setup from automatic update", () => {
+  assert.match(workflowSource, /asset\.name !== "latest\.json"/);
+  assert.match(workflowSource, /lower\.includes\("windows"\) && lower\.endsWith\("-setup\.exe"\)/);
+});
+
 test("release workflow only builds Windows assets for now", () => {
   assert.match(workflowSource, /windows-installer:/);
   assert.doesNotMatch(workflowSource, /^  macos-dmg:/m);

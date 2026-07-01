@@ -3071,6 +3071,7 @@ fn install_crs_image_files_for_paths(
         &crs_image_command_shim(&paths.client_path, managed_node_executable().as_deref()),
     )?;
     updated |= write_crs_image_config(&paths.config_path)?;
+    updated |= ensure_crs_image_user_path(paths)?;
     set_executable(&paths.client_path)?;
     set_executable(&paths.command_path)?;
     Ok(crs_image_install_payload(paths, node_detected(), updated))
@@ -3122,6 +3123,72 @@ fn write_crs_image_config(path: &Path) -> anyhow::Result<bool> {
     let updated = write_text_file_if_changed(path, &contents)?;
     set_owner_only_read_write(path)?;
     Ok(updated)
+}
+
+fn ensure_crs_image_user_path(paths: &CrsImageInstallPaths) -> anyhow::Result<bool> {
+    ensure_persistent_tool_path_entries(&crs_image_tool_path_entries(paths))
+}
+
+fn crs_image_tool_path_entries(paths: &CrsImageInstallPaths) -> Vec<PathBuf> {
+    let mut entries = vec![paths.command_dir.clone(), managed_npm_global_bin_dir()];
+    entries.extend(managed_node_bin_dirs());
+    entries
+}
+
+#[cfg(windows)]
+fn ensure_persistent_tool_path_entries(entries: &[PathBuf]) -> anyhow::Result<bool> {
+    const ENV_SUBKEY: &str = "Environment";
+    let current =
+        codex_plus_core::windows_integration::read_current_user_string_values(ENV_SUBKEY)?
+            .into_iter()
+            .find_map(|(name, value)| name.eq_ignore_ascii_case("Path").then_some(value).flatten())
+            .unwrap_or_default();
+    let next = windows_user_path_with_entries(&current, entries);
+    if next == current {
+        return Ok(false);
+    }
+    codex_plus_core::windows_integration::set_current_user_string_value(ENV_SUBKEY, "Path", &next)?;
+    Ok(true)
+}
+
+#[cfg(not(windows))]
+fn ensure_persistent_tool_path_entries(_entries: &[PathBuf]) -> anyhow::Result<bool> {
+    Ok(false)
+}
+
+#[cfg(windows)]
+fn windows_user_path_with_entries(current: &str, entries: &[PathBuf]) -> String {
+    let mut parts = Vec::<String>::new();
+    for entry in entries {
+        let value = entry.to_string_lossy().trim().to_string();
+        if !value.is_empty()
+            && !parts
+                .iter()
+                .any(|existing| windows_path_entry_eq(existing, &value))
+        {
+            parts.push(value);
+        }
+    }
+    for value in current
+        .split(';')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if !parts
+            .iter()
+            .any(|existing| windows_path_entry_eq(existing, value))
+        {
+            parts.push(value.to_string());
+        }
+    }
+    parts.join(";")
+}
+
+#[cfg(windows)]
+fn windows_path_entry_eq(left: &str, right: &str) -> bool {
+    left.trim_matches('"')
+        .trim_end_matches(['\\', '/'])
+        .eq_ignore_ascii_case(right.trim_matches('"').trim_end_matches(['\\', '/']))
 }
 
 fn crs_image_command_shim(client_path: &Path, node_executable: Option<&Path>) -> String {

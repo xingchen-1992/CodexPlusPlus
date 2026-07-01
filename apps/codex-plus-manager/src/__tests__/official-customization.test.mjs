@@ -7,6 +7,10 @@ const launcherSource = fs.readFileSync(
   new URL("../../../../crates/codex-plus-core/src/launcher.rs", import.meta.url),
   "utf8",
 );
+const launcherAppSource = fs.readFileSync(
+  new URL("../../../codex-plus-launcher/src/main.rs", import.meta.url),
+  "utf8",
+);
 
 test("script market route is hidden from the sidebar", () => {
   const routes = appSource.match(/const routes:[\s\S]*?=\s*\[([\s\S]*?)\];/);
@@ -31,4 +35,12 @@ test("empty legacy default relay is not shown as a provider", () => {
 test("launcher does not download the curated plugin marketplace before opening Codex", () => {
   assert.match(launcherSource, /ensure_openai_curated_marketplace_config\(&home\)/);
   assert.doesNotMatch(launcherSource, /initialize_openai_curated_marketplace_and_configure\(&home\)\s*\.await/);
+});
+
+test("existing Codex activation path still applies forced Chinese launch arguments", () => {
+  const activateExisting = launcherAppSource.match(/async fn activate_existing_codex_app[\s\S]*?\n}\n\nfn helper_start_error_is_existing_helper/);
+  assert.ok(activateExisting, "activate_existing_codex_app should exist");
+  assert.match(activateExisting[0], /let codex_extra_args = codex_plus_core::launcher::effective_codex_extra_args\(&settings\);/);
+  assert.match(activateExisting[0], /\.launch_codex\([\s\S]*&codex_extra_args[\s\S]*\)/);
+  assert.doesNotMatch(activateExisting[0], /&settings\.codex_extra_args/);
 });

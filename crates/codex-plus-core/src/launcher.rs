@@ -2116,10 +2116,57 @@ fn user_tool_path_env() -> Option<std::ffi::OsString> {
     } else {
         vec![home.join(".local").join("bin"), image_home.join("bin")]
     };
+    paths.push(managed_npm_global_bin_dir());
+    paths.extend(managed_node_bin_dirs_for_launcher());
     if let Some(current) = std::env::var_os("PATH") {
         paths.extend(std::env::split_paths(&current));
     }
     std::env::join_paths(paths).ok()
+}
+
+fn managed_npm_global_bin_dir() -> PathBuf {
+    let prefix = crate::paths::default_app_state_dir().join("npm-global");
+    if cfg!(windows) {
+        prefix
+    } else {
+        prefix.join("bin")
+    }
+}
+
+fn managed_node_bin_dirs_for_launcher() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            roots.push(exe_dir.join("resources").join("node"));
+            if let Some(contents_dir) = exe_dir.parent() {
+                roots.push(contents_dir.join("Resources").join("node"));
+            }
+        }
+    }
+    if cfg!(windows) {
+        if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
+            roots.push(
+                PathBuf::from(local_appdata)
+                    .join("Programs")
+                    .join("Codex官方管理工具")
+                    .join("app")
+                    .join("resources")
+                    .join("node"),
+            );
+        }
+    }
+    let mut dirs = Vec::new();
+    for root in roots {
+        let dir = if cfg!(windows) {
+            root
+        } else {
+            root.join("bin")
+        };
+        if !dirs.iter().any(|existing| existing == &dir) {
+            dirs.push(dir);
+        }
+    }
+    dirs
 }
 
 fn reserve_app_server_port() -> anyhow::Result<u16> {

@@ -262,6 +262,10 @@ jobs:
           const version = tag.replace(/^v/i, "");
           const assets = (release.assets || [])
             .filter((asset) => asset.name !== "latest.json")
+            .filter((asset) => {
+              const lower = String(asset.name || "").toLowerCase();
+              return !(lower.includes("windows") && lower.endsWith("-setup.exe"));
+            })
             .map((asset) => {
               const digest = typeof asset.digest === "string" ? asset.digest : "";
               const sha256 = digest.toLowerCase().startsWith("sha256:") ? digest.slice("sha256:".length) : undefined;

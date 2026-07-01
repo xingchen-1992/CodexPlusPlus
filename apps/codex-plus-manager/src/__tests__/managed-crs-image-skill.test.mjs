@@ -39,7 +39,7 @@ test("opening or restarting Codex syncs managed skills first", () => {
   assert.match(appSource, /ensureManagedSkillsForCodex/);
   const ready = appSource.match(/const ensureOfficialReadyForLaunch[\s\S]*?return true;\n\s*};/);
   assert.ok(ready, "ensureOfficialReadyForLaunch should exist");
-  assert.match(ready[0], /await ensureManagedSkillsForCodex\(\{ silent: true \}\)/);
+  assert.match(ready[0], /await ensureManagedSkillsForCodex\(\{ silent: false \}\)/);
 });
 
 test("startup syncs managed skill and silently repairs plugin marketplace", () => {
@@ -77,6 +77,23 @@ test("managed skills are installed before crs-image client setup can fail", () =
   );
   assert.equal(command[0].includes("script_market::download_script"), false);
   assert.match(command[0], /managed_install_result/);
+});
+
+test("managed skills install adds local command directories to the user environment", () => {
+  assert.match(commandsSource, /ensure_crs_image_user_path\(paths\)/);
+  assert.match(commandsSource, /fn crs_image_tool_path_entries\(paths: &CrsImageInstallPaths\) -> Vec<PathBuf>/);
+  assert.match(commandsSource, /paths\.command_dir\.clone\(\)/);
+  assert.match(commandsSource, /managed_npm_global_bin_dir\(\)/);
+  assert.match(commandsSource, /managed_node_bin_dirs\(\)/);
+  assert.match(commandsSource, /fn windows_user_path_with_entries/);
+});
+
+test("managed skill sync blocks launch when installation fails", () => {
+  const ready = appSource.match(/const ensureOfficialReadyForLaunch[\s\S]*?return true;\n\s*};/);
+  assert.ok(ready, "ensureOfficialReadyForLaunch should exist");
+  assert.match(ready[0], /const managedSkills = await ensureManagedSkillsForCodex\(\{ silent: false \}\)/);
+  assert.match(ready[0], /if \(!managedSkills\)/);
+  assert.match(ready[0], /return false/);
 });
 
 test("managed crs-image node detection does not flash a Windows console", () => {

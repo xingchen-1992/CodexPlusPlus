@@ -2,7 +2,8 @@ use codex_plus_core::update::{
     DEFAULT_LATEST_JSON_URL, Release, create_pre_update_backup_from_sources, download_asset_to,
     is_newer_version, is_update_available_for_release, parse_version_tag,
     prepare_installer_for_launch, release_from_github_payload, release_from_latest_json_payload,
-    resolve_manifest_asset_url, safe_asset_name, select_update_asset, validate_asset_sha256,
+    resolve_manifest_asset_url, safe_asset_name, select_update_asset,
+    select_update_asset_for_target, validate_asset_sha256,
 };
 use serde_json::json;
 use std::io::Write;
@@ -292,6 +293,28 @@ fn asset_selection_prefers_current_platform_artifacts() {
     } else {
         assert!(select_update_asset(&assets).is_none());
     }
+}
+
+#[test]
+fn windows_update_asset_selection_prefers_full_zip_over_standalone_setup() {
+    let assets = vec![
+        (
+            "CodexPlusOfficial-1.0.17-official.1-windows-x64-setup.exe".to_string(),
+            "https://example.test/setup.exe".to_string(),
+        ),
+        (
+            "CodexPlusOfficial-1.0.17-official.1-windows-x64.zip".to_string(),
+            "https://example.test/package.zip".to_string(),
+        ),
+    ];
+
+    let selected = select_update_asset_for_target(&assets, "windows", "x86_64")
+        .expect("Windows updater should select the full ZIP package");
+
+    assert_eq!(
+        selected.name,
+        "CodexPlusOfficial-1.0.17-official.1-windows-x64.zip"
+    );
 }
 
 #[test]

@@ -1145,10 +1145,11 @@ export function App() {
     const syncResult = await syncLiveContextEntries(nextSettings, true);
     if (syncResult && isSuccessStatus(syncResult.status)) {
       void refreshRelayFiles(true);
+      return installResult;
     } else if (syncResult && !options.silent) {
       showNotice("工具与插件", syncResult.message, syncResult.status);
     }
-    return installResult;
+    return null;
   }
 
   const ensurePluginMarketplaceReadyForCodex = async (options: { silent?: boolean } = {}) => {
@@ -1201,7 +1202,11 @@ export function App() {
       showNotice("打开 Codex", sync.message, "failed");
       return false;
     }
-    await ensureManagedSkillsForCodex({ silent: true });
+    const managedSkills = await ensureManagedSkillsForCodex({ silent: false });
+    if (!managedSkills) {
+      showNotice("工具与插件", "托管 Skills 安装或同步失败，请先在工具与插件页面修复后再打开 Codex。", "failed");
+      return false;
+    }
     return true;
   };
 

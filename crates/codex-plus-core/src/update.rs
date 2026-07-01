@@ -261,12 +261,20 @@ fn select_update_asset_with_sha256(
 }
 
 pub fn select_update_asset(assets: &[(String, String)]) -> Option<ReleaseAsset> {
+    select_update_asset_for_target(assets, std::env::consts::OS, std::env::consts::ARCH)
+}
+
+pub fn select_update_asset_for_target(
+    assets: &[(String, String)],
+    target_os: &str,
+    target_arch: &str,
+) -> Option<ReleaseAsset> {
     let named = assets
         .iter()
         .filter(|(name, url)| !name.trim().is_empty() && !url.trim().is_empty());
     let mut best: Option<(u8, &str, &str)> = None;
     for (name, url) in named {
-        let rank = platform_asset_rank(&name.to_ascii_lowercase());
+        let rank = platform_asset_rank_for(&name.to_ascii_lowercase(), target_os, target_arch);
         if rank >= 2 {
             continue;
         }
@@ -481,33 +489,33 @@ pub fn safe_asset_name(name: &str) -> anyhow::Result<String> {
     Ok(file_name.to_string())
 }
 
-fn platform_asset_rank(name: &str) -> u8 {
+fn platform_asset_rank_for(name: &str, target_os: &str, target_arch: &str) -> u8 {
     // 0 = exact match (current OS + native arch)
     // 1 = same OS, other arch (acceptable fallback, e.g. x86_64 on arm64 or vice versa)
     // 2 = wrong platform
-    if cfg!(target_os = "macos") {
+    if target_os == "macos" {
         if !is_macos_installer_asset(name) {
             return 2;
         }
-        if is_macos_native_arch_asset(name) {
+        if is_macos_native_arch_asset_for(name, target_arch) {
             return 0;
         }
         return 1;
     }
-    if cfg!(windows) {
-        if is_windows_setup_asset(name) {
+    if target_os == "windows" {
+        if is_windows_full_package_asset(name) {
             return 0;
         }
-        if is_windows_full_package_asset(name) {
+        if is_windows_setup_asset(name) {
             return 1;
         }
     }
     2
 }
 
-fn is_macos_native_arch_asset(name: &str) -> bool {
+fn is_macos_native_arch_asset_for(name: &str, target_arch: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    let native_arch_token = match std::env::consts::ARCH {
+    let native_arch_token = match target_arch {
         "x86_64" => "x64",
         "aarch64" => "arm64",
         _ => return true, // unknown arch — accept anything
@@ -531,10 +539,6 @@ fn is_macos_native_arch_asset(name: &str) -> bool {
     }
     // No arch token at all — assume it matches the current arch.
     true
-}
-
-fn is_windows_installer_asset(name: &str) -> bool {
-    is_windows_setup_asset(name) || is_windows_full_package_asset(name)
 }
 
 fn is_windows_setup_asset(name: &str) -> bool {
