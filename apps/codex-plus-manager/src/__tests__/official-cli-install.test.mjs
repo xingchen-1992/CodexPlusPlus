@@ -3,7 +3,6 @@ import fs from "node:fs";
 import test from "node:test";
 
 const commandsSource = fs.readFileSync(new URL("../../src-tauri/src/commands.rs", import.meta.url), "utf8");
-const scriptMarketSource = fs.readFileSync(new URL("../../../../crates/codex-plus-core/src/script_market.rs", import.meta.url), "utf8");
 
 test("Codex CLI installer opens a visible terminal instead of running silently", () => {
   const install = commandsSource.match(/fn install_codex_cli_blocking\(\) -> CommandResult<Value> \{[\s\S]*?\n\}/);
@@ -48,12 +47,9 @@ test("official setup detection uses an expanded command search path", () => {
   assert.match(nodeDetected[0], /apply_command_search_path\(&mut command\)/);
 });
 
-test("managed crs-image assets are fetched from the official domain without cache", () => {
-  assert.match(commandsSource, /CRS_IMAGE_CLIENT_URL: &str = "https:\/\/www\.leishen-ai\.cn\/tools\/crs-image\.mjs\?v=1\.0\.3"/);
-  assert.match(
-    commandsSource,
-    /https:\/\/www\.leishen-ai\.cn\/tools\/codex-plus\/managed-skills\/crs-image\/SKILL\.md\?v=1\.0\.6/,
-  );
-  assert.match(scriptMarketSource, /CACHE_CONTROL/);
-  assert.match(scriptMarketSource, /PRAGMA/);
+test("managed crs-image assets are bundled into the manager", () => {
+  assert.match(commandsSource, /CRS_IMAGE_CLIENT_URL: &str = "bundled:\/\/managed-skills\/crs-image\.mjs"/);
+  assert.match(commandsSource, /CRS_IMAGE_SKILL_URL: &str = "bundled:\/\/managed-skills\/crs-image\/SKILL\.md"/);
+  assert.match(commandsSource, /const CRS_IMAGE_CLIENT: &str = include_str!\("\.\.\/managed-skills\/crs-image\.mjs"\);/);
+  assert.match(commandsSource, /const CRS_IMAGE_SKILL: &str = include_str!\("\.\.\/managed-skills\/crs-image\/SKILL\.md"\);/);
 });

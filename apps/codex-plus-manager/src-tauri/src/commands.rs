@@ -17,40 +17,53 @@ use serde_json::{Value, json};
 
 use crate::install::{self, InstallActionResult, InstallOptions};
 
-const CRS_IMAGE_CLIENT_URL: &str = "https://www.leishen-ai.cn/tools/crs-image.mjs?v=1.0.3";
-const CRS_IMAGE_SKILL_URL: &str =
-    "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/crs-image/SKILL.md?v=1.0.6";
+const CRS_IMAGE_CLIENT_URL: &str = "bundled://managed-skills/crs-image.mjs";
+const CRS_IMAGE_SKILL_URL: &str = "bundled://managed-skills/crs-image/SKILL.md";
+const CRS_IMAGE_CLIENT: &str = include_str!("../managed-skills/crs-image.mjs");
+const CRS_IMAGE_SKILL: &str = include_str!("../managed-skills/crs-image/SKILL.md");
 const CRS_IMAGE_DEFAULT_BASE_URL: &str = "https://www.leishen-ai.cn/openai/v1";
 const MANAGED_SKILL_SOURCES: &[ManagedSkillSource] = &[
     ManagedSkillSource {
+        id: "crs-image",
+        title: "CRS Image",
+        url: CRS_IMAGE_SKILL_URL,
+        required_marker: "name: crs-image",
+        contents: CRS_IMAGE_SKILL,
+    },
+    ManagedSkillSource {
         id: "humanizer-zh",
         title: "Humanizer Zh",
-        url: "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/humanizer-zh/SKILL.md?v=1.0.0",
+        url: "bundled://managed-skills/humanizer-zh/SKILL.md",
         required_marker: "name: humanizer-zh",
+        contents: include_str!("../managed-skills/humanizer-zh/SKILL.md"),
     },
     ManagedSkillSource {
         id: "ppt-master",
         title: "PPT Master",
-        url: "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/ppt-master/SKILL.md?v=1.0.0",
+        url: "bundled://managed-skills/ppt-master/SKILL.md",
         required_marker: "name: ppt-master",
+        contents: include_str!("../managed-skills/ppt-master/SKILL.md"),
     },
     ManagedSkillSource {
         id: "slide-image-editable-pptx",
         title: "Slide Image - Editable PPTX",
-        url: "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/slide-image-editable-pptx/SKILL.md?v=1.0.0",
+        url: "bundled://managed-skills/slide-image-editable-pptx/SKILL.md",
         required_marker: "name: slide-image-editable-pptx",
+        contents: include_str!("../managed-skills/slide-image-editable-pptx/SKILL.md"),
     },
     ManagedSkillSource {
         id: "markitdown",
         title: "Markitdown",
-        url: "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/markitdown/SKILL.md?v=1.0.0",
+        url: "bundled://managed-skills/markitdown/SKILL.md",
         required_marker: "name: markitdown",
+        contents: include_str!("../managed-skills/markitdown/SKILL.md"),
     },
     ManagedSkillSource {
         id: "spreadsheets",
         title: "Spreadsheets",
-        url: "https://www.leishen-ai.cn/tools/codex-plus/managed-skills/spreadsheets/SKILL.md?v=1.0.0",
+        url: "bundled://managed-skills/spreadsheets/SKILL.md",
         required_marker: "name: spreadsheets",
+        contents: include_str!("../managed-skills/spreadsheets/SKILL.md"),
     },
 ];
 const CODEX_WINDOWS_INSTALL_COMMAND: &str = "winget install --id 9PLM9XGG6VKS --exact --source msstore --accept-source-agreements --accept-package-agreements --silent --disable-interactivity";
@@ -67,6 +80,7 @@ struct ManagedSkillSource {
     title: &'static str,
     url: &'static str,
     required_marker: &'static str,
+    contents: &'static str,
 }
 
 #[derive(Debug, Clone)]
@@ -586,6 +600,8 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
 }
 
 fn upsert_official_api_key_settings(settings: &mut BackendSettings, api_key: &str) {
+    remove_legacy_default_relay_profiles(settings);
+
     let mut profile = codex_plus_core::settings::RelayProfile::default();
     profile.id = OFFICIAL_RELAY_ID.to_string();
     profile.name = OFFICIAL_RELAY_NAME.to_string();
@@ -602,7 +618,9 @@ fn upsert_official_api_key_settings(settings: &mut BackendSettings, api_key: &st
 
     let mut profiles = std::mem::take(&mut settings.relay_profiles)
         .into_iter()
-        .filter(|profile| profile.id != OFFICIAL_RELAY_ID)
+        .filter(|profile| {
+            profile.id != OFFICIAL_RELAY_ID && !is_legacy_default_relay_profile(profile)
+        })
         .collect::<Vec<_>>();
     profiles.insert(0, profile);
     settings.relay_profiles = profiles;
@@ -615,6 +633,72 @@ fn upsert_official_api_key_settings(settings: &mut BackendSettings, api_key: &st
     settings.cli_wrapper_enabled = true;
     settings.cli_wrapper_base_url = OFFICIAL_BASE_URL.to_string();
     settings.cli_wrapper_api_key = api_key.trim().to_string();
+    settings.cli_wrapper_api_key_env = codex_plus_core::settings::default_api_key_env();
+}
+
+fn is_legacy_default_relay_profile(profile: &RelayProfile) -> bool {
+    profile.id == "default"
+        && profile.name == "默认中转"
+        && profile.config_contents.trim().is_empty()
+        && profile.auth_contents.trim().is_empty()
+}
+
+fn remove_legacy_default_relay_profiles(settings: &mut BackendSettings) {
+    let mut migrated_api_key: Option<String> = None;
+    settings.relay_profiles.retain(|profile| {
+        if !is_legacy_default_relay_profile(profile) {
+            return true;
+        }
+        if migrated_api_key.is_none() && !profile.api_key.trim().is_empty() {
+            migrated_api_key = Some(profile.api_key.trim().to_string());
+        }
+        false
+    });
+
+    if settings
+        .relay_profiles
+        .iter()
+        .any(|profile| profile.id == OFFICIAL_RELAY_ID)
+    {
+        return;
+    }
+
+    let api_key = migrated_api_key
+        .or_else(|| {
+            let key = settings.relay_api_key.trim();
+            (!key.is_empty()).then(|| key.to_string())
+        })
+        .unwrap_or_default();
+    if api_key.is_empty() {
+        if settings.active_relay_id == "default" {
+            settings.active_relay_id.clear();
+        }
+        return;
+    }
+
+    let mut profile = codex_plus_core::settings::RelayProfile::default();
+    profile.id = OFFICIAL_RELAY_ID.to_string();
+    profile.name = OFFICIAL_RELAY_NAME.to_string();
+    profile.model = "gpt-5.4".to_string();
+    profile.base_url = OFFICIAL_BASE_URL.to_string();
+    profile.upstream_base_url = OFFICIAL_BASE_URL.to_string();
+    profile.api_key = api_key.clone();
+    profile.protocol = codex_plus_core::settings::RelayProtocol::Responses;
+    profile.relay_mode = codex_plus_core::settings::RelayMode::PureApi;
+    profile.official_mix_api_key = false;
+    profile.test_model = "gpt-5.4-mini".to_string();
+    profile.use_common_config = true;
+    profile.context_selection_initialized = true;
+
+    settings.relay_profiles.insert(0, profile);
+    settings.active_relay_id = OFFICIAL_RELAY_ID.to_string();
+    settings.relay_profiles_enabled = true;
+    settings.relay_base_url = OFFICIAL_BASE_URL.to_string();
+    settings.relay_api_key = api_key.clone();
+    settings.relay_test_model = "gpt-5.4-mini".to_string();
+    settings.cli_wrapper_enabled = true;
+    settings.cli_wrapper_base_url = OFFICIAL_BASE_URL.to_string();
+    settings.cli_wrapper_api_key = api_key;
     settings.cli_wrapper_api_key_env = codex_plus_core::settings::default_api_key_env();
 }
 
@@ -1129,6 +1213,8 @@ fn local_session_adapter(db_path: &Path) -> codex_plus_data::SQLiteStorageAdapte
 }
 
 fn normalize_settings_before_save(mut settings: BackendSettings) -> BackendSettings {
+    remove_legacy_default_relay_profiles(&mut settings);
+
     if let Some(path) =
         codex_plus_core::app_paths::normalize_codex_app_path(Path::new(&settings.codex_app_path))
     {
@@ -1726,10 +1812,13 @@ pub async fn repair_plugin_marketplace() -> CommandResult<PluginMarketplaceRepai
 pub async fn install_crs_image_skill() -> CommandResult<CrsImageInstallPayload> {
     let paths = default_crs_image_install_paths();
     let placeholder = crs_image_install_payload(&paths, node_detected(), false);
-    let managed_skill_documents = match download_managed_skill_documents().await {
+    if !CRS_IMAGE_CLIENT_URL.starts_with("bundled://managed-skills/") {
+        return failed("crs-image 客户端内置来源不符合预期", placeholder);
+    }
+    let managed_skill_documents = match bundled_managed_skill_documents() {
         Ok(documents) => documents,
         Err(error) => {
-            return failed(&format!("下载托管 Skills 失败：{error}"), placeholder);
+            return failed(&format!("读取内置 Skills 失败：{error}"), placeholder);
         }
     };
     let managed_install_result =
@@ -1740,39 +1829,7 @@ pub async fn install_crs_image_skill() -> CommandResult<CrsImageInstallPayload> 
             }
         };
 
-    let client = match script_market::download_script(CRS_IMAGE_CLIENT_URL).await {
-        Ok(bytes) => match String::from_utf8(bytes) {
-            Ok(text) => text,
-            Err(error) => {
-                return failed(
-                    &format!("crs-image 客户端不是有效 UTF-8：{error}"),
-                    placeholder,
-                );
-            }
-        },
-        Err(error) => {
-            return failed(&format!("下载 crs-image 客户端失败：{error}"), placeholder);
-        }
-    };
-    let skill = match script_market::download_script(CRS_IMAGE_SKILL_URL).await {
-        Ok(bytes) => match String::from_utf8(bytes) {
-            Ok(text) => text,
-            Err(error) => {
-                return failed(
-                    &format!("crs-image Skill 文档不是有效 UTF-8：{error}"),
-                    placeholder,
-                );
-            }
-        },
-        Err(error) => {
-            return failed(
-                &format!("下载 crs-image Skill 文档失败：{error}"),
-                placeholder,
-            );
-        }
-    };
-
-    match install_crs_image_files_for_paths(&paths, &client, &skill) {
+    match install_crs_image_files_for_paths(&paths, CRS_IMAGE_CLIENT, CRS_IMAGE_SKILL) {
         Ok(mut payload) => {
             payload.updated |= managed_install_result;
             let action = if payload.updated {
@@ -1791,18 +1848,13 @@ pub async fn install_crs_image_skill() -> CommandResult<CrsImageInstallPayload> 
     }
 }
 
-async fn download_managed_skill_documents() -> anyhow::Result<Vec<ManagedSkillDocument>> {
+fn bundled_managed_skill_documents() -> anyhow::Result<Vec<ManagedSkillDocument>> {
     let mut documents = Vec::with_capacity(MANAGED_SKILL_SOURCES.len());
     for source in MANAGED_SKILL_SOURCES {
-        let bytes = script_market::download_script(source.url)
-            .await
-            .with_context(|| format!("下载 {} 失败", source.title))?;
-        let contents =
-            String::from_utf8(bytes).with_context(|| format!("{} 不是有效 UTF-8", source.title))?;
-        validate_managed_skill_document(source, &contents)?;
+        validate_managed_skill_document(source, source.contents)?;
         documents.push(ManagedSkillDocument {
             source: *source,
-            contents,
+            contents: source.contents.to_string(),
         });
     }
     Ok(documents)
@@ -1812,6 +1864,9 @@ fn validate_managed_skill_document(
     source: &ManagedSkillSource,
     contents: &str,
 ) -> anyhow::Result<()> {
+    if !source.url.starts_with("bundled://managed-skills/") {
+        anyhow::bail!("{} Skill 内置来源不符合预期", source.title);
+    }
     if !contents.contains(source.required_marker) {
         anyhow::bail!("{} Skill 文档内容不符合预期", source.title);
     }
@@ -3226,11 +3281,14 @@ fn settings_payload_value() -> Result<SettingsPayload, (anyhow::Error, SettingsP
         .to_string_lossy()
         .to_string();
     match store.load() {
-        Ok(settings) => Ok(SettingsPayload {
-            settings,
-            settings_path,
-            user_scripts: user_script_inventory(),
-        }),
+        Ok(mut settings) => {
+            remove_legacy_default_relay_profiles(&mut settings);
+            Ok(SettingsPayload {
+                settings,
+                settings_path,
+                user_scripts: user_script_inventory(),
+            })
+        }
         Err(error) => Err((
             error,
             SettingsPayload {
@@ -3243,8 +3301,10 @@ fn settings_payload_value() -> Result<SettingsPayload, (anyhow::Error, SettingsP
 }
 
 fn fallback_settings_payload() -> SettingsPayload {
+    let mut settings = SettingsStore::default().load().unwrap_or_default();
+    remove_legacy_default_relay_profiles(&mut settings);
     SettingsPayload {
-        settings: SettingsStore::default().load().unwrap_or_default(),
+        settings,
         settings_path: codex_plus_core::paths::default_settings_path()
             .to_string_lossy()
             .to_string(),
@@ -3987,6 +4047,12 @@ mod tests {
                     id: "official".to_string(),
                     name: "官方".to_string(),
                     api_key: "sk-old".to_string(),
+                    ..RelayProfile::default()
+                },
+                RelayProfile {
+                    id: "default".to_string(),
+                    name: "默认中转".to_string(),
+                    api_key: "sk-legacy-default".to_string(),
                     ..RelayProfile::default()
                 },
             ],

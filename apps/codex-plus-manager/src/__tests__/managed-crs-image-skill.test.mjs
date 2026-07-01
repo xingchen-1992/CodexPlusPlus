@@ -49,27 +49,33 @@ test("startup syncs managed skill and silently repairs plugin marketplace", () =
   assert.match(appSource, /ensurePluginMarketplaceReadyForCodex/);
   const managedSync = appSource.match(/async function ensureManagedSkillsForCodex[\s\S]*?return installResult;\n\s*}/);
   assert.ok(managedSync, "managed skill sync should exist");
-  assert.match(managedSync[0], /await ensurePluginMarketplaceReadyForCodex\(\{ silent: true \}\)/);
+  assert.equal(managedSync[0].includes("ensurePluginMarketplaceReadyForCodex"), false);
   assert.match(managedSync[0], /for \(const managedSkill of MANAGED_SKILLS\)/);
 });
 
-test("managed skills are installed from the official domain and hidden from manual editing", () => {
+test("managed skills are installed from bundled resources and hidden from manual editing", () => {
   assert.match(commandsSource, /MANAGED_SKILL_SOURCES/);
-  for (const id of ["humanizer-zh", "ppt-master", "slide-image-editable-pptx", "markitdown", "spreadsheets"]) {
+  for (const id of ["crs-image", "humanizer-zh", "ppt-master", "slide-image-editable-pptx", "markitdown", "spreadsheets"]) {
     assert.match(commandsSource, new RegExp(`id: "${id}"`));
-    assert.match(commandsSource, new RegExp(`https://www\\.leishen-ai\\.cn/tools/codex-plus/managed-skills/${id}/SKILL\\.md\\?v=`));
+    assert.match(commandsSource, new RegExp(`bundled://managed-skills/${id}/SKILL\\.md`));
   }
+  for (const id of ["humanizer-zh", "ppt-master", "slide-image-editable-pptx", "markitdown", "spreadsheets"]) {
+    assert.match(commandsSource, new RegExp(`include_str!\\("\\.\\./managed-skills/${id}/SKILL\\.md"\\)`));
+  }
+  assert.match(commandsSource, /const CRS_IMAGE_SKILL: &str = include_str!\("\.\.\/managed-skills\/crs-image\/SKILL\.md"\);/);
+  assert.match(commandsSource, /const CRS_IMAGE_CLIENT: &str = include_str!\("\.\.\/managed-skills\/crs-image\.mjs"\);/);
   assert.match(appSource, /MANAGED_SKILL_IDS\.has\(id\.trim\(\)\)/);
   assert.match(appSource, /MANAGED_SKILL_IDS\.has\(entry\.id\)/);
 });
 
 test("managed skills are installed before crs-image client setup can fail", () => {
-  const command = commandsSource.match(/pub async fn install_crs_image_skill\(\)[\s\S]*?\n}\n\nasync fn download_managed_skill_documents/);
+  const command = commandsSource.match(/pub async fn install_crs_image_skill\(\)[\s\S]*?\n}\n\nfn bundled_managed_skill_documents/);
   assert.ok(command, "install_crs_image_skill command should exist");
   assert.ok(
-    command[0].indexOf("install_managed_skill_documents") < command[0].indexOf("script_market::download_script(CRS_IMAGE_CLIENT_URL)"),
-    "managed skills should be written before downloading the crs-image client",
+    command[0].indexOf("install_managed_skill_documents") < command[0].indexOf("install_crs_image_files_for_paths"),
+    "managed skills should be written before installing the crs-image client",
   );
+  assert.equal(command[0].includes("script_market::download_script"), false);
   assert.match(command[0], /managed_install_result/);
 });
 

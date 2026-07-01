@@ -1124,7 +1124,6 @@ export function App() {
   async function ensureManagedSkillsForCodex(
     options: ManagedSkillsSyncOptions = {},
   ): Promise<CrsImageInstallResult | null> {
-    await ensurePluginMarketplaceReadyForCodex({ silent: true });
     const installResult = await installCrsImageSkill({ silent: true });
     let nextSettings = normalizeSettings(options.settingsOverride ?? settingsForm);
     for (const managedSkill of MANAGED_SKILLS) {
@@ -1197,7 +1196,7 @@ export function App() {
       if (!confirmed) return false;
     }
 
-    const sync = await saveOfficialApiKey(normalized, { refreshBalance: true, silent: true });
+    const sync = await saveOfficialApiKey(normalized, { refreshBalance: false, silent: true });
     if (!sync.ok) {
       showNotice("打开 Codex", sync.message, "failed");
       return false;
@@ -6315,10 +6314,6 @@ function isEmptyLegacyDefaultRelayProfile(profile: RelayProfile, settings: Backe
   return (
     profile.id === "default" &&
     profile.name === "默认中转" &&
-    !textValue(profile.apiKey).trim() &&
-    !textValue(settings.relayApiKey).trim() &&
-    profile.relayMode === "official" &&
-    !profile.officialMixApiKey &&
     !textValue(profile.configContents).trim() &&
     !textValue(profile.authContents).trim()
   );

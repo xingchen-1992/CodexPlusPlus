@@ -312,8 +312,9 @@ where
             helper_started = true;
         }
 
+        let codex_extra_args = effective_codex_extra_args(&settings);
         let launch = hooks
-            .launch_codex(&app_dir, debug_port, &settings, &settings.codex_extra_args)
+            .launch_codex(&app_dir, debug_port, &settings, &codex_extra_args)
             .await?;
         launched = Some(launch.clone());
         keep_launched_on_error = true;
@@ -567,17 +568,14 @@ impl LaunchHooks for DefaultLaunchHooks {
             return Ok(());
         }
         let home = crate::relay_config::default_codex_home_dir();
-        match crate::plugin_marketplace::initialize_openai_curated_marketplace_and_configure(&home)
-            .await
-        {
-            Ok(result) => {
-                if result.initialized || result.configured {
+        match crate::plugin_marketplace::ensure_openai_curated_marketplace_config(&home) {
+            Ok(configured) => {
+                if configured {
                     let _ = crate::diagnostic_log::append_diagnostic_log(
                         "launcher.openai_curated_marketplace_configured",
                         serde_json::json!({
                             "home": home,
-                            "initialized": result.initialized,
-                            "configured": result.configured,
+                            "configured": configured,
                         }),
                     );
                 }
@@ -3560,6 +3558,19 @@ pub fn build_codex_arguments(debug_port: u16, extra_args: &[String]) -> Vec<Stri
         format!("--remote-allow-origins=http://127.0.0.1:{debug_port}"),
     ];
     args.extend(normalize_codex_extra_args(extra_args));
+    args
+}
+
+pub fn effective_codex_extra_args(settings: &BackendSettings) -> Vec<String> {
+    let mut args = Vec::new();
+    let normalized = normalize_codex_extra_args(&settings.codex_extra_args);
+    let has_language_arg = normalized
+        .iter()
+        .any(|arg| arg == "--lang" || arg.starts_with("--lang="));
+    if settings.codex_app_force_chinese_locale && !has_language_arg {
+        args.push("--lang=zh-CN".to_string());
+    }
+    args.extend(normalized);
     args
 }
 

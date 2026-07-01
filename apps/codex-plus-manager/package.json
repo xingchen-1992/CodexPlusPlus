@@ -1,6 +1,6 @@
 {
   "name": "codex-plus-official-manager",
-  "version": "1.0.15-official.1",
+  "version": "1.0.16-official.1",
   "private": true,
   "type": "module",
   "scripts": {

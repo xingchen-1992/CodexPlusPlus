@@ -28,7 +28,7 @@ test("empty legacy default relay is not shown as a provider", () => {
   assert.doesNotMatch(appSource, /scrubbedProfiles\.length \? scrubbedProfiles : defaultSettings\.relayProfiles/);
 });
 
-test("launcher initializes the curated plugin marketplace before opening Codex", () => {
-  assert.match(launcherSource, /initialize_openai_curated_marketplace_and_configure\(&home\)\s*\.await/);
-  assert.doesNotMatch(launcherSource, /match crate::plugin_marketplace::ensure_openai_curated_marketplace_config\(&home\)/);
+test("launcher does not download the curated plugin marketplace before opening Codex", () => {
+  assert.match(launcherSource, /ensure_openai_curated_marketplace_config\(&home\)/);
+  assert.doesNotMatch(launcherSource, /initialize_openai_curated_marketplace_and_configure\(&home\)\s*\.await/);
 });

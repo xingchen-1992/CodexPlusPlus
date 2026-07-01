@@ -173,10 +173,7 @@ pub fn uninstall_watcher() -> anyhow::Result<()> {
 
 #[cfg(windows)]
 pub fn find_codex_processes() -> Vec<u32> {
-    let processes: Vec<_> = crate::windows_integration::enumerate_processes()
-        .into_iter()
-        .filter(|process| process.exe_file.eq_ignore_ascii_case("codex.exe"))
-        .collect();
+    let processes = crate::windows_integration::enumerate_processes();
     find_codex_processes_from_snapshot(&processes)
 }
 

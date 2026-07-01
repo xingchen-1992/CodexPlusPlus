@@ -358,13 +358,14 @@ impl Default for BackendSettings {
 impl BackendSettings {
     pub fn active_relay_profile(&self) -> RelayProfile {
         if self.active_relay_id == default_active_relay_id()
-            && self.relay_profiles.len() == 1
-            && self.relay_profiles[0] == RelayProfile::default()
+            && (self.relay_profiles.is_empty()
+                || (self.relay_profiles.len() == 1
+                    && self.relay_profiles[0] == RelayProfile::default()))
             && (!self.relay_api_key.is_empty() || self.relay_base_url != default_relay_base_url())
         {
             return RelayProfile {
                 id: default_active_relay_id(),
-                name: "默认中转".to_string(),
+                name: "总量包".to_string(),
                 model: String::new(),
                 base_url: if self.relay_base_url.is_empty() {
                     default_relay_base_url()
@@ -409,7 +410,7 @@ impl BackendSettings {
             } else {
                 self.active_relay_id.clone()
             },
-            name: "默认中转".to_string(),
+            name: "总量包".to_string(),
             model: String::new(),
             base_url: if self.relay_base_url.is_empty() {
                 default_relay_base_url()
@@ -500,7 +501,7 @@ pub fn default_relay_test_model() -> String {
 }
 
 pub fn default_relay_profiles() -> Vec<RelayProfile> {
-    vec![RelayProfile::default()]
+    Vec::new()
 }
 
 pub fn default_aggregate_member_weight() -> u32 {
@@ -1059,7 +1060,7 @@ mod tests {
         assert_eq!(settings.launch_mode, LaunchMode::Patch);
         assert_eq!(settings.relay_base_url, default_relay_base_url());
         assert!(settings.relay_api_key.is_empty());
-        assert_eq!(settings.relay_profiles[0].relay_mode, RelayMode::Official);
+        assert!(settings.relay_profiles.is_empty());
         assert!(settings.relay_common_config_contents.is_empty());
         assert_eq!(settings.relay_test_model, default_relay_test_model());
         assert!(!settings.cli_wrapper_enabled);
@@ -1842,7 +1843,7 @@ experimental_bearer_token = "sk-existing""#
         let active = settings.active_relay_profile();
 
         assert_eq!(active.id, "default");
-        assert_eq!(active.name, "默认中转");
+        assert_eq!(active.name, "总量包");
         assert_eq!(active.base_url, "https://legacy.example/v1");
         assert_eq!(active.api_key, "sk-legacy");
         assert_eq!(active.relay_mode, RelayMode::MixedApi);

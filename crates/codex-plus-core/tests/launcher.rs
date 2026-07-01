@@ -577,7 +577,7 @@ async fn launch_lifecycle_runs_enabled_maintenance_without_applying_relay_profil
             "provider-sync",
             "computer-use-guard",
             "start-helper:57321",
-            "launch:9229",
+            "launch:9229:--lang=zh-CN",
             "computer-use-guard-watchdog",
             "inject:9229:57321",
             "status:running",
@@ -631,7 +631,36 @@ async fn launch_lifecycle_passes_configured_extra_args_to_codex_launch() {
         events
             .lock()
             .unwrap()
-            .contains(&"launch:9229:--force_high_performance_gpu".to_string())
+            .contains(&"launch:9229:--lang=zh-CN,--force_high_performance_gpu".to_string())
+    );
+}
+
+#[tokio::test]
+async fn launch_lifecycle_adds_chinese_locale_arg_by_default() {
+    let temp = tempfile::tempdir().unwrap();
+    let app_dir = temp.path().join("Codex.app");
+    std::fs::create_dir_all(&app_dir).unwrap();
+    let events = Arc::new(Mutex::new(Vec::<String>::new()));
+    let hooks = FakeHooks::new(events.clone());
+
+    let handle = launch_and_inject_with_hooks(
+        LaunchOptions {
+            app_dir: Some(app_dir),
+            debug_port: 9229,
+            helper_port: 57321,
+            status_store: StatusStore::new(temp.path().join("latest-status.json")),
+        },
+        &hooks,
+    )
+    .await
+    .unwrap();
+    handle.wait_for_codex_exit().await.unwrap();
+
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .contains(&"launch:9229:--lang=zh-CN".to_string())
     );
 }
 
@@ -664,7 +693,7 @@ async fn launch_lifecycle_passes_native_menu_localization_switch_to_codex_launch
         events
             .lock()
             .unwrap()
-            .contains(&"launch:9229:native-menu-off".to_string())
+            .contains(&"launch:9229:--lang=zh-CN:native-menu-off".to_string())
     );
 }
 
@@ -700,7 +729,7 @@ async fn launch_lifecycle_keeps_js_injection_in_relay_mode() {
             "select-helper:57321",
             "load-settings",
             "start-helper:57321",
-            "launch:9229",
+            "launch:9229:--lang=zh-CN",
             "inject:9229:57321",
             "status:running",
             "wait-codex",
@@ -740,7 +769,7 @@ async fn launch_lifecycle_skips_helper_and_injection_when_enhancements_disabled(
             "select-debug:9229",
             "select-helper:57321",
             "load-settings",
-            "launch:9229",
+            "launch:9229:--lang=zh-CN",
             "status:running",
             "wait-codex",
         ]
@@ -780,7 +809,7 @@ async fn launch_lifecycle_runs_computer_use_guard_when_enabled() {
             "load-settings",
             "computer-use-guard",
             "start-helper:57321",
-            "launch:9229",
+            "launch:9229:--lang=zh-CN",
             "computer-use-guard-watchdog",
             "inject:9229:57321",
             "status:running",
@@ -815,7 +844,7 @@ async fn launch_lifecycle_skips_computer_use_guard_by_default() {
     let events = events.lock().unwrap().clone();
     assert!(!events.contains(&"computer-use-guard".to_string()));
     assert!(!events.contains(&"computer-use-guard-watchdog".to_string()));
-    assert!(events.contains(&"launch:9229".to_string()));
+    assert!(events.contains(&"launch:9229:--lang=zh-CN".to_string()));
 }
 
 #[tokio::test]
@@ -845,7 +874,7 @@ async fn launch_lifecycle_does_not_apply_relay_profile_before_launching_codex() 
 
     let events = events.lock().unwrap().clone();
     assert!(!events.contains(&"apply-relay".to_string()));
-    assert!(events.contains(&"launch:9229".to_string()));
+    assert!(events.contains(&"launch:9229:--lang=zh-CN".to_string()));
 }
 
 #[tokio::test]
@@ -876,7 +905,7 @@ async fn launch_lifecycle_skips_active_relay_profile_when_supplier_config_disabl
     let events = events.lock().unwrap().clone();
     assert!(!events.contains(&"apply-relay".to_string()));
     assert!(!events.contains(&"computer-use-guard".to_string()));
-    assert!(events.contains(&"launch:9229".to_string()));
+    assert!(events.contains(&"launch:9229:--lang=zh-CN".to_string()));
 }
 
 #[tokio::test]
@@ -928,7 +957,7 @@ experimental_bearer_token = "sk-test"
     let events = events.lock().unwrap().clone();
     assert!(!events.contains(&"apply-relay".to_string()));
     assert!(!events.contains(&"computer-use-guard".to_string()));
-    assert!(events.contains(&"launch:9229".to_string()));
+    assert!(events.contains(&"launch:9229:--lang=zh-CN".to_string()));
 }
 
 #[tokio::test]
@@ -959,7 +988,7 @@ async fn launch_lifecycle_enters_degraded_mode_and_retries_when_injection_fails(
             "select-helper:57321",
             "load-settings",
             "start-helper:57321",
-            "launch:9229",
+            "launch:9229:--lang=zh-CN",
             "inject:9229:57321",
             "status:running_degraded",
         ]
@@ -1004,7 +1033,7 @@ async fn launch_lifecycle_cleans_helper_when_launch_fails_after_helper_started()
             "select-helper:57321",
             "load-settings",
             "start-helper:57321",
-            "launch:9229",
+            "launch:9229:--lang=zh-CN",
             "shutdown-helper:57321",
             "status:failed",
         ]
@@ -1111,7 +1140,7 @@ async fn launch_lifecycle_cleans_helper_and_codex_when_status_save_fails() {
             "select-helper:57321",
             "load-settings",
             "start-helper:57321",
-            "launch:9229",
+            "launch:9229:--lang=zh-CN",
             "inject:9229:57321",
             "shutdown-helper:57321",
             "terminate-packaged:4242",
@@ -1199,7 +1228,7 @@ async fn launch_continues_when_plugin_marketplace_config_fails() {
             "load-settings",
             "plugin-marketplace",
             "start-helper:57321",
-            "launch:9229",
+            "launch:9229:--lang=zh-CN",
             "inject:9229:57321",
             "status:running"
         ]
