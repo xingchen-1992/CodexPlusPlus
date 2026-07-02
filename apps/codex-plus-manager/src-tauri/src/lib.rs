@@ -57,6 +57,8 @@ pub fn run() {
             commands::restart_codex_plus,
             commands::load_settings,
             commands::save_settings,
+            commands::detect_codex_network_proxy,
+            commands::test_codex_network_proxy,
             commands::load_ccs_providers,
             commands::import_ccs_providers,
             commands::load_pending_provider_import,

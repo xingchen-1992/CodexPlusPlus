@@ -179,12 +179,34 @@ pub enum RelayMode {
     Aggregate,
 }
 
+pub const OFFICIAL_RELAY_ID: &str = "official";
+pub const OFFICIAL_RELAY_BASE_URL: &str = "https://www.leishen-ai.cn/openai";
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BackendSettings {
     #[serde(rename = "codexAppPath", default)]
     pub codex_app_path: String,
     #[serde(rename = "codexExtraArgs", default)]
     pub codex_extra_args: Vec<String>,
+    #[serde(rename = "codexNetworkProxyEnabled", default = "default_true")]
+    pub codex_network_proxy_enabled: bool,
+    #[serde(rename = "codexNetworkProxyAvailable", default)]
+    pub codex_network_proxy_available: bool,
+    #[serde(
+        rename = "codexNetworkProxyProtocol",
+        default = "default_codex_network_proxy_protocol"
+    )]
+    pub codex_network_proxy_protocol: String,
+    #[serde(
+        rename = "codexNetworkProxyHost",
+        default = "default_codex_network_proxy_host"
+    )]
+    pub codex_network_proxy_host: String,
+    #[serde(
+        rename = "codexNetworkProxyPort",
+        default = "default_codex_network_proxy_port"
+    )]
+    pub codex_network_proxy_port: u16,
     #[serde(rename = "providerSyncEnabled", default)]
     pub provider_sync_enabled: bool,
     #[serde(rename = "providerSyncSavedProviders", default)]
@@ -299,11 +321,50 @@ fn default_mobile_control_relay_url() -> String {
     "ws://127.0.0.1:57323".to_string()
 }
 
+pub fn default_codex_network_proxy_protocol() -> String {
+    "socks5".to_string()
+}
+
+pub fn default_codex_network_proxy_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+pub fn default_codex_network_proxy_port() -> u16 {
+    10808
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexNetworkProxy {
+    pub protocol: String,
+    pub host: String,
+    pub port: u16,
+}
+
+impl CodexNetworkProxy {
+    pub fn chromium_proxy_server(&self) -> String {
+        format!("{}://{}:{}", self.protocol, self.host, self.port)
+    }
+
+    pub fn environment_proxy_url(&self) -> String {
+        let scheme = if self.protocol == "socks5" {
+            "socks5h"
+        } else {
+            "http"
+        };
+        format!("{scheme}://{}:{}", self.host, self.port)
+    }
+}
+
 impl Default for BackendSettings {
     fn default() -> Self {
         Self {
             codex_app_path: String::new(),
             codex_extra_args: Vec::new(),
+            codex_network_proxy_enabled: true,
+            codex_network_proxy_available: false,
+            codex_network_proxy_protocol: default_codex_network_proxy_protocol(),
+            codex_network_proxy_host: default_codex_network_proxy_host(),
+            codex_network_proxy_port: default_codex_network_proxy_port(),
             provider_sync_enabled: false,
             provider_sync_saved_providers: Vec::new(),
             provider_sync_manual_providers: Vec::new(),
@@ -359,6 +420,49 @@ impl Default for BackendSettings {
 }
 
 impl BackendSettings {
+    pub fn codex_network_proxy(&self) -> Option<CodexNetworkProxy> {
+        if !self.codex_network_proxy_enabled {
+            return None;
+        }
+        if !self.codex_network_proxy_available {
+            return None;
+        }
+        if !self.official_direct_network_proxy_allowed() {
+            return None;
+        }
+        let host = self.codex_network_proxy_host.trim();
+        if host.is_empty() || self.codex_network_proxy_port == 0 {
+            return None;
+        }
+        let protocol = match self
+            .codex_network_proxy_protocol
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "http" => "http",
+            "socks5" => "socks5",
+            _ => "socks5",
+        };
+        Some(CodexNetworkProxy {
+            protocol: protocol.to_string(),
+            host: host.to_string(),
+            port: self.codex_network_proxy_port,
+        })
+    }
+
+    pub fn official_direct_network_proxy_allowed(&self) -> bool {
+        if !self.relay_profiles_enabled {
+            return false;
+        }
+        let profile = self.active_relay_profile();
+        profile.id == OFFICIAL_RELAY_ID
+            && profile.relay_mode == RelayMode::PureApi
+            && strip_trailing_slash(&profile.base_url)
+                == strip_trailing_slash(OFFICIAL_RELAY_BASE_URL)
+            && !profile.api_key.trim().is_empty()
+    }
+
     pub fn active_relay_profile(&self) -> RelayProfile {
         if self.active_relay_id == default_active_relay_id()
             && (self.relay_profiles.is_empty()
@@ -550,6 +654,10 @@ pub struct SettingsStore {
     path: PathBuf,
 }
 
+fn strip_trailing_slash(value: &str) -> String {
+    value.trim().trim_end_matches('/').to_string()
+}
+
 impl Default for SettingsStore {
     fn default() -> Self {
         Self::new(crate::paths::default_settings_path())
@@ -645,6 +753,36 @@ fn merge_known_setting_fields(target: &mut Map<String, Value>, source: &Map<Stri
                     .map(Value::String)
                     .collect(),
             ),
+        );
+    }
+    merge_bool_setting(target, source, "codexNetworkProxyEnabled");
+    merge_bool_setting(target, source, "codexNetworkProxyAvailable");
+    if let Some(value) = source
+        .get("codexNetworkProxyProtocol")
+        .and_then(Value::as_str)
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| matches!(value.as_str(), "socks5" | "http"))
+    {
+        target.insert(
+            "codexNetworkProxyProtocol".to_string(),
+            Value::String(value),
+        );
+    }
+    if let Some(value) = source.get("codexNetworkProxyHost").and_then(Value::as_str) {
+        target.insert(
+            "codexNetworkProxyHost".to_string(),
+            Value::String(value.trim().to_string()),
+        );
+    }
+    if let Some(value) = source
+        .get("codexNetworkProxyPort")
+        .and_then(Value::as_u64)
+        .and_then(|value| u16::try_from(value).ok())
+        .filter(|value| *value != 0)
+    {
+        target.insert(
+            "codexNetworkProxyPort".to_string(),
+            Value::Number(serde_json::Number::from(value)),
         );
     }
     if let Some(value) = source.get("providerSyncEnabled").and_then(Value::as_bool) {

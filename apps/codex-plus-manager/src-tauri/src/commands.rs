@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use codex_plus_core::install::SILENT_BINARY;
@@ -70,6 +71,12 @@ const CODEX_WINDOWS_INSTALL_COMMAND: &str = "winget install --id 9PLM9XGG6VKS --
 const CODEX_OFFICIAL_INSTALL_URL: &str = "https://developers.openai.com/codex/app";
 const CODEX_WINDOWS_STORE_URL: &str =
     "https://apps.microsoft.com/detail/9plm9xgg6vks?hl=zh-CN&gl=SC";
+const CODEX_NETWORK_PROXY_TEST_URL: &str = "https://api.openai.com/v1/models";
+const CODEX_NETWORK_PROXY_CANDIDATE_PORTS: &[u16] =
+    &[10808, 10809, 10810, 10811, 10812, 10814, 7890, 7891];
+const OFFICIAL_PROXY_RESOURCE_DIR: &str = "official-proxy";
+const OFFICIAL_PROXY_XRAY_EXE: &str = "xray.exe";
+const OFFICIAL_PROXY_XRAY_CONFIG: &str = "config.json";
 const OFFICIAL_RELAY_ID: &str = "official";
 const OFFICIAL_RELAY_NAME: &str = "总量包";
 const OFFICIAL_BASE_URL: &str = "https://www.leishen-ai.cn/openai";
@@ -161,6 +168,23 @@ pub struct CrsImageInstallPayload {
     pub command_dir: String,
     pub node_detected: bool,
     pub updated: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexNetworkProxyCandidate {
+    pub protocol: String,
+    pub host: String,
+    pub port: u16,
+    pub source: String,
+    pub listening: bool,
+    pub preferred: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexNetworkProxyDetectPayload {
+    pub candidates: Vec<CodexNetworkProxyCandidate>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -473,6 +497,7 @@ pub async fn install_codex_app() -> CommandResult<Value> {
 pub async fn official_balance(
     request: OfficialBalanceRequest,
 ) -> CommandResult<codex_plus_core::official_desktop_api::DesktopSummary> {
+    let _ = ensure_codex_network_proxy_settings_saved();
     match codex_plus_core::official_desktop_api::fetch_desktop_summary(
         "https://www.leishen-ai.cn",
         &request.api_key,
@@ -496,7 +521,15 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
 
     let store = SettingsStore::default();
     let mut settings = store.load().unwrap_or_default();
+    let was_official_proxy_allowed = settings.official_direct_network_proxy_allowed();
+    let was_proxy_enabled = settings.codex_network_proxy_enabled;
     upsert_official_api_key_settings(&mut settings, &api_key);
+    settings.codex_network_proxy_enabled = if was_official_proxy_allowed {
+        was_proxy_enabled
+    } else {
+        true
+    };
+    settings = prepare_settings_for_save(settings);
     if let Err(error) = store.save(&settings) {
         return failed(&format!("保存总量包配置失败：{error}"), json!({}));
     }
@@ -777,12 +810,16 @@ pub fn restart_codex_plus(request: LaunchRequest) -> CommandResult<Value> {
 fn spawn_codex_plus_launch(request: LaunchRequest, accepted_message: &str) -> CommandResult<Value> {
     let debug_port = request.debug_port;
     let helper_port = request.helper_port;
+    let proxy_status = ensure_codex_network_proxy_settings_saved();
+    let force_chinese_cold_start = stop_existing_codex_for_force_chinese_launch();
     let _ = codex_plus_core::diagnostic_log::append_diagnostic_log(
         "manager.launch_requested",
         json!({
             "debug_port": debug_port,
             "helper_port": helper_port,
-            "app_path": request.app_path.trim()
+            "app_path": request.app_path.trim(),
+            "officialProxy": proxy_status,
+            "forceChineseColdStart": force_chinese_cold_start
         }),
     );
     match spawn_silent_launcher(&request) {
@@ -804,10 +841,21 @@ fn spawn_codex_plus_launch(request: LaunchRequest, accepted_message: &str) -> Co
     }
 }
 
+fn stop_existing_codex_for_force_chinese_launch() -> bool {
+    let settings = SettingsStore::default().load().unwrap_or_default();
+    if !settings.enhancements_enabled || !settings.codex_app_force_chinese_locale {
+        return false;
+    }
+    codex_plus_core::watcher::stop_launcher_processes_and_wait();
+    codex_plus_core::watcher::stop_codex_processes_and_wait();
+    true
+}
+
 fn spawn_silent_launcher(request: &LaunchRequest) -> anyhow::Result<()> {
     let launcher = codex_plus_core::install::companion_binary_path(SILENT_BINARY);
     let mut command = std::process::Command::new(&launcher);
     add_crs_image_command_dir_to_process(&mut command);
+    add_codex_network_proxy_to_process(&mut command);
     if !request.app_path.trim().is_empty() {
         command.arg("--app-path").arg(request.app_path.trim());
     }
@@ -825,6 +873,16 @@ fn spawn_silent_launcher(request: &LaunchRequest) -> anyhow::Result<()> {
         .spawn()
         .map(|_| ())
         .map_err(|error| anyhow::anyhow!("无法启动 {}：{error}", launcher.to_string_lossy()))
+}
+
+fn add_codex_network_proxy_to_process(command: &mut std::process::Command) {
+    let settings = SettingsStore::default().load().unwrap_or_default();
+    if let Some(proxy) = settings.codex_network_proxy() {
+        let value = proxy.environment_proxy_url();
+        command.env("HTTP_PROXY", &value);
+        command.env("HTTPS_PROXY", &value);
+        command.env("ALL_PROXY", value);
+    }
 }
 
 fn add_crs_image_command_dir_to_process(command: &mut std::process::Command) {
@@ -857,7 +915,7 @@ pub fn load_settings() -> CommandResult<SettingsPayload> {
 
 #[tauri::command]
 pub fn save_settings(settings: BackendSettings) -> CommandResult<SettingsPayload> {
-    let settings = normalize_settings_before_save(settings);
+    let settings = prepare_settings_for_save(settings);
     match SettingsStore::default().save(&settings) {
         Ok(()) => {
             let wrapper_message = refresh_cli_wrapper_after_settings_save(&settings);
@@ -877,6 +935,684 @@ pub fn save_settings(settings: BackendSettings) -> CommandResult<SettingsPayload
             },
         ),
     }
+}
+
+#[tauri::command]
+pub fn detect_codex_network_proxy() -> CommandResult<CodexNetworkProxyDetectPayload> {
+    let store = SettingsStore::default();
+    let mut settings = store.load().unwrap_or_default();
+    if !settings.official_direct_network_proxy_allowed() {
+        return failed(
+            "仅官方额度/API Key 可使用官方直连网络。",
+            CodexNetworkProxyDetectPayload {
+                candidates: Vec::new(),
+            },
+        );
+    }
+    settings.codex_network_proxy_enabled = true;
+    let ensure = ensure_codex_network_proxy_for_settings(&mut settings);
+    let _ = store.save(&settings);
+    let payload = CodexNetworkProxyDetectPayload {
+        candidates: ensure.candidates,
+    };
+    if settings.codex_network_proxy().is_some() {
+        ok(&ensure.message, payload)
+    } else {
+        failed(&ensure.message, payload)
+    }
+}
+
+#[tauri::command]
+pub fn test_codex_network_proxy() -> CommandResult<Value> {
+    let store = SettingsStore::default();
+    let mut settings = store.load().unwrap_or_default();
+    if !settings.official_direct_network_proxy_allowed() {
+        return failed(
+            "仅官方额度/API Key 可使用官方直连网络。",
+            json!({
+                "reachable": false,
+                "httpStatus": Value::Null,
+                "proxyUrl": "",
+                "durationMs": 0,
+                "error": "official proxy is unavailable for current provider",
+            }),
+        );
+    }
+    if !settings.codex_network_proxy_enabled {
+        return failed(
+            "官方直连网络已关闭。",
+            json!({
+                "reachable": false,
+                "httpStatus": Value::Null,
+                "proxyUrl": "",
+                "durationMs": 0,
+                "error": "official proxy is disabled",
+            }),
+        );
+    }
+    let ensure = ensure_codex_network_proxy_for_settings(&mut settings);
+    let _ = store.save(&settings);
+    let Some(proxy) = settings.codex_network_proxy() else {
+        return failed(
+            &ensure.message,
+            json!({
+                "reachable": false,
+                "httpStatus": Value::Null,
+                "proxyUrl": "",
+                "durationMs": 0,
+                "error": "official proxy is unavailable for current provider",
+            }),
+        );
+    };
+    let proxy_url = proxy.environment_proxy_url();
+    let started = Instant::now();
+    let test = run_curl_proxy_test(&proxy_url);
+    let duration_ms = started.elapsed().as_millis();
+    let error = test.error.clone();
+    let payload = json!({
+        "reachable": test.reachable,
+        "httpStatus": test.http_status,
+        "proxyUrl": proxy_url,
+        "durationMs": duration_ms,
+        "error": error,
+    });
+    if test.reachable {
+        ok(
+            "代理网络可达；OpenAI API 返回 HTTP 响应，未配置 API Key 时 401 属于正常结果。",
+            payload,
+        )
+    } else {
+        failed(
+            &format!(
+                "代理不可用：{}",
+                test.error.unwrap_or_else(|| "请求失败".to_string())
+            ),
+            payload,
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CodexNetworkProxyEnsure {
+    candidates: Vec<CodexNetworkProxyCandidate>,
+    message: String,
+}
+
+fn ensure_codex_network_proxy_settings_saved() -> Value {
+    let store = SettingsStore::default();
+    let mut settings = store.load().unwrap_or_default();
+    if !settings.official_direct_network_proxy_allowed() {
+        let changed = disable_codex_network_proxy_for_non_official_settings(&mut settings);
+        if changed {
+            let _ = store.save(&settings);
+        }
+        stop_codex_direct_network_proxy();
+        return json!({
+            "enabled": false,
+            "allowed": false,
+            "message": "非官方供应商配置，官方直连网络已关闭。"
+        });
+    }
+    if !settings.codex_network_proxy_enabled {
+        settings.codex_network_proxy_available = false;
+        let _ = store.save(&settings);
+        stop_codex_direct_network_proxy();
+        return json!({
+            "enabled": false,
+            "allowed": true,
+            "message": "官方直连网络已关闭。"
+        });
+    }
+    let ensure = ensure_codex_network_proxy_for_settings_fast(&mut settings);
+    let selected = settings.codex_network_proxy();
+    let _ = store.save(&settings);
+    json!({
+        "enabled": selected.is_some(),
+        "allowed": true,
+        "message": ensure.message
+    })
+}
+
+fn ensure_codex_network_proxy_for_settings_fast(
+    settings: &mut BackendSettings,
+) -> CodexNetworkProxyEnsure {
+    if !settings.official_direct_network_proxy_allowed() {
+        if settings.codex_network_proxy_enabled {
+            settings.codex_network_proxy_enabled = false;
+            stop_codex_direct_network_proxy();
+        }
+        settings.codex_network_proxy_available = false;
+        return CodexNetworkProxyEnsure {
+            candidates: Vec::new(),
+            message: "仅官方额度/API Key 可使用官方直连网络。".to_string(),
+        };
+    }
+    if !settings.codex_network_proxy_enabled {
+        settings.codex_network_proxy_available = false;
+        stop_codex_direct_network_proxy();
+        return CodexNetworkProxyEnsure {
+            candidates: collect_official_proxy_candidates(),
+            message: "官方直连网络已关闭。".to_string(),
+        };
+    }
+
+    let mut candidates = collect_official_proxy_candidates();
+    let mut started = false;
+    if !candidates.iter().any(|candidate| candidate.listening) {
+        started = start_managed_official_proxy().unwrap_or(false);
+        if started {
+            std::thread::sleep(Duration::from_millis(250));
+            candidates = collect_official_proxy_candidates();
+        }
+    }
+    if let Some(candidate) = first_listening_official_proxy_candidate(&candidates) {
+        settings.codex_network_proxy_protocol = candidate.protocol;
+        settings.codex_network_proxy_host = candidate.host;
+        settings.codex_network_proxy_port = candidate.port;
+        settings.codex_network_proxy_available = true;
+        let started_text = if started {
+            "，已自动启动官方直连进程"
+        } else {
+            ""
+        };
+        return CodexNetworkProxyEnsure {
+            candidates,
+            message: format!("官方直连网络已接入本地入口{started_text}。"),
+        };
+    }
+
+    settings.codex_network_proxy_available = false;
+    CodexNetworkProxyEnsure {
+        candidates,
+        message: "未检测到本地官方直连入口；Codex 会继续正常打开。".to_string(),
+    }
+}
+
+fn ensure_codex_network_proxy_for_settings(
+    settings: &mut BackendSettings,
+) -> CodexNetworkProxyEnsure {
+    if !settings.official_direct_network_proxy_allowed() {
+        if settings.codex_network_proxy_enabled {
+            settings.codex_network_proxy_enabled = false;
+            stop_codex_direct_network_proxy();
+        }
+        settings.codex_network_proxy_available = false;
+        return CodexNetworkProxyEnsure {
+            candidates: Vec::new(),
+            message: "仅官方额度/API Key 可使用官方直连网络。".to_string(),
+        };
+    }
+    if !settings.codex_network_proxy_enabled {
+        settings.codex_network_proxy_available = false;
+        stop_codex_direct_network_proxy();
+        return CodexNetworkProxyEnsure {
+            candidates: collect_codex_network_proxy_candidates(),
+            message: "官方直连网络已关闭。".to_string(),
+        };
+    }
+
+    let mut candidates = collect_codex_network_proxy_candidates();
+    let mut started = false;
+    if !candidates.iter().any(|candidate| candidate.listening) {
+        started = start_managed_official_proxy().unwrap_or(false);
+        if started {
+            std::thread::sleep(Duration::from_millis(800));
+            candidates = collect_codex_network_proxy_candidates();
+        }
+    }
+    if let Some(candidate) = first_reachable_official_proxy_candidate(&candidates) {
+        settings.codex_network_proxy_protocol = candidate.protocol;
+        settings.codex_network_proxy_host = candidate.host;
+        settings.codex_network_proxy_port = candidate.port;
+        settings.codex_network_proxy_available = true;
+        let started_text = if started {
+            "，已自动启动官方直连进程"
+        } else {
+            ""
+        };
+        return CodexNetworkProxyEnsure {
+            candidates,
+            message: format!("官方直连网络已自动接入{started_text}。"),
+        };
+    }
+
+    settings.codex_network_proxy_available = false;
+    CodexNetworkProxyEnsure {
+        candidates,
+        message: "官方直连入口未通过连通性测试；Codex 会继续正常打开。".to_string(),
+    }
+}
+
+fn collect_official_proxy_candidates() -> Vec<CodexNetworkProxyCandidate> {
+    let mut candidates = Vec::new();
+    collect_managed_xray_proxy_candidates(&mut candidates);
+    for candidate in &mut candidates {
+        candidate.listening = local_proxy_port_listening(candidate.port);
+    }
+    candidates.sort_by(|left, right| {
+        right
+            .listening
+            .cmp(&left.listening)
+            .then_with(|| left.port.cmp(&right.port))
+            .then_with(|| left.protocol.cmp(&right.protocol))
+    });
+    for (index, candidate) in candidates.iter_mut().enumerate() {
+        candidate.preferred = index == 0 && candidate.listening;
+    }
+    candidates
+}
+
+fn first_listening_official_proxy_candidate(
+    candidates: &[CodexNetworkProxyCandidate],
+) -> Option<CodexNetworkProxyCandidate> {
+    candidates
+        .iter()
+        .find(|candidate| candidate.listening && candidate.source.contains("官方直连"))
+        .cloned()
+}
+
+fn first_reachable_official_proxy_candidate(
+    candidates: &[CodexNetworkProxyCandidate],
+) -> Option<CodexNetworkProxyCandidate> {
+    candidates
+        .iter()
+        .filter(|candidate| candidate.listening && candidate.source.contains("官方直连"))
+        .find(|candidate| run_curl_proxy_test(&candidate_proxy_url(candidate)).reachable)
+        .cloned()
+}
+
+fn candidate_proxy_url(candidate: &CodexNetworkProxyCandidate) -> String {
+    let protocol = if candidate.protocol == "http" {
+        "http"
+    } else {
+        "socks5h"
+    };
+    format!("{protocol}://{}:{}", candidate.host, candidate.port)
+}
+
+fn collect_codex_network_proxy_candidates() -> Vec<CodexNetworkProxyCandidate> {
+    let mut candidates = Vec::new();
+    collect_managed_xray_proxy_candidates(&mut candidates);
+    collect_v2rayn_proxy_candidates(&mut candidates);
+    collect_known_proxy_port_candidates(&mut candidates);
+    for candidate in &mut candidates {
+        candidate.listening = local_proxy_port_listening(candidate.port);
+    }
+    candidates.sort_by(|left, right| {
+        right
+            .listening
+            .cmp(&left.listening)
+            .then_with(|| proxy_source_rank(&left.source).cmp(&proxy_source_rank(&right.source)))
+            .then_with(|| left.port.cmp(&right.port))
+            .then_with(|| left.protocol.cmp(&right.protocol))
+    });
+    for (index, candidate) in candidates.iter_mut().enumerate() {
+        candidate.preferred = index == 0 && candidate.listening;
+    }
+    candidates
+}
+
+fn proxy_source_rank(source: &str) -> u8 {
+    if source.contains("官方直连") {
+        0
+    } else if source.contains("v2rayN") {
+        1
+    } else {
+        2
+    }
+}
+
+fn collect_managed_xray_proxy_candidates(candidates: &mut Vec<CodexNetworkProxyCandidate>) {
+    for config_path in official_proxy_config_paths() {
+        collect_xray_config_proxy_candidates(candidates, &config_path, "官方直连");
+    }
+}
+
+fn collect_xray_config_proxy_candidates(
+    candidates: &mut Vec<CodexNetworkProxyCandidate>,
+    path: &Path,
+    source: &str,
+) {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return;
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&contents) else {
+        return;
+    };
+    let Some(inbounds) = value.get("inbounds").and_then(Value::as_array) else {
+        return;
+    };
+    for inbound in inbounds {
+        let Some(port) = json_port(inbound.get("port")) else {
+            continue;
+        };
+        let listen = inbound
+            .get("listen")
+            .and_then(Value::as_str)
+            .unwrap_or("127.0.0.1")
+            .trim();
+        if !(listen.is_empty() || listen == "127.0.0.1" || listen == "localhost") {
+            continue;
+        }
+        let protocol = inbound
+            .get("protocol")
+            .and_then(Value::as_str)
+            .and_then(normalize_proxy_protocol)
+            .unwrap_or_else(|| guessed_protocol_for_port(port).to_string());
+        push_unique_proxy_candidate(candidates, &protocol, port, source);
+    }
+}
+
+fn start_managed_official_proxy() -> anyhow::Result<bool> {
+    let Some((proxy_dir, xray_exe, config_path)) = official_proxy_runtime_bundle() else {
+        return Ok(false);
+    };
+    if official_proxy_config_ports(&config_path)
+        .into_iter()
+        .any(local_proxy_port_listening)
+    {
+        return Ok(false);
+    }
+    let mut command = std::process::Command::new(&xray_exe);
+    command
+        .arg("run")
+        .arg("-c")
+        .arg(&config_path)
+        .current_dir(&proxy_dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    let child = command.spawn().with_context(|| "启动官方直连进程失败")?;
+    let _ = fs::create_dir_all(codex_plus_core::paths::default_app_state_dir());
+    let _ = fs::write(official_proxy_pid_path(), child.id().to_string());
+    Ok(true)
+}
+
+fn stop_codex_direct_network_proxy() {
+    let pid_path = official_proxy_pid_path();
+    let Ok(raw_pid) = fs::read_to_string(&pid_path) else {
+        return;
+    };
+    let pid = raw_pid.trim();
+    if pid.is_empty() || pid.chars().any(|ch| !ch.is_ascii_digit()) {
+        let _ = fs::remove_file(pid_path);
+        return;
+    }
+    #[cfg(windows)]
+    {
+        let mut command = std::process::Command::new("taskkill");
+        command
+            .args(["/PID", pid, "/T", "/F"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        suppress_console_window(&mut command);
+        let _ = command.status();
+    }
+    #[cfg(not(windows))]
+    let _ = std::process::Command::new("kill")
+        .args(["-TERM", pid])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    let _ = fs::remove_file(pid_path);
+}
+
+fn official_proxy_pid_path() -> PathBuf {
+    codex_plus_core::paths::default_app_state_dir().join("official-proxy.pid")
+}
+
+fn official_proxy_runtime_bundle() -> Option<(PathBuf, PathBuf, PathBuf)> {
+    official_proxy_dirs().into_iter().find_map(|dir| {
+        let exe = dir.join(OFFICIAL_PROXY_XRAY_EXE);
+        let config = dir.join(OFFICIAL_PROXY_XRAY_CONFIG);
+        (exe.is_file() && config.is_file()).then_some((dir, exe, config))
+    })
+}
+
+fn official_proxy_config_paths() -> Vec<PathBuf> {
+    official_proxy_dirs()
+        .into_iter()
+        .map(|dir| dir.join(OFFICIAL_PROXY_XRAY_CONFIG))
+        .filter(|path| path.is_file())
+        .collect()
+}
+
+fn official_proxy_config_ports(path: &Path) -> Vec<u16> {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&contents) else {
+        return Vec::new();
+    };
+    value
+        .get("inbounds")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|inbound| json_port(inbound.get("port")))
+        .collect()
+}
+
+fn official_proxy_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(app_dir) = exe.parent() {
+            dirs.push(app_dir.join("resources").join(OFFICIAL_PROXY_RESOURCE_DIR));
+        }
+    }
+    if let Some(user_profile) = std::env::var_os("USERPROFILE") {
+        dirs.push(
+            PathBuf::from(user_profile)
+                .join("Desktop")
+                .join("vps")
+                .join("xray-test"),
+        );
+    }
+    dirs
+}
+
+fn collect_v2rayn_proxy_candidates(candidates: &mut Vec<CodexNetworkProxyCandidate>) {
+    for path in v2rayn_config_paths() {
+        let Ok(contents) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&contents) else {
+            continue;
+        };
+        for inbound in v2rayn_inbound_values(&value) {
+            let Some(port) = json_port(
+                inbound
+                    .get("LocalPort")
+                    .or_else(|| inbound.get("localPort")),
+            ) else {
+                continue;
+            };
+            let protocol = inbound
+                .get("Protocol")
+                .or_else(|| inbound.get("protocol"))
+                .and_then(Value::as_str)
+                .and_then(normalize_proxy_protocol)
+                .unwrap_or_else(|| guessed_protocol_for_port(port).to_string());
+            push_unique_proxy_candidate(candidates, &protocol, port, "v2rayN");
+        }
+    }
+}
+
+fn v2rayn_config_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Some(user_profile) = std::env::var_os("USERPROFILE") {
+        paths.push(
+            PathBuf::from(&user_profile)
+                .join("Desktop")
+                .join("vps")
+                .join("v2rayN")
+                .join("v2rayN-windows-64")
+                .join("guiConfigs")
+                .join("guiNConfig.json"),
+        );
+    }
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        paths.push(
+            PathBuf::from(appdata)
+                .join("v2rayN")
+                .join("guiConfigs")
+                .join("guiNConfig.json"),
+        );
+    }
+    paths
+}
+
+fn v2rayn_inbound_values(value: &Value) -> Vec<&Value> {
+    ["Inbound", "inbound", "Inbounds", "inbounds"]
+        .into_iter()
+        .filter_map(|key| value.get(key).and_then(Value::as_array))
+        .flat_map(|items| items.iter())
+        .collect()
+}
+
+fn collect_known_proxy_port_candidates(candidates: &mut Vec<CodexNetworkProxyCandidate>) {
+    for port in CODEX_NETWORK_PROXY_CANDIDATE_PORTS {
+        push_unique_proxy_candidate(
+            candidates,
+            guessed_protocol_for_port(*port),
+            *port,
+            "本机端口",
+        );
+    }
+}
+
+fn push_unique_proxy_candidate(
+    candidates: &mut Vec<CodexNetworkProxyCandidate>,
+    protocol: &str,
+    port: u16,
+    source: &str,
+) {
+    if candidates
+        .iter()
+        .any(|candidate| candidate.protocol == protocol && candidate.port == port)
+    {
+        return;
+    }
+    candidates.push(CodexNetworkProxyCandidate {
+        protocol: protocol.to_string(),
+        host: codex_plus_core::settings::default_codex_network_proxy_host(),
+        port,
+        source: source.to_string(),
+        listening: false,
+        preferred: false,
+    });
+}
+
+fn normalize_proxy_protocol(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.starts_with("http") {
+        Some("http".to_string())
+    } else if normalized.starts_with("socks") {
+        Some("socks5".to_string())
+    } else {
+        None
+    }
+}
+
+fn guessed_protocol_for_port(port: u16) -> &'static str {
+    match port {
+        10809 | 7890 => "http",
+        _ => "socks5",
+    }
+}
+
+fn json_port(value: Option<&Value>) -> Option<u16> {
+    match value? {
+        Value::Number(number) => number.as_u64().and_then(|value| u16::try_from(value).ok()),
+        Value::String(text) => text.trim().parse::<u16>().ok(),
+        _ => None,
+    }
+    .filter(|port| *port != 0)
+}
+
+fn local_proxy_port_listening(port: u16) -> bool {
+    let address = SocketAddr::from(([127, 0, 0, 1], port));
+    TcpStream::connect_timeout(&address, Duration::from_millis(250)).is_ok()
+}
+
+struct CurlProxyTest {
+    reachable: bool,
+    http_status: Option<u16>,
+    error: Option<String>,
+}
+
+fn run_curl_proxy_test(proxy_url: &str) -> CurlProxyTest {
+    let mut command = std::process::Command::new(curl_executable());
+    command.args([
+        "-sS",
+        "-o",
+        curl_null_output(),
+        "-w",
+        "%{http_code}",
+        "--connect-timeout",
+        "5",
+        "--max-time",
+        "9",
+        "--proxy",
+        proxy_url,
+        CODEX_NETWORK_PROXY_TEST_URL,
+    ]);
+    suppress_console_window(&mut command);
+    let output = command.output();
+    let Ok(output) = output else {
+        return CurlProxyTest {
+            reachable: false,
+            http_status: None,
+            error: Some("无法运行 curl.exe。".to_string()),
+        };
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let http_status = stdout.parse::<u16>().ok().filter(|status| *status != 0);
+    let reachable = matches!(http_status, Some(200..=499)) && http_status != Some(407);
+    CurlProxyTest {
+        reachable,
+        http_status,
+        error: if reachable {
+            None
+        } else if !stderr.is_empty() {
+            Some(truncate_proxy_error(&stderr))
+        } else if let Some(status) = http_status {
+            Some(format!("HTTP {status}"))
+        } else {
+            Some(format!("curl 退出码 {:?}", output.status.code()))
+        },
+    }
+}
+
+fn curl_executable() -> &'static str {
+    if cfg!(windows) { "curl.exe" } else { "curl" }
+}
+
+fn curl_null_output() -> &'static str {
+    if cfg!(windows) { "NUL" } else { "/dev/null" }
+}
+
+fn suppress_console_window(command: &mut std::process::Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+}
+
+fn truncate_proxy_error(message: &str) -> String {
+    const MAX_ERROR_CHARS: usize = 360;
+    let mut truncated = message.chars().take(MAX_ERROR_CHARS).collect::<String>();
+    if message.chars().count() > MAX_ERROR_CHARS {
+        truncated.push_str("...");
+    }
+    truncated
 }
 
 #[tauri::command]
@@ -1212,6 +1948,19 @@ fn local_session_adapter(db_path: &Path) -> codex_plus_data::SQLiteStorageAdapte
     )
 }
 
+fn prepare_settings_for_save(settings: BackendSettings) -> BackendSettings {
+    let should_stop_proxy =
+        !settings.official_direct_network_proxy_allowed() || !settings.codex_network_proxy_enabled;
+    let mut settings = normalize_settings_before_save(settings);
+    if should_stop_proxy {
+        stop_codex_direct_network_proxy();
+    }
+    if settings.codex_network_proxy_enabled && settings.official_direct_network_proxy_allowed() {
+        let _ = ensure_codex_network_proxy_for_settings_fast(&mut settings);
+    }
+    settings
+}
+
 fn normalize_settings_before_save(mut settings: BackendSettings) -> BackendSettings {
     remove_legacy_default_relay_profiles(&mut settings);
 
@@ -1276,7 +2025,46 @@ fn normalize_settings_before_save(mut settings: BackendSettings) -> BackendSetti
         .provider_sync_last_selected_provider
         .trim()
         .to_string();
+    settings.codex_network_proxy_protocol = match settings
+        .codex_network_proxy_protocol
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "http" => "http".to_string(),
+        _ => codex_plus_core::settings::default_codex_network_proxy_protocol(),
+    };
+    settings.codex_network_proxy_host = settings.codex_network_proxy_host.trim().to_string();
+    if settings.codex_network_proxy_host.is_empty() {
+        settings.codex_network_proxy_host =
+            codex_plus_core::settings::default_codex_network_proxy_host();
+    }
+    if settings.codex_network_proxy_port == 0 {
+        settings.codex_network_proxy_port =
+            codex_plus_core::settings::default_codex_network_proxy_port();
+    }
+    let _ = disable_codex_network_proxy_for_non_official_settings(&mut settings);
     settings
+}
+
+fn disable_codex_network_proxy_for_non_official_settings(settings: &mut BackendSettings) -> bool {
+    let mut changed = false;
+    if !settings.official_direct_network_proxy_allowed() {
+        if settings.codex_network_proxy_enabled {
+            settings.codex_network_proxy_enabled = false;
+            changed = true;
+        }
+        if settings.codex_network_proxy_available {
+            settings.codex_network_proxy_available = false;
+            changed = true;
+        }
+        return changed;
+    }
+    if !settings.codex_network_proxy_enabled && settings.codex_network_proxy_available {
+        settings.codex_network_proxy_available = false;
+        changed = true;
+    }
+    changed
 }
 
 fn normalize_provider_sync_provider_list(values: Vec<String>) -> Vec<String> {
@@ -1601,6 +2389,7 @@ fn persist_provider_sync_selection(provider: &str) {
 
 #[tauri::command]
 pub async fn refresh_script_market() -> CommandResult<ScriptMarketPayload> {
+    let _ = ensure_codex_network_proxy_settings_saved();
     match script_market::fetch_market_manifest(script_market::DEFAULT_MARKET_INDEX_URL).await {
         Ok(manifest) => ok(
             "脚本市场已刷新。",
@@ -1806,6 +2595,78 @@ pub async fn repair_plugin_marketplace() -> CommandResult<PluginMarketplaceRepai
             },
         ),
     }
+}
+
+pub fn postinstall_prewarm_blocking() -> bool {
+    let started = Instant::now();
+    let skills_result = postinstall_install_managed_codex_assets();
+    let marketplace_result = postinstall_repair_plugin_marketplace();
+    let locale_result = postinstall_force_codex_chinese_locale();
+    let ok = skills_result.is_ok() && marketplace_result.is_ok() && locale_result.is_ok();
+    let _ = codex_plus_core::diagnostic_log::append_diagnostic_log(
+        "manager.postinstall_prewarm",
+        json!({
+            "ok": ok,
+            "skillsOk": skills_result.is_ok(),
+            "marketplaceOk": marketplace_result.is_ok(),
+            "localeOk": locale_result.is_ok(),
+            "localeApplied": locale_result.as_ref().ok(),
+            "skillsError": skills_result.as_ref().err().map(ToString::to_string),
+            "marketplaceError": marketplace_result.as_ref().err().map(ToString::to_string),
+            "localeError": locale_result.as_ref().err().map(ToString::to_string),
+            "durationMs": started.elapsed().as_millis()
+        }),
+    );
+    ok
+}
+
+fn postinstall_install_managed_codex_assets() -> anyhow::Result<bool> {
+    let paths = default_crs_image_install_paths();
+    let managed_skill_documents = bundled_managed_skill_documents()?;
+    let managed_updated =
+        install_managed_skill_documents(&paths.codex_home, &managed_skill_documents)?;
+    let crs_image = install_crs_image_files_for_paths(&paths, CRS_IMAGE_CLIENT, CRS_IMAGE_SKILL)?;
+    Ok(managed_updated || crs_image.updated)
+}
+
+fn postinstall_repair_plugin_marketplace() -> anyhow::Result<bool> {
+    let home = codex_plus_core::codex_home::default_codex_home_dir();
+    if !codex_plus_core::plugin_marketplace::openai_curated_marketplace_status(&home).needs_repair()
+    {
+        return Ok(false);
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("failed to create postinstall prewarm runtime")?;
+    let result = runtime
+        .block_on(async {
+            tokio::time::timeout(
+                Duration::from_secs(60),
+                codex_plus_core::plugin_marketplace::initialize_openai_curated_marketplace_and_configure(&home),
+            )
+            .await
+        })
+        .context("postinstall plugin marketplace prewarm timed out")??;
+    Ok(result.initialized || result.configured)
+}
+
+fn postinstall_force_codex_chinese_locale() -> anyhow::Result<bool> {
+    let settings = SettingsStore::default().load().unwrap_or_default();
+    if !settings.codex_app_force_chinese_locale {
+        return Ok(false);
+    }
+    let Some(app_dir) = codex_plus_core::app_paths::resolve_codex_app_dir_with_saved(
+        None,
+        Some(settings.codex_app_path.as_str()),
+    ) else {
+        return Ok(false);
+    };
+    Ok(
+        codex_plus_core::launcher::ensure_codex_chinese_locale_profile_nonfatal(
+            &settings, &app_dir,
+        ),
+    )
 }
 
 #[tauri::command]
@@ -2065,7 +2926,7 @@ pub fn copy_diagnostics() -> CommandResult<DiagnosticsPayload> {
 
 #[tauri::command]
 pub fn reset_settings() -> CommandResult<SettingsPayload> {
-    let settings = BackendSettings::default();
+    let settings = prepare_settings_for_save(BackendSettings::default());
     match SettingsStore::default().save(&settings) {
         Ok(()) => settings_payload("设置已重置为默认值。", "设置重置后重新读取失败"),
         Err(error) => failed(
@@ -2089,7 +2950,7 @@ pub fn reset_image_overlay_settings() -> CommandResult<SettingsPayload> {
     settings.codex_app_image_overlay_enabled = defaults.codex_app_image_overlay_enabled;
     settings.codex_app_image_overlay_path = defaults.codex_app_image_overlay_path;
     settings.codex_app_image_overlay_opacity = defaults.codex_app_image_overlay_opacity;
-    let settings = normalize_settings_before_save(settings);
+    let settings = prepare_settings_for_save(settings);
     match store.save(&settings) {
         Ok(()) => settings_payload("图片覆盖层设置已重置。", "图片覆盖层重置后重新读取失败"),
         Err(error) => failed(
@@ -2217,7 +3078,7 @@ pub fn switch_relay_profile(
     let home = codex_plus_core::relay_config::default_codex_home_dir();
     let store = SettingsStore::default();
     let previous_active_relay_id = request.previous_active_relay_id;
-    let settings = normalize_settings_before_save(request.settings);
+    let settings = prepare_settings_for_save(request.settings);
     log_manager_event(
         "manager.switch_relay_profile.start",
         json!({
@@ -4814,6 +5675,44 @@ model_reasoning_effort = "high"
     }
 
     #[test]
+    fn normalize_settings_before_save_keeps_proxy_for_official_provider() {
+        let settings = official_proxy_settings();
+
+        let normalized = normalize_settings_before_save(settings);
+
+        assert!(normalized.codex_network_proxy_enabled);
+        assert!(normalized.official_direct_network_proxy_allowed());
+    }
+
+    #[test]
+    fn normalize_settings_before_save_stops_proxy_after_third_party_switch() {
+        let settings = BackendSettings {
+            codex_network_proxy_enabled: true,
+            codex_network_proxy_available: true,
+            codex_network_proxy_protocol: "socks5".to_string(),
+            codex_network_proxy_host: "127.0.0.1".to_string(),
+            codex_network_proxy_port: 10808,
+            relay_profiles_enabled: true,
+            active_relay_id: "third-party".to_string(),
+            relay_profiles: vec![RelayProfile {
+                id: "third-party".to_string(),
+                name: "第三方".to_string(),
+                base_url: "https://api.example.com/openai".to_string(),
+                api_key: "sk-user-key".to_string(),
+                relay_mode: codex_plus_core::settings::RelayMode::PureApi,
+                ..RelayProfile::default()
+            }],
+            ..BackendSettings::default()
+        };
+
+        let normalized = normalize_settings_before_save(settings);
+
+        assert!(!normalized.codex_network_proxy_enabled);
+        assert!(!normalized.codex_network_proxy_available);
+        assert!(!normalized.official_direct_network_proxy_allowed());
+    }
+
+    #[test]
     fn context_entry_commands_update_settings_payload() {
         let settings = BackendSettings::default();
         let upsert = upsert_context_entry(ContextEntryRequest {
@@ -4858,5 +5757,27 @@ model_reasoning_effort = "high"
 
         assert_eq!(result.status, "failed");
         assert!(result.message.contains("只允许打开 http 或 https 链接"));
+    }
+
+    fn official_proxy_settings() -> BackendSettings {
+        BackendSettings {
+            codex_network_proxy_enabled: true,
+            codex_network_proxy_available: true,
+            codex_network_proxy_protocol: "socks5".to_string(),
+            codex_network_proxy_host: "127.0.0.1".to_string(),
+            codex_network_proxy_port: 10808,
+            relay_profiles_enabled: true,
+            active_relay_id: codex_plus_core::settings::OFFICIAL_RELAY_ID.to_string(),
+            relay_profiles: vec![RelayProfile {
+                id: codex_plus_core::settings::OFFICIAL_RELAY_ID.to_string(),
+                name: "总量包".to_string(),
+                base_url: codex_plus_core::settings::OFFICIAL_RELAY_BASE_URL.to_string(),
+                upstream_base_url: codex_plus_core::settings::OFFICIAL_RELAY_BASE_URL.to_string(),
+                api_key: "sk-official-key".to_string(),
+                relay_mode: codex_plus_core::settings::RelayMode::PureApi,
+                ..RelayProfile::default()
+            }],
+            ..BackendSettings::default()
+        }
     }
 }

@@ -276,6 +276,7 @@ model = "gpt-5-mini"
     assert!(updated.contains("requires_openai_auth = true"));
     assert!(updated.contains(r#"base_url = "https://relay.example.test/v1""#));
     assert!(updated.contains(r#"experimental_bearer_token = "sk-test-redacted""#));
+    assert!(updated.contains(r#"localeOverride = "zh-CN""#));
 }
 
 #[test]
@@ -296,6 +297,7 @@ fn apply_chat_protocol_relay_points_codex_to_local_responses_proxy() {
     assert!(updated.contains(r#"wire_api = "responses""#));
     assert!(updated.contains(r#"base_url = "http://127.0.0.1:57321/v1""#));
     assert!(updated.contains(r#"experimental_bearer_token = "sk-test-redacted""#));
+    assert!(updated.contains(r#"localeOverride = "zh-CN""#));
     assert!(!updated.contains("codex_plus_chat_base_url"));
 }
 
@@ -318,6 +320,7 @@ fn apply_aggregate_relay_points_codex_to_local_responses_proxy_without_snapshot(
     assert!(updated.contains(r#"wire_api = "responses""#));
     assert!(updated.contains(r#"base_url = "http://127.0.0.1:57321/v1""#));
     assert!(updated.contains(r#"experimental_bearer_token = "codex-plus-aggregate""#));
+    assert!(updated.contains(r#"localeOverride = "zh-CN""#));
 }
 
 #[test]
@@ -497,6 +500,7 @@ fn apply_named_pure_api_config_writes_topup_provider_display_name() {
     assert!(config.contains(r#"name = "总量包""#));
     assert!(config.contains(r#"base_url = "https://www.leishen-ai.cn/openai""#));
     assert!(config.contains(r#"experimental_bearer_token = "sk-topup-test""#));
+    assert!(config.contains(r#"localeOverride = "zh-CN""#));
     assert_eq!(auth, serde_json::json!({"OPENAI_API_KEY": "sk-topup-test"}));
 }
 

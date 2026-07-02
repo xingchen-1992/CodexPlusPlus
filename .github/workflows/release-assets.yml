@@ -18,6 +18,7 @@ jobs:
       CODEX_WINDOWS_X64_MSIX_CACHE_KEY: "2026-06-30"
       NODE_RUNTIME_VERSION: "v24.18.0"
       NODE_WINDOWS_X64_ZIP_URL: "https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip"
+      PYTHON_WINDOWS_X64_INSTALLER_URL: "https://www.python.org/ftp/python/3.13.14/python-3.13.14-amd64.exe"
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v4
@@ -190,6 +191,31 @@ jobs:
             throw "Downloaded Codex MSIX is unexpectedly small: $size bytes"
           }
 
+      - name: Cache Python Windows installer
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/codex-plus-release/windows/python-3.13.14-amd64.exe
+          key: ${{ runner.os }}-python-3.13.14-amd64
+
+      - name: Download Python Windows installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force dist/windows/package | Out-Null
+          $python = "dist/windows/package/python-3.13.14-amd64.exe"
+          $cache = Join-Path $env:USERPROFILE ".cache\codex-plus-release\windows\python-3.13.14-amd64.exe"
+          New-Item -ItemType Directory -Force (Split-Path $cache) | Out-Null
+          if (Test-Path $cache) {
+            Copy-Item $cache $python -Force
+          } else {
+            curl.exe -L --retry 3 --retry-delay 10 --fail -o $python $env:PYTHON_WINDOWS_X64_INSTALLER_URL
+            Copy-Item $python $cache -Force
+          }
+          $size = (Get-Item $python).Length
+          if ($size -lt 20MB) {
+            throw "Downloaded Python installer is unexpectedly small: $size bytes"
+          }
+
       - name: Build Windows installer
         shell: pwsh
         run: |
@@ -215,21 +241,41 @@ jobs:
           $version = "${{ github.event.release.tag_name }}".TrimStart("v", "V")
           $setup = "dist/windows/CodexPlusOfficial-${version}-windows-x64-setup.exe"
           $msix = "dist/windows/package/CodexOfficialApp-x64.msix"
+          $python = "dist/windows/package/python-3.13.14-amd64.exe"
           if (-not (Test-Path $setup)) {
             throw "Missing setup executable: $setup"
           }
           if (-not (Test-Path $msix)) {
             throw "Missing Codex MSIX: $msix"
           }
+          if (-not (Test-Path $python)) {
+            throw "Missing Python installer: $python"
+          }
           $packageRoot = "dist/windows/package-root"
           if (Test-Path $packageRoot) {
             Remove-Item $packageRoot -Recurse -Force
           }
           New-Item -ItemType Directory -Force $packageRoot | Out-Null
-          $resourcesDir = "$packageRoot/安装资源"
+          $resourcesDir = "$packageRoot/RequiredFiles"
           New-Item -ItemType Directory -Force $resourcesDir | Out-Null
-          Copy-Item $setup "$packageRoot/双击安装.exe"
+          Copy-Item $setup "$packageRoot/点我双击安装.exe"
           Copy-Item $msix "$resourcesDir/CodexOfficialApp-x64.msix"
+          Copy-Item $python "$resourcesDir/python-3.13.14-amd64.exe"
+          $rootNames = @(Get-ChildItem -LiteralPath $packageRoot -Force | ForEach-Object { $_.Name } | Sort-Object)
+          $expectedRootNames = @("RequiredFiles", "点我双击安装.exe")
+          if (@(Compare-Object $rootNames $expectedRootNames).Length -ne 0) {
+            throw "Invalid package root entries: $($rootNames -join ', ')"
+          }
+          $rootExe = @(Get-ChildItem -LiteralPath $packageRoot -File -Filter *.exe)
+          if ($rootExe.Count -ne 1 -or $rootExe[0].Name -ne "点我双击安装.exe") {
+            throw "Package root must contain exactly one setup executable"
+          }
+          if (-not (Test-Path "$resourcesDir/CodexOfficialApp-x64.msix")) {
+            throw "Package resources are missing CodexOfficialApp-x64.msix"
+          }
+          if (-not (Test-Path "$resourcesDir/python-3.13.14-amd64.exe")) {
+            throw "Package resources are missing python-3.13.14-amd64.exe"
+          }
           Compress-Archive -Force -Path "$packageRoot/*" -DestinationPath "dist/windows/CodexPlusOfficial-${version}-windows-x64.zip"
 
       - name: Upload Windows assets

@@ -4,6 +4,8 @@ import test from "node:test";
 
 const appSource = fs.readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 const commandsSource = fs.readFileSync(new URL("../../src-tauri/src/commands.rs", import.meta.url), "utf8");
+const managerMainSource = fs.readFileSync(new URL("../../src-tauri/src/main.rs", import.meta.url), "utf8");
+const installerSource = fs.readFileSync(new URL("../../../../scripts/installer/windows/CodexPlusPlus.nsi", import.meta.url), "utf8");
 
 test("tools page puts Skills before MCP", () => {
   const options = appSource.match(/const contextKindOptions[\s\S]*?=\s*\[([\s\S]*?)\];/);
@@ -35,13 +37,26 @@ test("tools page does not run crs-image update checks when switching into the pa
   assert.equal(manager[0].includes("crsImageAutoChecked"), false);
 });
 
-test("opening or restarting Codex syncs managed skills first", () => {
+test("opening or restarting Codex syncs managed skills and plugin marketplace first", () => {
   assert.match(appSource, /ensureManagedSkillsForCodex/);
+  assert.match(appSource, /ensurePluginMarketplaceReadyForCodex/);
   const ready = appSource.match(/const ensureOfficialReadyForLaunch[\s\S]*?return true;\n\s*};/);
   assert.ok(ready, "ensureOfficialReadyForLaunch should exist");
   assert.match(ready[0], /await ensureManagedSkillsForCodex\(\{ silent: false \}\)/);
   assert.match(ready[0], /正在同步 crs-image、内置 Node 和 6 个托管 Skills/);
   assert.match(ready[0], /crs-image 和托管 Skills 已就绪，跳过重复同步/);
+  assert.match(ready[0], /正在同步 OpenAI 插件市场，确保更多 Skills 和 Plugins 可见/);
+  assert.match(ready[0], /await ensurePluginMarketplaceReadyForCodex\(\{ silent: true \}\)/);
+  assert.match(ready[0], /Codex 会继续打开/);
+});
+
+test("opening Codex applies official API key directly without confirmation dialog", () => {
+  const ready = appSource.match(/const ensureOfficialReadyForLaunch[\s\S]*?return true;\n\s*};/);
+  assert.ok(ready, "ensureOfficialReadyForLaunch should exist");
+  assert.match(ready[0], /正在切换到账户额度 API Key 配置/);
+  assert.match(ready[0], /await saveOfficialApiKey\(normalized/);
+  assert.doesNotMatch(ready[0], /confirmAction\("打开 Codex"/);
+  assert.doesNotMatch(ready[0], /继续并配置/);
 });
 
 test("launch buttons show progress and avoid duplicate launch requests", () => {
@@ -53,17 +68,34 @@ test("launch buttons show progress and avoid duplicate launch requests", () => {
   assert.match(appSource, /keepLaunchAcceptedVisible\("已发送启动请求，Codex 窗口正在打开/);
 });
 
+test("generic confirmation dialog primary action does not use a delete icon", () => {
+  const dialog = appSource.match(/function ConfirmDialog[\s\S]*?\n}\n\nfunction PluginMarketplacePromptDialog/);
+  assert.ok(dialog, "ConfirmDialog should exist");
+  assert.doesNotMatch(dialog[0], /<Trash2/);
+});
+
 test("startup syncs managed skill and silently repairs plugin marketplace", () => {
   const startup = appSource.match(/useEffect\(\(\) => \{[\s\S]*?void ensureManagedSkillsForCodex\(\{ silent: true, settingsOverride: startupSettings \}\);[\s\S]*?\n\s*\}, \[\]\);/);
   assert.ok(startup, "startup effect should sync managed skills");
   assert.equal(startup[0].includes("checkPluginMarketplacePrompt"), false);
-  assert.match(appSource, /ensurePluginMarketplaceReadyForCodex/);
+  assert.match(startup[0], /void ensurePluginMarketplaceReadyForCodex\(\{ silent: true \}\)/);
   const managedSync = appSource.match(/async function ensureManagedSkillsForCodex[\s\S]*?return installResult;\n\s*}/);
   assert.ok(managedSync, "managed skill sync should exist");
   assert.equal(managedSync[0].includes("ensurePluginMarketplaceReadyForCodex"), false);
   assert.match(managedSync[0], /for \(const managedSkill of MANAGED_SKILLS\)/);
   assert.match(managedSync[0], /managedSkillsSyncPromiseRef\.current/);
   assert.match(managedSync[0], /setManagedSkillsReady\(true\)/);
+});
+
+test("installer prewarms managed skills and plugin marketplace before first launch", () => {
+  assert.match(managerMainSource, /--postinstall-prewarm/);
+  assert.match(managerMainSource, /postinstall_prewarm_blocking/);
+  assert.match(commandsSource, /pub fn postinstall_prewarm_blocking\(\) -> bool/);
+  assert.match(commandsSource, /postinstall_install_managed_codex_assets/);
+  assert.match(commandsSource, /postinstall_repair_plugin_marketplace/);
+  assert.match(commandsSource, /Duration::from_secs\(60\)/);
+  assert.match(installerSource, /--postinstall-prewarm/);
+  assert.match(installerSource, /Preparing Codex managed Skills and plugin marketplace/);
 });
 
 test("managed skills are installed from bundled resources and hidden from manual editing", () => {

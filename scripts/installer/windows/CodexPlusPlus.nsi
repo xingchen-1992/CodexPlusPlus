@@ -6,9 +6,9 @@
 !endif
 !define ROOT "..\..\.."
 !define CODEX_MSIX_FILENAME "CodexOfficialApp-x64.msix"
-!define CODEX_MSIX_DIR "安装资源"
+!define CODEX_MSIX_DIR "RequiredFiles"
 !define PYTHON_INSTALLER_FILENAME "python-3.13.14-amd64.exe"
-!define PYTHON_INSTALLER_DIR "安装资源"
+!define PYTHON_INSTALLER_DIR "RequiredFiles"
 
 Name "Codex官方管理工具"
 OutFile "${ROOT}\dist\windows\CodexPlusOfficial-${VERSION}-windows-x64-setup.exe"
@@ -52,6 +52,8 @@ Section "安装主程序" SEC_MAIN
   File "${ROOT}\dist\windows\app\codex-plus-plus-manager.exe"
   SetOutPath "$INSTDIR\app\resources\node"
   File /nonfatal /r "${ROOT}\dist\windows\app\resources\node\*.*"
+  SetOutPath "$INSTDIR\app\resources\official-proxy"
+  File /nonfatal /r "${ROOT}\dist\windows\app\resources\official-proxy\*.*"
   SetOutPath "$INSTDIR\app"
   SetOutPath "$INSTDIR\app\Codex"
   File /nonfatal /r "${ROOT}\dist\windows\app\Codex\*.*"
@@ -114,6 +116,12 @@ SectionEnd
 
 Section "创建桌面快捷方式" SEC_DESKTOP_SHORTCUTS
   CreateShortcut "$DESKTOP\Codex官方管理工具.lnk" "$INSTDIR\app\codex-plus-plus-manager.exe" "" "$INSTDIR\app\codex-plus-plus-manager.exe"
+SectionEnd
+
+Section "-首次运行准备"
+  DetailPrint "Preparing Codex managed Skills and plugin marketplace..."
+  nsExec::ExecToLog '"$INSTDIR\app\codex-plus-plus-manager.exe" --postinstall-prewarm'
+  Pop $0
 SectionEnd
 
 Function LaunchInstalledApps

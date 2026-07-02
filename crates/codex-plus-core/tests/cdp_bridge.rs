@@ -2,7 +2,8 @@ use base64::Engine;
 use codex_plus_core::assets;
 use codex_plus_core::bridge::{self, BRIDGE_BINDING_NAME};
 use codex_plus_core::cdp::{
-    CdpTarget, list_targets, pick_injectable_codex_page_target, pick_page_target,
+    CdpTarget, injectable_codex_page_targets, list_targets, pick_injectable_codex_page_target,
+    pick_page_target,
 };
 
 use futures_util::{SinkExt, StreamExt};
@@ -996,6 +997,55 @@ fn pick_injectable_codex_page_target_rejects_non_codex_pages() {
             .to_string()
             .contains("No injectable Codex page target found")
     );
+}
+
+#[test]
+fn injectable_codex_page_targets_include_chatgpt_codex_settings_pages() {
+    let targets = vec![
+        target(
+            "main",
+            "page",
+            "Codex",
+            "app://-/index.html",
+            Some("ws://main"),
+        ),
+        target(
+            "settings",
+            "page",
+            "Settings",
+            "https://chatgpt.com/codex/settings",
+            Some("ws://settings"),
+        ),
+        target(
+            "other",
+            "page",
+            "Other App",
+            "https://example.test",
+            Some("ws://other"),
+        ),
+    ];
+
+    let picked = injectable_codex_page_targets(&targets)
+        .into_iter()
+        .map(|target| target.id)
+        .collect::<Vec<_>>();
+
+    assert_eq!(picked, vec!["main", "settings"]);
+}
+
+#[test]
+fn pick_injectable_codex_page_target_accepts_chatgpt_codex_url() {
+    let targets = vec![target(
+        "settings",
+        "page",
+        "Settings",
+        "https://chatgpt.com/codex/settings",
+        Some("ws://settings"),
+    )];
+
+    let picked = pick_injectable_codex_page_target(&targets).expect("settings target is Codex UI");
+
+    assert_eq!(picked.id, "settings");
 }
 
 #[test]

@@ -143,11 +143,12 @@ fn windows_installer_optionally_bundles_codex_app() {
     assert!(script.contains("File /nonfatal /r"));
     assert!(script.contains("RMDir /r \"$INSTDIR\\app\\Codex\""));
     assert!(script.contains("CodexOfficialApp-x64.msix"));
-    assert!(script.contains("!define CODEX_MSIX_DIR \"安装资源\""));
+    assert!(script.contains("!define CODEX_MSIX_DIR \"RequiredFiles\""));
     assert!(script.contains("$EXEDIR\\${CODEX_MSIX_DIR}\\${CODEX_MSIX_FILENAME}"));
     assert!(script.contains("$EXEDIR\\${CODEX_MSIX_FILENAME}"));
     assert!(script.contains("Add-AppxPackage -Path $$msix"));
     assert!(script.contains("!define PYTHON_INSTALLER_FILENAME \"python-3.13.14-amd64.exe\""));
+    assert!(script.contains("!define PYTHON_INSTALLER_DIR \"RequiredFiles\""));
     assert!(script.contains("Section \"安装 Python\""));
     assert!(script.contains("$EXEDIR\\${PYTHON_INSTALLER_DIR}\\${PYTHON_INSTALLER_FILENAME}"));
     assert!(script.contains("InstallAllUsers=1"));

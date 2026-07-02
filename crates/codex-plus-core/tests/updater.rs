@@ -385,12 +385,13 @@ fn update_zip_is_extracted_and_launches_visible_root_setup() {
     let file = std::fs::File::create(&zip_path).unwrap();
     let mut zip = zip::ZipWriter::new(file);
     let options = zip::write::SimpleFileOptions::default();
-    zip.start_file("双击安装.exe", options).unwrap();
+    zip.start_file("点我双击安装.exe", options).unwrap();
     zip.write_all(b"fake setup").unwrap();
-    zip.start_file("安装资源/CodexOfficialApp-x64.msix", options)
+    zip.start_file("RequiredFiles/CodexOfficialApp-x64.msix", options)
         .unwrap();
     zip.write_all(b"fake msix").unwrap();
-    zip.start_file("安装资源/manifest.json", options).unwrap();
+    zip.start_file("RequiredFiles/manifest.json", options)
+        .unwrap();
     zip.write_all(b"{}").unwrap();
     zip.finish().unwrap();
 
@@ -398,14 +399,14 @@ fn update_zip_is_extracted_and_launches_visible_root_setup() {
 
     assert_eq!(
         launch_path.file_name().and_then(|name| name.to_str()),
-        Some("双击安装.exe")
+        Some("点我双击安装.exe")
     );
     assert!(launch_path.exists());
     assert!(
         launch_path
             .parent()
             .unwrap()
-            .join("安装资源")
+            .join("RequiredFiles")
             .join("CodexOfficialApp-x64.msix")
             .exists()
     );

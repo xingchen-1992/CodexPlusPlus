@@ -13,11 +13,20 @@ test("release workflow verifies NSIS before building Windows installer", () => {
 
 test("release workflow publishes a Windows ZIP with bundled Codex MSIX", () => {
   assert.match(workflowSource, /Download Codex Windows MSIX/);
+  assert.match(workflowSource, /Download Python Windows installer/);
   assert.match(workflowSource, /CodexOfficialApp-x64\.msix/);
+  assert.match(workflowSource, /python-3\.13\.14-amd64\.exe/);
   assert.match(workflowSource, /package-root/);
-  assert.match(workflowSource, /\$resourcesDir = "\$packageRoot\/安装资源"/);
-  assert.match(workflowSource, /Copy-Item \$setup "\$packageRoot\/双击安装\.exe"/);
+  assert.match(workflowSource, /\$resourcesDir = "\$packageRoot\/RequiredFiles"/);
+  assert.match(workflowSource, /Copy-Item \$setup "\$packageRoot\/点我双击安装\.exe"/);
   assert.match(workflowSource, /Copy-Item \$msix "\$resourcesDir\/CodexOfficialApp-x64\.msix"/);
+  assert.match(workflowSource, /Copy-Item \$python "\$resourcesDir\/python-3\.13\.14-amd64\.exe"/);
+  assert.match(workflowSource, /\$expectedRootNames = @\("RequiredFiles", "点我双击安装\.exe"\)/);
+  assert.match(workflowSource, /Package root must contain exactly one setup executable/);
+  assert.match(workflowSource, /Package resources are missing CodexOfficialApp-x64\.msix/);
+  assert.match(workflowSource, /Package resources are missing python-3\.13\.14-amd64\.exe/);
+  assert.doesNotMatch(workflowSource, /\$packageRoot\/安装资源/);
+  assert.doesNotMatch(workflowSource, /\$packageRoot\/双击安装\.exe/);
   assert.equal(workflowSource.includes("请先解压后运行安装程序"), false);
   assert.match(workflowSource, /Compress-Archive/);
   assert.match(workflowSource, /-Path "\$packageRoot\/\*"/);

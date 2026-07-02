@@ -760,6 +760,22 @@ fn upstream_chat_error_is_regularized_as_responses_error_envelope() {
 }
 
 #[test]
+fn upstream_quota_error_keeps_chinese_message_for_codex_app() {
+    let quota_error = responses_error_from_upstream(
+        429,
+        "application/json",
+        r#"{"error":{"message":"您的额度已耗尽，请充值后继续使用","type":"rate_limit_error","code":"DAILY_COST_LIMIT","param":null},"request_id":"req_quota"}"#
+            .as_bytes(),
+    );
+    assert_eq!(
+        quota_error["error"]["message"],
+        "您的额度已耗尽，请充值后继续使用"
+    );
+    assert_eq!(quota_error["error"]["type"], "rate_limit_error");
+    assert_eq!(quota_error["error"]["code"], "DAILY_COST_LIMIT");
+}
+
+#[test]
 fn chat_completion_response_converts_to_responses_response() {
     let converted = chat_completion_to_response(json!({
         "id": "chatcmpl_123",

@@ -36,7 +36,8 @@
 
     const patchFetch = () => {
       if (typeof window.fetch !== "function" || window.fetch.__codexPlusFastStartupPatched) return;
-      const originalFetch = window.fetch.bind(window);
+      const originalFetchFunction = window.fetch;
+      const originalFetch = originalFetchFunction.bind(window);
       const patchedFetch = (input, init = undefined) => {
         if (!isStatsigUrl(input)) return originalFetch(input, init);
         const { signal, clear } = timeoutSignal(init?.signal);
@@ -44,6 +45,9 @@
         return originalFetch(input, nextInit).finally(clear);
       };
       patchedFetch.__codexPlusFastStartupPatched = true;
+      if (originalFetchFunction.__codexPlusForceChineseLocaleFetchPatched) {
+        patchedFetch.__codexPlusForceChineseLocaleFetchPatched = true;
+      }
       window.fetch = patchedFetch;
     };
 
@@ -93,10 +97,27 @@
   function installCodexPlusForceChineseLocale() {
     const config = window.__CODEX_PLUS_FORCE_CHINESE_LOCALE__;
     if (!config || config.enabled !== true) return;
-    if (window.__codexPlusForceChineseLocaleInstalled === "1") return;
-    window.__codexPlusForceChineseLocaleInstalled = "1";
+    const installVersion = "20260702-i18n-targets-v2";
+    if (window.__codexPlusForceChineseLocaleInstalled === installVersion) return;
+    window.__codexPlusForceChineseLocaleInstalled = installVersion;
     const locale = typeof config.locale === "string" && config.locale ? config.locale : "zh-CN";
     const languages = [locale, "zh", "en-US", "en"];
+    const localeOverrideKeys = ["localeOverride", "chatgpt.localeOverride"];
+    const localeConfigHosts = new Set([
+      "ab.chatgpt.com",
+      "featureassets.org",
+      "prodregistryv2.org",
+      "api.statsigcdn.com",
+      "statsigapi.net",
+    ]);
+    const i18nFlagKeys = new Set([
+      "enable_i18n",
+      "locale_source",
+      "locale",
+      "localeOverride",
+      "locale_override",
+      "chatgpt.localeOverride",
+    ]);
 
     const defineNavigatorGetter = (name, value) => {
       try {
@@ -118,6 +139,115 @@
     defineNavigatorGetter("language", locale);
     defineNavigatorGetter("languages", languages);
 
+    const setDocumentLocale = () => {
+      try {
+        if (document.documentElement) {
+          document.documentElement.lang = locale;
+        }
+      } catch {
+      }
+    };
+
+    const writeLocaleOverrideToStorage = (storage) => {
+      try {
+        if (storage && typeof storage.setItem === "function") {
+          localeOverrideKeys.forEach((key) => storage.setItem(key, locale));
+        }
+      } catch {
+      }
+    };
+
+    const isLocaleOverrideKey = (key) => localeOverrideKeys.includes(String(key));
+
+    const patchLocaleOverrideStorage = () => {
+      const storageCtor = window.Storage;
+      const proto = storageCtor && storageCtor.prototype;
+      if (!proto || proto.__codexPlusLocaleOverridePatched) return;
+      const originalGetItem = proto.getItem;
+      const originalSetItem = proto.setItem;
+      const originalRemoveItem = proto.removeItem;
+      try {
+        if (typeof originalGetItem === "function") {
+          proto.getItem = function (key) {
+            if (isLocaleOverrideKey(key)) return locale;
+            return originalGetItem.apply(this, arguments);
+          };
+        }
+        if (typeof originalSetItem === "function") {
+          proto.setItem = function (key, value) {
+            if (isLocaleOverrideKey(key)) {
+              return originalSetItem.call(this, key, locale);
+            }
+            return originalSetItem.apply(this, arguments);
+          };
+        }
+        if (typeof originalRemoveItem === "function" && typeof originalSetItem === "function") {
+          proto.removeItem = function (key) {
+            if (isLocaleOverrideKey(key)) {
+              return originalSetItem.call(this, key, locale);
+            }
+            return originalRemoveItem.apply(this, arguments);
+          };
+        }
+        proto.__codexPlusLocaleOverridePatched = true;
+      } catch {
+      }
+    };
+
+    const forceLocaleOverride = () => {
+      setDocumentLocale();
+      patchLocaleOverrideStorage();
+      writeLocaleOverrideToStorage(window.localStorage);
+      writeLocaleOverrideToStorage(window.sessionStorage);
+    };
+
+    forceLocaleOverride();
+    try {
+      document.addEventListener("DOMContentLoaded", forceLocaleOverride, { once: true });
+    } catch {
+    }
+
+    const isPlainLocaleObject = (value) => (
+      value
+      && typeof value === "object"
+      && !Array.isArray(value)
+      && Object.prototype.toString.call(value) === "[object Object]"
+    );
+
+    const forceLocaleFlagsInValue = (value, depth = 0, seen = new WeakSet()) => {
+      if (!value || typeof value !== "object" || depth > 8) return false;
+      if (seen.has(value)) return false;
+      seen.add(value);
+      let changed = false;
+      if (isPlainLocaleObject(value)) {
+        const keys = Object.keys(value);
+        const hasLocaleSignal = keys.some((key) => i18nFlagKeys.has(key));
+        if (hasLocaleSignal || Object.prototype.hasOwnProperty.call(value, "value")) {
+          if (value.enable_i18n !== true) {
+            value.enable_i18n = true;
+            changed = true;
+          }
+          if (value.locale_source !== "SYSTEM") {
+            value.locale_source = "SYSTEM";
+            changed = true;
+          }
+          for (const key of ["locale", "localeOverride", "locale_override", "chatgpt.localeOverride"]) {
+            if (value[key] !== locale) {
+              value[key] = locale;
+              changed = true;
+            }
+          }
+        }
+      }
+      const entries = Array.isArray(value) ? value : Object.values(value);
+      for (const entry of entries) {
+        if (entry && typeof entry === "object" && forceLocaleFlagsInValue(entry, depth + 1, seen)) {
+          changed = true;
+        }
+      }
+      return changed;
+    };
+
     const patchI18nConfig = (dynamicConfig) => {
       if (!dynamicConfig || typeof dynamicConfig !== "object") return dynamicConfig;
       const value = dynamicConfig.value && typeof dynamicConfig.value === "object" ? dynamicConfig.value : {};
@@ -125,7 +255,12 @@
         ...value,
         enable_i18n: true,
         locale_source: "SYSTEM",
+        locale,
+        localeOverride: locale,
+        locale_override: locale,
+        "chatgpt.localeOverride": locale,
       };
+      forceLocaleFlagsInValue(nextValue);
       try {
         dynamicConfig.value = nextValue;
       } catch {
@@ -135,11 +270,56 @@
         dynamicConfig.get = (key, fallback) => {
           if (key === "enable_i18n") return true;
           if (key === "locale_source") return "SYSTEM";
+          if (
+            key === "locale"
+            || key === "localeOverride"
+            || key === "locale_override"
+            || key === "chatgpt.localeOverride"
+          ) return locale;
           return originalGet(key, fallback);
         };
         dynamicConfig.__codexPlusForceChineseLocaleGetPatched = true;
       }
       return dynamicConfig;
+    };
+
+    const isLocaleConfigUrl = (input) => {
+      try {
+        const url = new URL(typeof input === "string" ? input : input?.url ?? "", window.location.href);
+        return localeConfigHosts.has(url.hostname);
+      } catch {
+        return false;
+      }
+    };
+
+    const patchLocaleConfigFetch = () => {
+      if (typeof window.fetch !== "function" || window.fetch.__codexPlusForceChineseLocaleFetchPatched) return;
+      const originalFetchFunction = window.fetch;
+      const originalFetch = originalFetchFunction.bind(window);
+      const patchedFetch = async (input, init = undefined) => {
+        const response = await originalFetch(input, init);
+        if (!response || (!isLocaleConfigUrl(input) && !isLocaleConfigUrl(response.url))) return response;
+        const contentType = response.headers?.get?.("content-type") || "";
+        if (!contentType.includes("json")) return response;
+        try {
+          const json = await response.clone().json();
+          if (!forceLocaleFlagsInValue(json)) return response;
+          const headers = new Headers(response.headers);
+          headers.set("content-type", "application/json; charset=utf-8");
+          return new Response(JSON.stringify(json), {
+            status: response.status,
+            statusText: response.statusText,
+            headers,
+          });
+        } catch {
+          return response;
+        }
+      };
+      patchedFetch.__codexPlusForceChineseLocaleFetchPatched = true;
+      if (originalFetchFunction.__codexPlusFastStartupPatched) {
+        patchedFetch.__codexPlusFastStartupPatched = true;
+      }
+      window.fetch = patchedFetch;
     };
 
     const statsigClients = () => {
@@ -156,8 +336,7 @@
       if (!client.__codexPlusForceChineseLocalePatched) {
         const originalGetDynamicConfig = client.getDynamicConfig.bind(client);
         client.getDynamicConfig = (name, options) => {
-          const result = originalGetDynamicConfig(name, options);
-          return name === "72216192" ? patchI18nConfig(result) : result;
+          return patchI18nConfig(originalGetDynamicConfig(name, options));
         };
         client.__codexPlusForceChineseLocalePatched = true;
       }
@@ -212,6 +391,7 @@
     };
 
     const patchStatsigI18nConfig = () => {
+      patchLocaleConfigFetch();
       installStatsigRootSetter();
       const root = window.__STATSIG__ || globalThis.__STATSIG__;
       patchStatsigRoot(root);
@@ -232,8 +412,9 @@
   function installCodexPlusChineseTextFallback() {
     const config = window.__CODEX_PLUS_FORCE_CHINESE_LOCALE__;
     if (!config || config.enabled !== true) return;
-    if (window.__codexPlusChineseTextFallbackInstalled === "1") return;
-    window.__codexPlusChineseTextFallbackInstalled = "1";
+    const installVersion = "20260702-recursive-i18n-assets-v5";
+    if (window.__codexPlusChineseTextFallbackInstalled === installVersion) return;
+    window.__codexPlusChineseTextFallbackInstalled = installVersion;
 
     const translations = new Map([
       ["New chat", "新建对话"],
@@ -326,6 +507,43 @@
       ["Learn more", "了解更多"],
       ["about elevated risks.", "有关高风险的信息。"],
       ["Show Full access in the composer", "在输入框中显示完全访问"],
+      ["Configure approval policy and sandbox settings", "配置审批策略和沙箱设置"],
+      ["Default file open destination", "默认文件打开目标"],
+      ["Where files and folders open by default", "默认打开文件和文件夹的位置"],
+      ["Default app", "默认应用"],
+      ["No targets found", "未找到目标"],
+      ["Integrated terminal shell", "集成终端 Shell"],
+      ["Choose which shell opens in the integrated terminal.", "选择要在集成终端中打开的 Shell。"],
+      ["No shells available", "无可用 Shell"],
+      ["Language", "语言"],
+      ["Language for the app UI", "应用 UI 语言"],
+      ["Auto detect", "自动检测"],
+      ["Search languages", "搜索语言"],
+      ["Bottom panel", "底部面板"],
+      ["Show the bottom panel control in the app header", "在应用标题栏中显示底部面板控件"],
+      ["Default terminal location", "默认终端位置"],
+      ["Choose where the terminal shortcut and environment actions open terminal tabs", "选择终端快捷键和环境操作在何处打开终端标签页"],
+      ["Bottom", "底部"],
+      ["Right", "右侧"],
+      ["Composer", "编辑器"],
+      ["Code review", "代码审查"],
+      ["Start /review in the current chat when possible or launch a separate review chat", "尽可能在当前对话中启动 /review，或发起单独的审查对话"],
+      ["Inline", "行内视图"],
+      ["Detached", "分离视图"],
+      ["Set when Codex alerts you that it's finished", "设置 Codex 完成任务时的提醒"],
+      ["Show alerts when notification permissions are required", "在需要通知权限时显示提醒"],
+      ["Show alerts when input is needed to continue", "需要输入才能继续时显示提醒"],
+      ["Open source licenses", "打开源许可证"],
+      ["Third-party notices for bundled dependencies", "捆绑依赖项的第三方声明"],
+      ["Send shortcut", "发送快捷键"],
+      ["Choose when Enter sends a prompt or inserts a new line", "选择按 Enter 是发送提示还是插入新行"],
+      ["Follow-up behavior", "跟进方式"],
+      ["Queue follow-ups while Codex runs or steer the current run. Press Ctrl+↵ to do the opposite for one message", "Codex 运行时将跟进排队，或引导当前运行。按 Ctrl+↵ 可对单条消息执行相反操作"],
+      ["Notifications", "通知"],
+      ["Turn completion notifications", "任务完成通知"],
+      ["Only when unfocused", "仅未聚焦时"],
+      ["Enable permission notifications", "启用权限通知"],
+      ["Enable question notifications", "启用问题通知"],
       ["Apps", "应用"],
       ["Marketplace", "市场"],
       ["MCPs", "MCP"],
@@ -343,6 +561,429 @@
       ["Generate or edit images for websites,...", "为网站生成或编辑图像..."],
       ["Reference OpenAI docs, Codex self-...", "查询 OpenAI 文档和 Codex 资料..."],
       ["Scaffold plugins and marketplace...", "创建插件和市场配置..."],
+      ["Documents", "文档"],
+      ["Presentations", "演示文稿"],
+      ["Create a document", "创建文档"],
+      ["Create a presentation", "创建演示文稿"],
+      ["Create a spreadsheet", "创建电子表格"],
+      ["Create a plan", "创建计划"],
+      ["Use plan mode", "使用计划模式"],
+      ["Dismiss suggestion", "关闭建议"],
+      ["Git repository created", "已创建 Git 仓库"],
+      ["Git init failed: {message}", "Git 初始化失败：{message}"],
+      ["Custom config.toml settings", "自定义 config.toml 设置"],
+      ["Project config", "项目配置"],
+      ["Global config", "全局配置"],
+      ["User config", "用户配置"],
+      ["Admin config", "管理员配置"],
+      ["Approval policy", "审批策略"],
+      ["Sandbox settings", "沙箱设置"],
+      ["Allow network access", "允许网络访问"],
+      ["Workspace Dependencies", "工作区依赖"],
+      ["Current version", "当前版本"],
+      ["Codex dependencies", "Codex 依赖"],
+      ["Diagnose issues in Codex Workspace", "诊断 Codex 工作区问题"],
+      ["Reset and install Workspace", "重置并安装工作区"],
+      ["Experimental features (Beta)", "实验功能（Beta）"],
+      ["Enable the plugins experience in Codex", "启用 Codex 插件体验"],
+      ["Restart {appName} to apply experimental feature changes", "重启 {appName} 以应用实验功能变更"],
+      ["Loading experimental features…", "正在加载实验功能…"],
+      ["No beta experimental features available", "暂无可用的 Beta 实验功能"],
+      ["Toggle {featureName}", "切换 {featureName}"],
+      ["Model features", "模型功能"],
+      ["Available reasoning efforts", "可用推理强度"],
+      ["Configure approval policy and sandbox settings <a>Learn more</a>", "配置审批策略和沙箱设置 <a>了解更多</a>"],
+      ["File: {path}{location}", "文件：{path}{location}"],
+      [" (line {line}, column {column})", "（第 {line} 行，第 {column} 列）"],
+      ["Open file", "打开文件"],
+      ["Edit your config to customize agent behavior", "编辑配置以自定义 Agent 行为"],
+      ["Restart Codex after editing to apply changes", "编辑后重启 Codex 以应用变更"],
+      ["Docs", "文档"],
+      ["Codex dependencies look healthy", "Codex 依赖状态正常"],
+      ["Codex dependencies may need repair. Send /feedback if this keeps happening", "Codex 依赖可能需要修复。如果持续出现，请发送 /feedback"],
+      ["Couldn’t diagnose Codex dependencies", "无法诊断 Codex 依赖"],
+      ["Codex dependencies were reinstalled", "Codex 依赖已重新安装"],
+      ["Codex dependency download canceled", "Codex 依赖下载已取消"],
+      ["Couldn’t reinstall Codex dependencies", "无法重新安装 Codex 依赖"],
+      ["No Codex dependency download is running", "当前没有正在运行的 Codex 依赖下载"],
+      ["Canceling Codex dependency download", "正在取消 Codex 依赖下载"],
+      ["Couldn’t cancel Codex dependency download", "无法取消 Codex 依赖下载"],
+      ["Run diagnostics or reinstall if tool calls fail", "如果工具调用失败，请运行诊断或重新安装"],
+      ["Checking…", "正在检查…"],
+      ["Not installed", "未安装"],
+      ["Allow Codex to install and expose bundled Node.js and Python tools", "允许 Codex 安装并暴露随包 Node.js 和 Python 工具"],
+      ["Enable Codex dependencies", "启用 Codex 依赖"],
+      ["Checks the current bundle and records diagnostic logs", "检查当前依赖包并记录诊断日志"],
+      ["Diagnose", "诊断"],
+      ["Deletes the local bundle, downloads it again, and reloads tools", "删除本地依赖包、重新下载并重载工具"],
+      ["Cancel download", "取消下载"],
+      ["Reinstall", "重新安装"],
+      ["Managed by admin policy", "由管理员策略管理"],
+      ["Approval policy is restricted by this installation.", "审批策略受当前安装限制。"],
+      ["Sandbox mode is restricted by this installation.", "沙箱模式受当前安装限制。"],
+      ["Loading…", "正在加载…"],
+      ["Open config.toml", "打开 config.toml"],
+      ["Choose when Codex asks for approval", "选择 Codex 何时请求审批"],
+      ["Choose how much Codex can do when running commands", "选择 Codex 运行命令时可执行的范围"],
+      ["Allow network access when the sandbox is set to workspace write", "沙箱设为工作区写入时允许网络访问"],
+      ["Config scope unavailable.", "配置作用域不可用。"],
+      ["This config source cannot be edited here.", "此配置来源不能在这里编辑。"],
+      ["This value is managed by admin policy.", "此值由管理员策略管理。"],
+      ["Untrusted", "不受信任"],
+      ["On failure", "失败时"],
+      ["On request", "请求时"],
+      ["Never", "从不"],
+      ["Read only", "只读"],
+      ["Workspace write", "工作区写入"],
+      ["Permissions always respected", "始终遵守权限设置"],
+      ["How ChatGPT uses data", "ChatGPT 如何使用数据"],
+      ["Connectors may introduce risk", "连接器可能带来风险"],
+      ["Loading connection details...", "正在加载连接详情..."],
+      ["Could not load this app's connection details. Continue in browser.", "无法加载此应用的连接详情。请在浏览器中继续。"],
+      ["Finishing connection…", "正在完成连接…"],
+      ["Disabled by admin", "已被管理员禁用"],
+      ["Manage on ChatGPT", "在 ChatGPT 中管理"],
+      ["Open in browser", "在浏览器中打开"],
+      ["Continue to {appName}", "继续前往 {appName}"],
+      ["Connect {appName}", "连接 {appName}"],
+      ["{appName} logo", "{appName} 标志"],
+      ["Developed by {developer}", "开发者：{developer}"],
+      ["Approved by your admin", "已由管理员批准"],
+      ["Advanced settings (opens ChatGPT.com)", "高级设置（打开 ChatGPT.com）"],
+      ["This connector needs setup in your browser.", "此连接器需要在浏览器中完成设置。"],
+      ["Finishing {connector} setup", "正在完成 {connector} 设置"],
+      ["Missing OAuth callback data.", "缺少 OAuth 回调数据。"],
+      ["Failed to finish connecting app.", "无法完成应用连接。"],
+      ["{appName} is now connected.", "{appName} 已连接。"],
+      ["Oops, an error has occurred", "发生错误"],
+      ["Try again", "重试"],
+      ["Introducing Fast mode", "快速模式介绍"],
+      ["Use standard speed", "使用标准速度"],
+      ["Turn on Fast mode", "开启快速模式"],
+      ["Later", "稍后"],
+      ["Get Started", "开始使用"],
+      ["Continue with current model", "继续使用当前模型"],
+      ["Try {modelName} now", "立即试用 {modelName}"],
+      ["Workspace announcement", "工作区公告"],
+      ["Got it", "知道了"],
+      ["{remaining}% usage remaining", "剩余 {remaining}% 用量"],
+      ["Dismiss usage alert", "关闭用量提醒"],
+      ["Usage consumed", "已使用用量"],
+      ["Add credits", "添加额度"],
+      ["Notify owner", "通知所有者"],
+      ["Notified", "已通知"],
+      ["Resets {time}", "{time} 重置"],
+      ["Couldn't import other agent setup", "无法导入其他 Agent 设置"],
+      ["Open settings to review and try again.", "打开设置检查后重试。"],
+      ["Open settings", "打开设置"],
+      ["Dismiss Claude import status", "关闭 Claude 导入状态"],
+      ["Claude import complete", "Claude 导入完成"],
+      ["Finish", "完成"],
+      ["Continue setup", "继续设置"],
+      ["Expand checklist", "展开清单"],
+      ["Collapse checklist", "收起清单"],
+      ["Checklist actions", "清单操作"],
+      ["Hide checklist", "隐藏清单"],
+      ["Mark all as complete", "全部标记为完成"],
+      ["Library", "库"],
+      ["Mark all as read", "全部标记为已读"],
+      ["Scheduled", "计划任务"],
+      ["Pull requests", "拉取请求"],
+      ["Debug", "调试"],
+      ["Add new project", "添加新项目"],
+      ["Collapse all", "全部折叠"],
+      ["Reopen previous", "重新打开之前项目"],
+      ["Project sidebar options", "项目侧边栏选项"],
+      ["Recent chats", "最近对话"],
+      ["No recent chats", "没有最近对话"],
+      ["No project", "没有项目"],
+      ["No chats", "没有对话"],
+      ["Pinned", "已固定"],
+      ["Move chat out of worktree?", "将对话移出工作树？"],
+      ["Move chat", "移动对话"],
+      ["Cloud chats", "云端对话"],
+      ["Remote", "远程"],
+      ["Open Remote", "打开远程"],
+      ["What should we build?", "想构建什么？"],
+      ["What should we work on?", "今天想做什么？"],
+      ["What should we get done?", "今天要完成什么？"],
+      ["Get Plus", "获取 Plus"],
+      ["Switch project", "切换项目"],
+      ["Installing update", "正在安装更新"],
+      ["{appName} will restart when installation finishes.", "{appName} 会在安装完成后重启。"],
+      ["Update installation progress", "更新安装进度"],
+      ["Restart required {deadline}", "需要重启 {deadline}"],
+      ["{appName} needs to restart to finish installing an update", "{appName} 需要重启以完成更新安装"],
+      ["Restart now", "立即重启"],
+      ["Zoom in", "放大"],
+      ["Zoom out", "缩小"],
+      ["Reset", "重置"],
+      ["No recently viewed threads", "没有最近查看的对话"],
+      ["Recently viewed", "最近查看"],
+      ["Untitled chat", "未命名对话"],
+      ["Suggested", "建议"],
+      ["No matches", "无匹配结果"],
+      ["Create a chat to get started!", "创建一个对话以开始使用！"],
+      ["Create chat", "创建对话"],
+      ["Loading chats…", "正在加载对话…"],
+      ["Chat", "对话"],
+      ["Navigation", "导航"],
+      ["Panels", "面板"],
+      ["Configure", "配置"],
+      ["Search commands and past chats.", "搜索命令和历史对话。"],
+      ["Command menu", "命令菜单"],
+      ["Search files", "搜索文件"],
+      ["Pinned chats", "固定对话"],
+      ["Recently viewed chats", "最近查看的对话"],
+      ["Type command", "输入命令"],
+      ["Search chats or run a command", "搜索对话或运行命令"],
+      ["Open output", "打开输出"],
+      ["Start", "启动"],
+      ["Restart", "重启"],
+      ["Resize {column} column", "调整 {column} 列宽"],
+      ["Needs the original workspace path", "需要原始工作区路径"],
+      ["Process is starting", "进程正在启动"],
+      ["Process is stopping", "进程正在停止"],
+      ["Process actions", "进程操作"],
+      ["Running", "运行中"],
+      ["Stop", "停止"],
+      ["Stopped", "已停止"],
+      ["Starting…", "正在启动…"],
+      ["Stopping…", "正在停止…"],
+      ["Process Manager", "进程管理器"],
+      ["Command", "命令"],
+      ["CPU", "CPU"],
+      ["Memory", "内存"],
+      ["PID", "PID"],
+      ["Runtime", "运行时间"],
+      ["Processes started by Codex chats", "由 Codex 对话启动的进程"],
+      ["Search keyboard shortcuts", "搜索键盘快捷键"],
+      ["Search shortcuts", "搜索快捷键"],
+      ["Press shortcut to search", "按下快捷键进行搜索"],
+      ["Search by keystrokes", "按键搜索"],
+      ["Keystroke search capture", "快捷键搜索捕获"],
+      ["Keybinding", "按键绑定"],
+      ["Actions", "操作"],
+      ["Unassigned", "未指定"],
+      ["Failed to update shortcut", "快捷键更新失败"],
+      ["Approve request", "批准请求"],
+      ["Decline request", "拒绝请求"],
+      ["Archive chat", "归档聊天"],
+      ["Cycle reasoning effort", "切换推理强度"],
+      ["Decrease reasoning effort", "降低推理强度"],
+      ["Increase reasoning effort", "提高推理强度"],
+      ["Toggle plan mode", "切换计划模式"],
+      ["Toggle Fast mode", "切换快速模式"],
+      ["New quick chat", "新建快速对话"],
+      ["Open in new window", "在新窗口中打开"],
+      ["Open side chat", "打开侧边聊天"],
+      ["Open control window", "打开控制窗口"],
+      ["Open model picker", "打开模型选择器"],
+      ["Toggle voice mode", "切换语音模式"],
+      ["Start dictation", "开始听写"],
+      ["Toggle pin", "切换置顶状态"],
+      ["Copy as Markdown", "复制为 Markdown"],
+      ["Commit or push", "提交或推送"],
+      ["Create PR", "创建 PR"],
+      ["Fork chat", "分叉聊天"],
+      ["Wake Pet", "唤醒宠物"],
+      ["Previous chat", "上一个聊天"],
+      ["Previous tab", "上一个标签页"],
+      ["Previous recently viewed chat", "上一个最近查看的聊天"],
+      ["Next chat", "下一个聊天"],
+      ["Next tab", "下一个标签页"],
+      ["Next recently viewed chat", "下一个最近查看的聊天"],
+      ["Switch to mode 1", "切换到模式 1"],
+      ["Switch to mode 2", "切换到模式 2"],
+      ["Personality", "个性化"],
+      ["Show keyboard shortcuts", "显示键盘快捷键"],
+      ["Manage scheduled tasks", "管理计划任务"],
+      ["Force reload skills", "强制重新加载技能"],
+      ["Install Codex Workspace", "安装 Codex 工作区"],
+      ["Go to skills", "前往技能"],
+      ["Open folder", "打开文件夹"],
+      ["Toggle sidebar", "切换侧边栏"],
+      ["Toggle bottom panel", "切换底部面板"],
+      ["Toggle pinned summary", "切换置顶摘要"],
+      ["Open terminal", "打开终端"],
+      ["Open browser tab", "打开浏览器标签页"],
+      ["Toggle browser panel", "切换浏览器面板"],
+      ["Open review tab", "打开审查标签页"],
+      ["Toggle side panel", "切换侧边面板"],
+      ["Toggle maximize side panel", "切换侧边面板最大化"],
+      ["Focus browser address bar", "聚焦浏览器地址栏"],
+      ["Browser back", "浏览器后退"],
+      ["Browser forward", "浏览器前进"],
+      ["Log out", "退出登录"],
+      ["Feedback", "反馈"],
+      ["Environment action 1", "环境操作 1"],
+      ["Environment action 2", "环境操作 2"],
+      ["Environment action 3", "环境操作 3"],
+      ["Environment action 4", "环境操作 4"],
+      ["Environment action 5", "环境操作 5"],
+      ["Environment action 6", "环境操作 6"],
+      ["Environment action 7", "环境操作 7"],
+      ["Environment action 8", "环境操作 8"],
+      ["Environment action 9", "环境操作 9"],
+      ["Popout Window hotkey", "弹出窗口快捷键"],
+      ["Hold-to-dictate hotkey", "按住听写快捷键"],
+      ["Toggle dictation hotkey", "切换听写快捷键"],
+      ["Go to chat 1", "转到聊天 1"],
+      ["Go to chat 2", "转到聊天 2"],
+      ["Go to chat 3", "转到聊天 3"],
+      ["Go to chat 4", "转到聊天 4"],
+      ["Go to chat 5", "转到聊天 5"],
+      ["Go to chat 6", "转到聊天 6"],
+      ["Go to chat 7", "转到聊天 7"],
+      ["Go to chat 8", "转到聊天 8"],
+      ["Go to chat 9", "转到聊天 9"],
+      ["Start a new chat", "开始新聊天"],
+      ["Start a lightweight chat in the quick composer", "在快速输入框中开始轻量聊天"],
+      ["Open the current chat in a new window", "在新窗口中打开当前聊天"],
+      ["Archive the current chat", "归档当前聊天"],
+      ["Pin or unpin the current chat", "置顶或取消置顶当前聊天"],
+      ["Copy the current chat as Markdown", "将当前聊天复制为 Markdown"],
+      ["Open the current chat in a side chat", "在侧边聊天中打开当前聊天"],
+      ["Open the voice control window", "打开语音控制窗口"],
+      ["Open the composer model picker", "打开输入框模型选择器"],
+      ["Start or stop voice mode", "开始或停止语音模式"],
+      ["Start dictation in the current composer", "在当前输入框中开始听写"],
+      ["Send the current composer message", "发送当前输入框消息"],
+      ["Turn Fast mode on or off in the current composer", "在当前输入框中开启或关闭快速模式"],
+      ["Increase the current composer reasoning effort", "提高当前输入框的推理强度"],
+      ["Decrease the current composer reasoning effort", "降低当前输入框的推理强度"],
+      ["Cycle through composer reasoning effort options", "循环切换输入框推理强度选项"],
+      ["Turn plan mode on or off in the current composer", "在当前输入框中开启或关闭计划模式"],
+      ["Approve the active request", "批准当前请求"],
+      ["Decline the active request", "拒绝当前请求"],
+      ["Open commit or push options", "打开提交或推送选项"],
+      ["Open pull request creation options", "打开 PR 创建选项"],
+      ["Fork the current chat", "分叉当前聊天"],
+      ["Open the pet overlay", "打开宠物浮层"],
+      ["Switch to the previous chat", "切换到上一个聊天"],
+      ["Switch to the previous tab", "切换到上一个标签页"],
+      ["Cycle to the previous recently viewed chat", "切换到上一个最近查看的聊天"],
+      ["Switch to the next chat", "切换到下一个聊天"],
+      ["Switch to the next tab", "切换到下一个标签页"],
+      ["Cycle to the next recently viewed chat", "切换到下一个最近查看的聊天"],
+      ["Open {appName} settings", "打开 {appName} 设置"],
+      ["Configure MCP servers", "配置 MCP 服务器"],
+      ["Adjust tone and response style", "调整语气和回复风格"],
+      ["Customize keyboard shortcuts", "自定义键盘快捷键"],
+      ["Show the shortcuts available right now", "显示当前可用快捷键"],
+      ["Create or manage scheduled tasks from the current page", "从当前页面创建或管理计划任务"],
+      ["View and manage chat-started processes", "查看并管理聊天启动的进程"],
+      ["Refresh the skill catalog for the current context", "刷新当前上下文的技能目录"],
+      ["Install dependencies for advanced local features", "安装高级本地功能所需依赖"],
+      ["Browse installed and recommended skills", "浏览已安装和推荐技能"],
+      ["Add a local project to {appName}", "向 {appName} 添加本地项目"],
+      ["Show or hide the sidebar", "显示或隐藏侧边栏"],
+      ["Show or hide the bottom panel", "显示或隐藏底部面板"],
+      ["Show or hide the pinned summary", "显示或隐藏置顶摘要"],
+      ["Open the terminal panel", "打开终端面板"],
+      ["Open a new browser tab", "打开新的浏览器标签页"],
+      ["Show or hide the browser panel", "显示或隐藏浏览器面板"],
+      ["Open the review tab", "打开审查标签页"],
+      ["Show or hide the side panel", "显示或隐藏侧边面板"],
+      ["Expand or restore the side panel", "展开或还原侧边面板"],
+      ["Search the current chat", "搜索当前聊天"],
+      ["Focus the in-app browser address bar", "聚焦应用内浏览器地址栏"],
+      ["Go back in browser history", "在浏览器历史中后退"],
+      ["Go forward in browser history", "在浏览器历史中前进"],
+      ["Go back in navigation history", "在导航历史中后退"],
+      ["Go forward in navigation history", "在导航历史中前进"],
+      ["Sign out of {appName}", "退出 {appName} 登录"],
+      ["Send product feedback to the Codex team", "向 Codex 团队发送产品反馈"],
+      ["Run the environment action in this shortcut slot", "运行此快捷键槽位中的环境操作"],
+      ["Show or hide Popout Window from anywhere on desktop", "在桌面任意位置显示或隐藏弹出窗口"],
+      ["Hold anywhere on desktop to dictate where your cursor is", "在桌面任意位置按住即可在光标处听写"],
+      ["Press once anywhere on desktop to dictate, then press again to stop", "在桌面任意位置按一次开始听写，再按一次停止"],
+      ["Copy the current chat path", "复制当前聊天路径"],
+      ["Copy a deeplink to the current chat", "复制当前聊天的深层链接"],
+      ["Copy the current chat session ID", "复制当前聊天会话 ID"],
+      ["Copy the current chat working directory", "复制当前聊天工作目录"],
+      ["Close the active tab", "关闭当前标签页"],
+      ["Close the active window", "关闭当前窗口"],
+      ["Reload the active browser page", "重新加载当前浏览器页面"],
+      ["Force reload the active browser page", "强制重新加载当前浏览器页面"],
+      ["Open a new window", "打开新窗口"],
+      ["Open the command menu", "打开命令菜单"],
+      ["Search chats", "搜索聊天"],
+      ["Search files", "搜索文件"],
+      ["Rename the current chat", "重命名当前聊天"],
+      ["Toggle the file tree panel", "切换文件树面板"],
+      ["Start or stop trace recording", "开始或停止跟踪录制"],
+      ["Open the visible chat in this shortcut slot", "打开此快捷键槽位中的可见聊天"],
+      ["Light theme", "浅色主题"],
+      ["Dark theme", "深色主题"],
+      ["Import", "导入"],
+      ["Copy theme", "复制主题"],
+      ["Accent", "强调色"],
+      ["Background", "背景"],
+      ["Foreground", "前景"],
+      ["UI font", "界面字体"],
+      ["Code font", "代码字体"],
+      ["Contrast", "对比度"],
+      ["Use pointer cursors", "使用指针光标"],
+      ["Change the cursor to a pointer when hovering over interactive elements", "悬停在可交互元素上时将光标改为指针"],
+      ["Reduce motion", "减少动态效果"],
+      ["Reduce animations or match your system", "减少动画或跟随系统设置"],
+      ["UI font size", "界面字号"],
+      ["Adjust the base size used for the Codex UI", "调整 Codex 界面使用的基础字号"],
+      ["Code font size", "代码字号"],
+      ["Adjust the base size used for code across chats and diffs", "调整聊天和差异视图中代码使用的基础字号"],
+      ["Diff markers", "差异标记"],
+      ["Show changes using colors or +/- markers", "使用颜色或 +/- 标记显示变更"],
+      ["Color", "颜色"],
+      ["Custom instructions", "自定义指令"],
+      ["Give Codex extra instructions and context for all tasks on this host.", "为此主机上的所有任务向 Codex 提供额外说明和上下文。"],
+      ["Add your custom instructions...", "添加你的自定义指令..."],
+      ["Local URL open destination", "本地 URL 打开目标位置"],
+      ["Where local development sites open by default", "本地开发站点默认打开位置"],
+      ["Browsing data", "浏览数据"],
+      ["Clear all browsing data", "清除所有浏览数据"],
+      ["Clear browsing history, site data, cache, and download history from the in-app browser", "清除应用内浏览器中的浏览历史记录、网站数据、缓存和下载历史记录"],
+      ["Annotation screenshots", "注释截图"],
+      ["Screenshots help Codex better understand and address comments, but increase plan usage", "截图可帮助 Codex 更好地理解并处理评论，但会增加套餐用量"],
+      ["Always include", "始终包含"],
+      ["Autofill and passwords", "自动填充和密码"],
+      ["Password manager", "密码管理器"],
+      ["Add, delete, and edit saved passwords", "添加、删除和编辑已保存的密码"],
+      ["Contact info", "联系信息"],
+      ["Add, delete, and edit saved addresses, phone numbers, and email addresses", "添加、删除和编辑已保存的地址、电话号码和电子邮件地址"],
+      ["Site settings", "网站设置"],
+      ["Control camera and microphone permissions in Codex's browser", "控制 Codex 浏览器中的摄像头和麦克风权限"],
+      ["Manage how Codex uses other applications on your computer", "管理 Codex 如何使用你电脑上的其他应用程序"],
+      ["Control", "控制"],
+      ["Google Chrome", "Google Chrome"],
+      ["Disabled by your organization or unavailable in your region", "已被组织禁用或你所在地区不可用"],
+      ["No hooks found", "未找到钩子"],
+      ["Configured hooks will appear here", "已配置的钩子将显示在此处"],
+      ["Branch prefix", "分支前缀"],
+      ["Prefix used when creating new branches in Codex", "在 Codex 中创建新分支时使用的前缀"],
+      ["Always force push", "始终强制推送"],
+      ["Use --force-with-lease when pushing from Codex", "从 Codex 推送时使用 --force-with-lease"],
+      ["Create draft pull requests", "创建草稿拉取请求"],
+      ["Use draft pull requests by default when creating PRs from Codex", "从 Codex 创建 PR 时默认使用草稿拉取请求"],
+      ["Automatically delete old worktrees", "自动删除旧工作树"],
+      ["Recommended for most users. Turn this off only if you want to manage old worktrees and disk usage yourself.", "建议大多数用户开启。只有在你想自行管理旧工作树和磁盘占用时才关闭。"],
+      ["Auto-delete limit", "自动删除上限"],
+      ["Number of Codex worktrees to keep before older ones are pruned automatically. Codex snapshots worktrees before deleting, so pruned worktrees should always be restorable.", "保留的 Codex 工作树数量，超过后会自动清理旧工作树。Codex 删除前会为工作树创建快照，因此被清理的工作树应始终可以恢复。"],
+      ["Commit instructions", "提交说明"],
+      ["Added to commit message generation prompts", "会加入提交消息生成提示"],
+      ["Add commit message guidance...", "添加提交消息指引..."],
+      ["Pull request instructions", "拉取请求说明"],
+      ["Added to PR title/description generation prompts", "会加入 PR 标题/描述生成提示"],
+      ["Add pull request guidance...", "添加拉取请求指引..."],
+      ["Local environments tell Codex how to set up worktrees for a project.", "本地环境会告诉 Codex 如何为项目设置工作树。"],
+      ["Learn more.", "了解更多。"],
+      ["Select a project", "选择项目"],
+      ["No projects yet. Add one to configure local environments.", "还没有项目。添加一个项目来配置本地环境。"],
+      ["Add project", "添加项目"],
+      ["Loading worktrees", "正在加载工作树"],
+      ["Fetching worktree details.", "正在获取工作树详细信息。"],
+      ["Save", "保存"],
+      ["n/a", "不可用"],
     ]);
     const attributeNames = ["aria-label", "title", "placeholder", "data-placeholder"];
     const translatedMarker = "codexPlusTranslatedZh";
@@ -361,11 +1002,348 @@
       ".markdown",
     ].join(",");
 
+    const assetBaseUrl = () => {
+      const script = Array.from(document.scripts || [])
+        .map((element) => element.src)
+        .find((src) => typeof src === "string" && src.includes("/assets/"));
+      if (script) return script.slice(0, script.lastIndexOf("/") + 1);
+      try {
+        return new URL("./assets/", document.baseURI).href;
+      } catch {
+        return null;
+      }
+    };
+
+    const decodeTemplateLiteralValue = (value) => String(value || "")
+      .replace(/\\`/g, "`")
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t");
+
+    const parseOfficialLocaleMessages = (source) => {
+      const messages = new Map();
+      if (typeof source !== "string" || source.length === 0) return messages;
+      const localePattern = /"([^"\\]*(?:\\.[^"\\]*)*)":`((?:\\`|[^`])*)`/g;
+      for (const match of source.matchAll(localePattern)) {
+        messages.set(match[1], decodeTemplateLiteralValue(match[2]));
+      }
+      return messages;
+    };
+
+    const officialChineseMessages = new Map();
+    const officialLocaleAssetNames = new Set();
+    const parsedOfficialAssetUrls = new Set();
+    const parsedOfficialAssetNames = new Set();
+    let officialTranslationsScannerStarted = false;
+    const officialAssetCrawlLimit = 240;
+
+    const decodeQuotedLiteralValue = (value) => decodeTemplateLiteralValue(value)
+      .replace(/\\"/g, "\"")
+      .replace(/\\'/g, "'");
+
+    const officialChineseMessageForId = (id) => {
+      if (typeof id !== "string" || !id) return "";
+      const direct = officialChineseMessages.get(id);
+      if (direct) return direct;
+      const fallbackIds = [];
+      if (id.startsWith("codex.commandDescription.")) {
+        fallbackIds.push(id.replace("codex.commandDescription.", "codex.command."));
+      }
+      if (id.startsWith("codex.commandMenuTitle.")) {
+        fallbackIds.push(id.replace("codex.commandMenuTitle.", "codex.command."));
+      }
+      for (const fallbackId of fallbackIds) {
+        const fallback = officialChineseMessages.get(fallbackId);
+        if (fallback) return fallback;
+      }
+      return "";
+    };
+
+    const parseOfficialDefaultMessages = (source) => {
+      const messages = new Map();
+      if (typeof source !== "string" || source.length === 0) return messages;
+      const addMessage = (id, defaultMessage) => {
+        if (typeof id !== "string" || !officialChineseMessageForId(id)) return;
+        const english = decodeQuotedLiteralValue(defaultMessage);
+        if (!english) return;
+        messages.set(id, english);
+      };
+      const patterns = [
+        /defaultMessage:`((?:\\`|[^`])*)`[^{}]{0,500}?id:`([^`]+)`/g,
+        /id:`([^`]+)`[^{}]{0,500}?defaultMessage:`((?:\\`|[^`])*)`/g,
+        /defaultMessage:"((?:\\"|[^"])*)"[^{}]{0,500}?id:"([^"]+)"/g,
+        /id:"([^"]+)"[^{}]{0,500}?defaultMessage:"((?:\\"|[^"])*)"/g,
+      ];
+      for (const match of source.matchAll(patterns[0])) {
+        addMessage(match[2], match[1]);
+      }
+      for (const match of source.matchAll(patterns[1])) {
+        addMessage(match[1], match[2]);
+      }
+      for (const match of source.matchAll(patterns[2])) {
+        addMessage(match[2], match[1]);
+      }
+      for (const match of source.matchAll(patterns[3])) {
+        addMessage(match[1], match[2]);
+      }
+      return messages;
+    };
+
+    const discoverAssetNames = (sources, predicate) => {
+      const names = new Set();
+      const assetPattern = /\.\/([^"'`]+\.js)/g;
+      for (const source of sources) {
+        if (typeof source !== "string") continue;
+        for (const match of source.matchAll(assetPattern)) {
+          const name = match[1];
+          if (predicate(name)) names.add(name);
+        }
+      }
+      return Array.from(names);
+    };
+
+    const isOfficialLocaleAssetName = (name) => /^[a-z]{2,3}(?:-[A-Z0-9][A-Za-z0-9]*)?-[^/]+\.js$/.test(name);
+
+    const isDefaultLocaleAssetName = (name) => /^defaultLocale-[^/]+\.js$/.test(name);
+
+    const isSkippableOfficialAssetName = (name) => {
+      if (typeof name !== "string" || !name.endsWith(".js")) return true;
+      if (isOfficialLocaleAssetName(name)) return true;
+      if (officialLocaleAssetNames.has(name)) return true;
+      return isDefaultLocaleAssetName(name);
+    };
+
+    const assetNameFromUrl = (url) => {
+      try {
+        const parsed = new URL(url, document.baseURI);
+        return parsed.pathname.split("/").pop() || "";
+      } catch {
+        return String(url || "").split(/[?#]/)[0].split("/").pop() || "";
+      }
+    };
+
+    const observedOfficialAssetUrls = () => {
+      const urls = new Set();
+      const addUrl = (url) => {
+        if (typeof url !== "string") return;
+        if (!url.includes("/assets/") || !url.endsWith(".js")) return;
+        urls.add(url);
+      };
+      Array.from(document.scripts || []).forEach((element) => addUrl(element.src));
+      try {
+        performance.getEntriesByType("resource").forEach((entry) => addUrl(entry.name));
+      } catch {
+        // Performance entries are best-effort only.
+      }
+      return Array.from(urls);
+    };
+
+    const fetchText = async (url) => {
+      if (typeof fetch !== "function") return "";
+      try {
+        const response = await fetch(url, { cache: "force-cache" });
+        if (!response || !response.ok) return "";
+        return await response.text();
+      } catch {
+        return "";
+      }
+    };
+
+    const isSkippableOfficialAssetUrl = (url) => {
+      const name = assetNameFromUrl(url);
+      return isSkippableOfficialAssetName(name);
+    };
+
+    const addOfficialChineseMessages = (messages) => {
+      let added = 0;
+      for (const [id, message] of messages) {
+        if (!id || !message || officialChineseMessages.has(id)) continue;
+        officialChineseMessages.set(id, message);
+        added += 1;
+      }
+      window.__codexPlusOfficialChineseMessages = officialChineseMessages;
+      window.__codexPlusOfficialChineseMessageCount = officialChineseMessages.size;
+      return added;
+    };
+
+    const mergeDefaultMessagesFromSource = (source) => {
+      const defaults = parseOfficialDefaultMessages(source);
+      let added = 0;
+      for (const [id, english] of defaults) {
+        const chinese = officialChineseMessageForId(id);
+        if (!english || !chinese || english === chinese) continue;
+        if (!translations.has(english)) {
+          translations.set(english, chinese);
+          added += 1;
+        }
+      }
+      window.__codexPlusOfficialDefaultMessageCount = translations.size;
+      return added;
+    };
+
+    const loadOfficialChineseMessages = async (baseUrl, bootstrapSources) => {
+      if (officialChineseMessages.size > 0) return true;
+      const sources = Array.isArray(bootstrapSources) ? [...bootstrapSources] : [];
+      const firstPassAssetNames = discoverAssetNames(
+        sources,
+        (name) => name.includes("locale-resolver") || /^zh-CN-[^/]+\.js$/.test(name),
+      );
+      for (const name of firstPassAssetNames) {
+        const source = await fetchText(new URL(name, baseUrl).href);
+        if (source) sources.push(source);
+      }
+
+      discoverAssetNames(sources, (name) => {
+        if (!isOfficialLocaleAssetName(name)) return false;
+        officialLocaleAssetNames.add(name);
+        return false;
+      });
+
+      const zhAssetName = Array.from(officialLocaleAssetNames)
+        .find((name) => /^zh-CN-[^/]+\.js$/.test(name))
+        || discoverAssetNames(sources, (name) => /^zh-CN-[^/]+\.js$/.test(name))[0];
+      if (!zhAssetName) return false;
+
+      const zhSource = await fetchText(new URL(zhAssetName, baseUrl).href);
+      const zhMessages = parseOfficialLocaleMessages(zhSource);
+      if (zhMessages.size === 0) return false;
+      addOfficialChineseMessages(zhMessages);
+      return true;
+    };
+
+    const parseObservedOfficialAssets = async (baseUrl) => {
+      if (officialChineseMessages.size === 0) return 0;
+      let added = 0;
+      const urls = observedOfficialAssetUrls();
+      for (const url of urls) {
+        if (parsedOfficialAssetUrls.has(url) || isSkippableOfficialAssetUrl(url)) continue;
+        const name = assetNameFromUrl(url);
+        if (parsedOfficialAssetNames.has(name)) continue;
+        parsedOfficialAssetUrls.add(url);
+        parsedOfficialAssetNames.add(name);
+        const source = await fetchText(url);
+        if (!source) continue;
+        added += mergeDefaultMessagesFromSource(source);
+      }
+      if (added > 0) scheduleTranslate(document.body || document.documentElement);
+      return added;
+    };
+
+    const crawlOfficialDefaultMessageAssets = async (baseUrl, bootstrapSources) => {
+      if (officialChineseMessages.size === 0) return 0;
+      const sources = Array.isArray(bootstrapSources) ? bootstrapSources : [];
+      const queuedNames = new Set();
+      const queue = [];
+      let added = 0;
+
+      const enqueueFromSource = (source) => {
+        const names = discoverAssetNames([source], (name) => !isSkippableOfficialAssetName(name));
+        for (const name of names) {
+          if (queuedNames.has(name) || parsedOfficialAssetNames.has(name)) continue;
+          queuedNames.add(name);
+          queue.push(name);
+        }
+      };
+
+      for (const source of sources) {
+        if (!source) continue;
+        added += mergeDefaultMessagesFromSource(source);
+        enqueueFromSource(source);
+      }
+
+      while (queue.length > 0 && parsedOfficialAssetNames.size < officialAssetCrawlLimit) {
+        const name = queue.shift();
+        if (!name || parsedOfficialAssetNames.has(name)) continue;
+        parsedOfficialAssetNames.add(name);
+        const source = await fetchText(new URL(name, baseUrl).href);
+        if (!source) continue;
+        added += mergeDefaultMessagesFromSource(source);
+        enqueueFromSource(source);
+      }
+
+      window.__codexPlusOfficialAssetCrawlCount = parsedOfficialAssetNames.size;
+      if (added > 0) scheduleTranslate(document.body || document.documentElement);
+      return added;
+    };
+
+    const startOfficialTranslationScanner = (baseUrl) => {
+      if (officialTranslationsScannerStarted) return;
+      officialTranslationsScannerStarted = true;
+      let scanning = false;
+      const scan = async () => {
+        if (scanning) return;
+        scanning = true;
+        try {
+          await parseObservedOfficialAssets(baseUrl);
+        } finally {
+          scanning = false;
+        }
+      };
+      scan().catch(() => {});
+      window.setInterval(() => scan().catch(() => {}), 2500);
+      window.addEventListener("focus", () => scan().catch(() => {}), true);
+      window.addEventListener("popstate", () => scan().catch(() => {}), true);
+      document.addEventListener("visibilitychange", () => scan().catch(() => {}), true);
+    };
+
+    const mergeOfficialChineseTranslations = async () => {
+      if (window.__codexPlusOfficialChineseTranslationsLoaded === "1") return;
+      if (window.__codexPlusOfficialChineseTranslationsLoading === "1") return;
+      if (typeof fetch !== "function") return;
+      const baseUrl = assetBaseUrl();
+      if (!baseUrl) return;
+      window.__codexPlusOfficialChineseTranslationsLoading = "1";
+      try {
+        const fetchedSources = [];
+
+        const entryUrls = observedOfficialAssetUrls();
+        for (const url of entryUrls) {
+          const source = await fetchText(url);
+          if (source) fetchedSources.push(source);
+        }
+
+        const loaded = await loadOfficialChineseMessages(baseUrl, fetchedSources);
+        if (!loaded) return;
+        let added = 0;
+        added += await crawlOfficialDefaultMessageAssets(baseUrl, fetchedSources);
+        added += await parseObservedOfficialAssets(baseUrl);
+        if (added > 0) scheduleTranslate(document.body || document.documentElement);
+        startOfficialTranslationScanner(baseUrl);
+        window.__codexPlusOfficialChineseTranslationsLoaded = "1";
+      } finally {
+        window.__codexPlusOfficialChineseTranslationsLoading = "0";
+      }
+    };
+
     const translatePattern = (trimmed) => {
       const moreSkillsMatch = trimmed.match(/^See (.+), and (\d+) more$/);
       if (moreSkillsMatch) return `查看 ${moreSkillsMatch[1]}，另有 ${moreSkillsMatch[2]} 项`;
       const compactMoreSkillsMatch = trimmed.match(/^See (.+) and (\d+) more$/);
       if (compactMoreSkillsMatch) return `查看 ${compactMoreSkillsMatch[1]}，另有 ${compactMoreSkillsMatch[2]} 项`;
+      const usePluginMatch = trimmed.match(/^Use (.+)$/);
+      if (usePluginMatch) return `使用 ${usePluginMatch[1]}`;
+      const continueToAppMatch = trimmed.match(/^Continue to (.+)$/);
+      if (continueToAppMatch) return `继续前往 ${continueToAppMatch[1]}`;
+      const connectAppMatch = trimmed.match(/^Connect (.+)$/);
+      if (connectAppMatch) return `连接 ${connectAppMatch[1]}`;
+      const developedByMatch = trimmed.match(/^Developed by (.+)$/);
+      if (developedByMatch) return `开发者：${developedByMatch[1]}`;
+      const appConnectedMatch = trimmed.match(/^(.+) is now connected\.$/);
+      if (appConnectedMatch) return `${appConnectedMatch[1]} 已连接。`;
+      const restartAfterInstallMatch = trimmed.match(/^(.+) will restart when installation finishes\.$/);
+      if (restartAfterInstallMatch) return `${restartAfterInstallMatch[1]} 会在安装完成后重启。`;
+      const restartRequiredMatch = trimmed.match(/^Restart required (.+)$/);
+      if (restartRequiredMatch) return `需要重启 ${restartRequiredMatch[1]}`;
+      const appNeedsRestartMatch = trimmed.match(/^(.+) needs to restart to finish installing an update$/);
+      if (appNeedsRestartMatch) return `${appNeedsRestartMatch[1]} 需要重启以完成更新安装`;
+      const usageRemainingMatch = trimmed.match(/^(\d+)% usage remaining$/);
+      if (usageRemainingMatch) return `剩余 ${usageRemainingMatch[1]}% 用量`;
+      const resetAtMatch = trimmed.match(/^Resets (.+)$/);
+      if (resetAtMatch) return `${resetAtMatch[1]} 重置`;
+      const pluginsNeedSetupMatch = trimmed.match(/^(\d+) plugins? needs? setup$/);
+      if (pluginsNeedSetupMatch) return `${pluginsNeedSetupMatch[1]} 个插件需要设置`;
+      const createInProjectMatch = trimmed.match(/^What should we (build|work on) in (.+)\?$/);
+      if (createInProjectMatch) return `想在 ${createInProjectMatch[2]} 中${createInProjectMatch[1] === "build" ? "构建" : "处理"}什么？`;
       return null;
     };
 
@@ -402,20 +1380,45 @@
       }
     };
 
-    const translateTree = (root) => {
+    const observedMutationRoots = new WeakSet();
+    let observer = null;
+    const observeMutations = (root) => {
+      if (!observer || !root || observedMutationRoots.has(root)) return;
+      observer.observe(root, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: attributeNames,
+      });
+      observedMutationRoots.add(root);
+    };
+
+    const translateTree = (root, depth = 0) => {
       if (!root) return;
       if (root.nodeType === Node.TEXT_NODE) {
         translateTextNode(root);
         return;
       }
-      if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_NODE) return;
+      if (
+        root.nodeType !== Node.ELEMENT_NODE
+        && root.nodeType !== Node.DOCUMENT_NODE
+        && root.nodeType !== Node.DOCUMENT_FRAGMENT_NODE
+      ) return;
       if (root.nodeType === Node.ELEMENT_NODE) translateAttributes(root);
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
         acceptNode: (node) => shouldSkipTextNode(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
       });
       while (walker.nextNode()) translateTextNode(walker.currentNode);
-      if (root.nodeType === Node.ELEMENT_NODE) {
-        root.querySelectorAll?.("[aria-label], [title], [placeholder], [data-placeholder]").forEach(translateAttributes);
+      root.querySelectorAll?.("[aria-label], [title], [placeholder], [data-placeholder]").forEach(translateAttributes);
+      if (depth >= 6) return;
+      const elements = [];
+      if (root.nodeType === Node.ELEMENT_NODE) elements.push(root);
+      root.querySelectorAll?.("*").forEach((element) => elements.push(element));
+      for (const element of elements) {
+        if (!element.shadowRoot) continue;
+        observeMutations(element.shadowRoot);
+        translateTree(element.shadowRoot, depth + 1);
       }
     };
 
@@ -431,11 +1434,11 @@
           ? Array.from(pendingRoots)
           : [document.body || document.documentElement];
         pendingRoots.clear();
-        roots.forEach(translateTree);
+        roots.forEach((root) => translateTree(root));
       });
     };
 
-    const observer = new MutationObserver((mutations) => {
+    observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === "characterData") {
           translateTextNode(mutation.target);
@@ -449,13 +1452,8 @@
 
     const start = () => {
       translateTree(document.body || document.documentElement);
-      observer.observe(document.documentElement, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-        attributes: true,
-        attributeFilter: attributeNames,
-      });
+      mergeOfficialChineseTranslations().catch(() => {});
+      observeMutations(document.documentElement);
     };
 
     if (document.documentElement) start();

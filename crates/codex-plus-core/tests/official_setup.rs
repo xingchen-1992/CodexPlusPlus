@@ -82,6 +82,7 @@ fn build_codex_config_toml_contains_official_crs_defaults() {
     assert!(config.contains("base_url = \"https://www.leishen-ai.cn/openai\""));
     assert!(config.contains("wire_api = \"responses\""));
     assert!(config.contains("model_auto_compact_token_limit = 188888"));
+    assert!(config.contains("localeOverride = \"zh-CN\""));
 }
 
 #[test]

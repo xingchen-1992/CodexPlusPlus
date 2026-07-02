@@ -1,6 +1,11 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 fn main() {
+    if std::env::args().any(|arg| arg == "--postinstall-prewarm") {
+        let _ = codex_plus_manager_lib::commands::postinstall_prewarm_blocking();
+        std::process::exit(0);
+    }
+
     for arg in std::env::args() {
         if arg.starts_with("codexplusofficial://") {
             match codex_plus_core::provider_import::save_pending_provider_import_from_url(&arg) {

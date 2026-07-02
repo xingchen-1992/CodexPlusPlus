@@ -32,16 +32,19 @@
 - 禁止 sudo、提权、curl | bash
 - 禁止泄露密钥、.env、auth.json、config.toml 凭据
 - 禁止把 GitHub Token、账号密码、私钥等凭证写入 `AGENTS.md`、代码、脚本或任何可提交文件；发布时只允许从临时环境变量、CI Secret 或密码库读取，例如 `GH_TOKEN` / `GITHUB_TOKEN`。
+- 禁止触发 GitHub 图形登录、浏览器登录、设备码登录或 Git Credential Manager 弹窗；如果当前没有 `GH_TOKEN` / `GITHUB_TOKEN` 或已配置好的非交互凭据，必须停止发布并说明缺少临时认证。
 - 覆盖文件前确认
 - 不擅自改 Cargo.toml、package.json、.gitignore（除非任务必需）
 
 ## 官方管理工具发布约定
 
 - 新版本先修改、验证、提交、打 tag，再通过 GitHub Release 触发 Actions 生成 Windows 安装包。
+- 推送分支、推送 tag、创建 GitHub Release 和上传资产只能使用非交互认证；不得让命令弹出 “Connect to GitHub / Sign in” 等登录窗口。
 - 当前优先发布 Windows 包；macOS 包不要在 Linux 服务器本地强行打包。
 - Actions 产物同步到 `/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 后，再更新 `/home/claude-realy-service/public/tools/codex-plus/latest.json`。
-- 自动更新源必须优先暴露完整 ZIP 包，不要把单独的 Windows `*-setup.exe` 作为旧客户端自动更新入口；否则可能缺少随包 Codex App / Node / 安装资源。
+- 自动更新源必须优先暴露完整 ZIP 包，不要把单独的 Windows `*-setup.exe` 作为旧客户端自动更新入口；否则可能缺少随包 Codex App / Node / RequiredFiles。
 - `crs-image`、托管 Skills、Node runtime、Codex App 相关改动必须考虑“干净电脑首次安装即可使用”，不能只验证已有环境的电脑。
+- 同一轮虚拟机测试发现问题后，只要重新修改代码并重新给测试包，就必须升一个新的小版本号并新建对应版本目录，不要覆盖旧测试包目录，避免虚拟机拿错包。
 
 ## 命令执行
 

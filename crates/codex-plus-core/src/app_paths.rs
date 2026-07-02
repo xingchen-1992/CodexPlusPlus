@@ -314,6 +314,15 @@ pub fn packaged_app_user_model_id(app_dir: &Path) -> Option<String> {
     Some(format!("{identity_name}_{publisher_id}!App"))
 }
 
+pub fn packaged_app_family_name(app_dir: &Path) -> Option<String> {
+    let package_name = package_name_from_app_dir(app_dir)?;
+    let (identity_name, _, publisher_id) = codex_package_parts(&package_name)?;
+    if publisher_id.is_empty() {
+        return None;
+    }
+    Some(format!("{identity_name}_{publisher_id}"))
+}
+
 fn package_name_from_app_dir(app_dir: &Path) -> Option<String> {
     let path = app_dir.to_string_lossy().replace('\\', "/");
     let mut parts = path.split('/').filter(|part| !part.is_empty());

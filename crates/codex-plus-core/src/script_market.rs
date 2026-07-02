@@ -57,7 +57,9 @@ pub fn parse_market_manifest(raw: Value) -> anyhow::Result<ScriptMarketManifest>
 }
 
 pub async fn fetch_market_manifest(url: &str) -> anyhow::Result<ScriptMarketManifest> {
-    let raw = reqwest::get(url)
+    let raw = crate::http_client::proxied_client("CodexPlusPlus/ScriptMarket")?
+        .get(url)
+        .send()
         .await
         .with_context(|| format!("failed to request script market index {url}"))?
         .error_for_status()
@@ -69,19 +71,21 @@ pub async fn fetch_market_manifest(url: &str) -> anyhow::Result<ScriptMarketMani
 }
 
 pub async fn download_script(url: &str) -> anyhow::Result<Vec<u8>> {
-    Ok(reqwest::Client::new()
-        .get(url)
-        .header(reqwest::header::CACHE_CONTROL, "no-cache")
-        .header(reqwest::header::PRAGMA, "no-cache")
-        .send()
-        .await
-        .with_context(|| format!("failed to request script {url}"))?
-        .error_for_status()
-        .with_context(|| format!("script download returned an error status {url}"))?
-        .bytes()
-        .await
-        .context("failed to read script download body")?
-        .to_vec())
+    Ok(
+        crate::http_client::proxied_client("CodexPlusPlus/ScriptMarket")?
+            .get(url)
+            .header(reqwest::header::CACHE_CONTROL, "no-cache")
+            .header(reqwest::header::PRAGMA, "no-cache")
+            .send()
+            .await
+            .with_context(|| format!("failed to request script {url}"))?
+            .error_for_status()
+            .with_context(|| format!("script download returned an error status {url}"))?
+            .bytes()
+            .await
+            .context("failed to read script download body")?
+            .to_vec(),
+    )
 }
 
 pub fn install_market_script_content(

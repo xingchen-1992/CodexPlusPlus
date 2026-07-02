@@ -44,3 +44,18 @@ test("existing Codex activation path still applies forced Chinese launch argumen
   assert.match(activateExisting[0], /\.launch_codex\([\s\S]*&codex_extra_args[\s\S]*\)/);
   assert.doesNotMatch(activateExisting[0], /&settings\.codex_extra_args/);
 });
+
+test("settings page only shows the official network proxy switch", () => {
+  assert.match(appSource, /Codex 直连网络代理/);
+  assert.match(appSource, /启用 Codex 直连代理/);
+  assert.match(appSource, /const proxyEnabled = form\.codexNetworkProxyEnabled && officialNetworkProxyAllowed/);
+  assert.match(appSource, /function isOfficialNetworkProxyAllowed/);
+  assert.match(appSource, /codexNetworkProxyEnabled: alreadyUsingOfficial \? normalized\.codexNetworkProxyEnabled : true/);
+  assert.match(appSource, /codexNetworkProxyAvailable: false/);
+  assert.doesNotMatch(appSource, /测试代理连通性/);
+  assert.doesNotMatch(appSource, /自动检测 v2rayN\/xray 本地代理/);
+  assert.doesNotMatch(appSource, /代理协议/);
+  assert.doesNotMatch(appSource, /代理主机/);
+  assert.doesNotMatch(appSource, /代理端口/);
+  assert.doesNotMatch(appSource, /当前状态/);
+});

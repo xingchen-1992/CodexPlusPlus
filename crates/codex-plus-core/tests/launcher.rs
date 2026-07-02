@@ -4,16 +4,18 @@ use std::sync::{Arc, Mutex};
 use codex_plus_core::app_paths::{
     build_codex_executable, codex_app_version, find_bundled_codex_app_dir_from_exe,
     find_latest_codex_app_dir, find_latest_codex_app_dir_from_roots, find_macos_codex_app,
-    latest_appx_install_location_from_output, normalize_codex_app_path, packaged_app_user_model_id,
-    resolve_codex_app_dir_with_saved, user_data_candidates_from,
+    latest_appx_install_location_from_output, normalize_codex_app_path, packaged_app_family_name,
+    packaged_app_user_model_id, resolve_codex_app_dir_with_saved, user_data_candidates_from,
 };
 use codex_plus_core::launcher::{
     CodexLaunch, DefaultLaunchHooks, LaunchHooks, LaunchOptions, MacosCleanupPolicy,
-    build_codex_arguments, build_codex_arguments_with_native_menu_inspector, build_codex_command,
+    apply_chinese_locale_to_chromium_preferences_path, build_codex_arguments,
+    build_codex_arguments_with_native_menu_inspector, build_codex_command,
     build_codex_command_with_native_menu_inspector, build_macos_cleanup_command,
     build_macos_open_command, build_macos_open_command_with_native_menu_inspector,
     build_packaged_activation, build_packaged_activation_with_native_menu_inspector,
-    effective_codex_extra_args, launch_and_inject_with_hooks,
+    codex_chromium_preferences_path_from_local_app_data, effective_codex_extra_args,
+    launch_and_inject_with_hooks,
 };
 #[cfg(windows)]
 use codex_plus_core::launcher::{WindowsProcessControlStrategy, windows_process_control_strategy};
@@ -91,6 +93,47 @@ fn app_paths_extracts_codex_version_from_windows_package_app_dir() {
         codex_app_version(&app_dir).as_deref(),
         Some("26.513.3673.0")
     );
+    assert_eq!(
+        packaged_app_family_name(&app_dir).as_deref(),
+        Some("OpenAI.Codex_abc")
+    );
+    assert_eq!(
+        codex_chromium_preferences_path_from_local_app_data(
+            &app_dir,
+            Path::new(r"C:\Users\Test\AppData\Local"),
+        )
+        .as_deref(),
+        Some(Path::new(
+            r"C:\Users\Test\AppData\Local\Packages\OpenAI.Codex_abc\LocalCache\Roaming\Codex\web\Codex\Default\Preferences"
+        ))
+    );
+}
+
+#[test]
+fn launcher_chinese_locale_profile_preferences_are_written() {
+    let temp = tempfile::tempdir().unwrap();
+    let preferences = temp.path().join("Preferences");
+    std::fs::write(
+        &preferences,
+        r#"{"intl":{"selected_languages":"en-US,en"},"spellcheck":{"dictionaries":["en-US"],"dictionary":"en-US"},"other":true}"#,
+    )
+    .unwrap();
+
+    let changed = apply_chinese_locale_to_chromium_preferences_path(&preferences).unwrap();
+    assert!(changed);
+
+    let value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&preferences).unwrap()).unwrap();
+    assert_eq!(value["intl"]["selected_languages"], "zh-CN,zh");
+    assert_eq!(
+        value["spellcheck"]["dictionaries"],
+        serde_json::json!(["zh-CN", "en-US"])
+    );
+    assert_eq!(value["spellcheck"]["dictionary"], "");
+    assert_eq!(value["other"], true);
+
+    let changed_again = apply_chinese_locale_to_chromium_preferences_path(&preferences).unwrap();
+    assert!(!changed_again);
 }
 
 #[test]
@@ -298,6 +341,7 @@ fn launcher_fast_startup_adds_statsig_fast_fail_argument_when_enabled() {
     let args = effective_codex_extra_args(&settings);
 
     assert!(args.contains(&"--lang=zh-CN".to_string()));
+    assert!(args.contains(&"--accept-lang=zh-CN,zh".to_string()));
     assert!(args.iter().any(|arg| {
         arg.starts_with("--host-resolver-rules=")
             && arg.contains("MAP ab.chatgpt.com 127.0.0.1")
@@ -314,6 +358,26 @@ fn launcher_fast_startup_adds_statsig_fast_fail_argument_when_enabled() {
     assert_eq!(
         args.iter()
             .filter(|arg| arg.starts_with("--host-resolver-rules="))
+            .count(),
+        1
+    );
+
+    let settings = BackendSettings {
+        codex_app_force_chinese_locale: true,
+        codex_extra_args: vec![
+            "--lang=ja-JP".to_string(),
+            "--accept-lang=ja-JP,ja".to_string(),
+        ],
+        ..BackendSettings::default()
+    };
+    let args = effective_codex_extra_args(&settings);
+    assert_eq!(
+        args.iter().filter(|arg| arg.starts_with("--lang=")).count(),
+        1
+    );
+    assert_eq!(
+        args.iter()
+            .filter(|arg| arg.starts_with("--accept-lang="))
             .count(),
         1
     );

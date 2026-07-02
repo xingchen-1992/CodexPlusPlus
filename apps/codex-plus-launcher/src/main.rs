@@ -143,6 +143,7 @@ async fn activate_existing_codex_app(options: &LaunchOptions) -> anyhow::Result<
     let settings = hooks.load_settings().await?;
     let app_dir = hooks.resolve_app_dir(options.app_dir.as_deref(), &settings)?;
     let debug_port = hooks.select_debug_port(options.debug_port);
+    codex_plus_core::launcher::ensure_codex_chinese_locale_profile_nonfatal(&settings, &app_dir);
     let codex_extra_args = codex_plus_core::launcher::effective_codex_extra_args(&settings);
     let launch_result = hooks
         .launch_codex(&app_dir, debug_port, &settings, &codex_extra_args)
@@ -860,6 +861,9 @@ mod tests {
         let source = include_str!("main.rs");
 
         assert!(source.contains("let debug_port = hooks.select_debug_port(options.debug_port);"));
+        assert!(
+            source.contains("ensure_codex_chinese_locale_profile_nonfatal(&settings, &app_dir)")
+        );
         assert!(source.contains(".launch_codex(&app_dir, debug_port"));
         assert!(source.contains(".ensure_injection(debug_port"));
         assert!(source.contains(".start_bridge_watchdog(debug_port"));

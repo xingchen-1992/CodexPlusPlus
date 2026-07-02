@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use futures_util::{SinkExt, StreamExt};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
@@ -283,6 +283,7 @@ where
         if settings.computer_use_guard_enabled {
             hooks.ensure_computer_use_config(&settings).await?;
         }
+        ensure_codex_chinese_locale_profile_nonfatal(&settings, &app_dir);
         let home = crate::relay_config::default_codex_home_dir();
         match crate::codex_sqlite::sanitize_historical_model_suffixes(&home) {
             Ok(result) if result.updated > 0 => {
@@ -397,6 +398,146 @@ where
 
 fn relay_protocol_proxy_enabled(settings: &BackendSettings) -> bool {
     settings.active_relay_uses_protocol_proxy()
+}
+
+pub fn ensure_codex_chinese_locale_profile_nonfatal(
+    settings: &BackendSettings,
+    app_dir: &Path,
+) -> bool {
+    if !settings.codex_app_force_chinese_locale {
+        return false;
+    }
+    let Some(local_app_data) = std::env::var_os("LOCALAPPDATA").map(PathBuf::from) else {
+        return false;
+    };
+    let Some(preferences_path) =
+        codex_chromium_preferences_path_from_local_app_data(app_dir, &local_app_data)
+    else {
+        return false;
+    };
+    match apply_chinese_locale_to_chromium_preferences_path(&preferences_path) {
+        Ok(changed) => {
+            let _ = crate::diagnostic_log::append_diagnostic_log(
+                "launcher.codex_chinese_locale_profile_applied",
+                serde_json::json!({
+                    "changed": changed,
+                    "preferencesPath": preferences_path,
+                }),
+            );
+            true
+        }
+        Err(error) => {
+            let _ = crate::diagnostic_log::append_diagnostic_log(
+                "launcher.codex_chinese_locale_profile_failed",
+                serde_json::json!({
+                    "message": error.to_string()
+                }),
+            );
+            false
+        }
+    }
+}
+
+pub fn codex_chromium_preferences_path_from_local_app_data(
+    app_dir: &Path,
+    local_app_data: &Path,
+) -> Option<PathBuf> {
+    let package_family_name = crate::app_paths::packaged_app_family_name(app_dir)?;
+    Some(
+        local_app_data
+            .join("Packages")
+            .join(package_family_name)
+            .join("LocalCache")
+            .join("Roaming")
+            .join("Codex")
+            .join("web")
+            .join("Codex")
+            .join("Default")
+            .join("Preferences"),
+    )
+}
+
+pub fn apply_chinese_locale_to_chromium_preferences_path(path: &Path) -> anyhow::Result<bool> {
+    let mut preferences = if path.exists() {
+        let raw = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        if raw.trim().is_empty() {
+            Value::Object(Map::new())
+        } else {
+            serde_json::from_str::<Value>(&raw)
+                .with_context(|| format!("failed to parse {}", path.display()))?
+        }
+    } else {
+        Value::Object(Map::new())
+    };
+
+    let root = ensure_json_object(&mut preferences);
+    let intl = ensure_json_object_property(root, "intl");
+    let mut changed = set_json_string_property(intl, "selected_languages", "zh-CN,zh");
+    let spellcheck = ensure_json_object_property(root, "spellcheck");
+    changed |= set_json_string_array_property(spellcheck, "dictionaries", &["zh-CN", "en-US"]);
+    changed |= set_json_string_property(spellcheck, "dictionary", "");
+
+    if changed {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        let raw = serde_json::to_string(&preferences)?;
+        std::fs::write(path, raw).with_context(|| format!("failed to write {}", path.display()))?;
+    }
+
+    Ok(changed)
+}
+
+fn ensure_json_object(value: &mut Value) -> &mut Map<String, Value> {
+    if !value.is_object() {
+        *value = Value::Object(Map::new());
+    }
+    value
+        .as_object_mut()
+        .expect("value should be a JSON object")
+}
+
+fn ensure_json_object_property<'a>(
+    object: &'a mut Map<String, Value>,
+    key: &str,
+) -> &'a mut Map<String, Value> {
+    let value = object
+        .entry(key.to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !value.is_object() {
+        *value = Value::Object(Map::new());
+    }
+    value
+        .as_object_mut()
+        .expect("value should be a JSON object")
+}
+
+fn set_json_string_property(object: &mut Map<String, Value>, key: &str, expected: &str) -> bool {
+    if object.get(key).and_then(Value::as_str) == Some(expected) {
+        return false;
+    }
+    object.insert(key.to_string(), Value::String(expected.to_string()));
+    true
+}
+
+fn set_json_string_array_property(
+    object: &mut Map<String, Value>,
+    key: &str,
+    expected: &[&str],
+) -> bool {
+    let expected_value = Value::Array(
+        expected
+            .iter()
+            .map(|value| Value::String((*value).to_string()))
+            .collect(),
+    );
+    if object.get(key) == Some(&expected_value) {
+        return false;
+    }
+    object.insert(key.to_string(), expected_value);
+    true
 }
 
 fn select_native_menu_inspector_port(debug_port: u16) -> u16 {
@@ -3663,11 +3804,27 @@ pub fn effective_codex_extra_args(settings: &BackendSettings) -> Vec<String> {
     if settings.codex_app_force_chinese_locale && !has_language_arg {
         args.push("--lang=zh-CN".to_string());
     }
+    let has_accept_language_arg = normalized
+        .iter()
+        .any(|arg| arg == "--accept-lang" || arg.starts_with("--accept-lang="));
+    if settings.codex_app_force_chinese_locale && !has_accept_language_arg {
+        args.push("--accept-lang=zh-CN,zh".to_string());
+    }
     if settings.codex_app_fast_startup && !has_host_resolver_rules(&normalized) {
         args.push(statsig_fast_fail_host_resolver_rule());
     }
+    if !has_proxy_server_arg(&normalized) {
+        if let Some(proxy) = settings.codex_network_proxy() {
+            args.push(format!("--proxy-server={}", proxy.chromium_proxy_server()));
+        }
+    }
     args.extend(normalized);
     args
+}
+
+fn has_proxy_server_arg(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| arg.trim() == "--proxy-server" || arg.trim().starts_with("--proxy-server="))
 }
 
 fn has_host_resolver_rules(args: &[String]) -> bool {
@@ -3773,21 +3930,44 @@ async fn retry_injection(debug_port: u16, helper_port: u16) -> anyhow::Result<()
 }
 
 pub async fn check_and_reinject_bridge(debug_port: u16, helper_port: u16) -> bool {
-    let healthy = match bridge_health_ok(debug_port).await {
-        Ok(healthy) => healthy,
+    let targets = match crate::cdp::list_targets(debug_port).await {
+        Ok(targets) => crate::cdp::injectable_codex_page_targets(&targets),
         Err(error) => {
             let _ = crate::diagnostic_log::append_diagnostic_log(
-                "bridge.health_check_failed",
+                "bridge.target_query_failed",
                 serde_json::json!({
                     "debug_port": debug_port,
                     "helper_port": helper_port,
                     "message": error.to_string()
                 }),
             );
-            false
+            return false;
         }
     };
-    if healthy {
+    if targets.is_empty() {
+        return false;
+    }
+
+    let mut stale_targets = Vec::new();
+    for target in &targets {
+        match bridge_health_ok_target(target).await {
+            Ok(true) => {}
+            Ok(false) => stale_targets.push(target.clone()),
+            Err(error) => {
+                stale_targets.push(target.clone());
+                let _ = crate::diagnostic_log::append_diagnostic_log(
+                    "bridge.health_check_failed",
+                    serde_json::json!({
+                        "debug_port": debug_port,
+                        "helper_port": helper_port,
+                        "target_id": target.id,
+                        "message": error.to_string()
+                    }),
+                );
+            }
+        }
+    }
+    if stale_targets.is_empty() {
         return false;
     }
 
@@ -3795,16 +3975,18 @@ pub async fn check_and_reinject_bridge(debug_port: u16, helper_port: u16) -> boo
         "bridge.reinject_start",
         serde_json::json!({
             "debug_port": debug_port,
-            "helper_port": helper_port
+            "helper_port": helper_port,
+            "target_count": stale_targets.len()
         }),
     );
-    match retry_injection(debug_port, helper_port).await {
-        Ok(()) => {
+    match inject_targets(debug_port, helper_port, &stale_targets).await {
+        Ok(injected) => {
             let _ = crate::diagnostic_log::append_diagnostic_log(
                 "bridge.reinject_ok",
                 serde_json::json!({
                     "debug_port": debug_port,
-                    "helper_port": helper_port
+                    "helper_port": helper_port,
+                    "target_count": injected
                 }),
             );
             true
@@ -3823,9 +4005,7 @@ pub async fn check_and_reinject_bridge(debug_port: u16, helper_port: u16) -> boo
     }
 }
 
-async fn bridge_health_ok(debug_port: u16) -> anyhow::Result<bool> {
-    let targets = crate::cdp::list_targets(debug_port).await?;
-    let target = crate::cdp::pick_injectable_codex_page_target(&targets)?;
+async fn bridge_health_ok_target(target: &crate::cdp::CdpTarget) -> anyhow::Result<bool> {
     let websocket_url = target
         .web_socket_debugger_url
         .as_deref()
@@ -3850,29 +4030,69 @@ fn runtime_evaluate_result_is_true(result: &Value) -> bool {
 
 async fn try_inject(debug_port: u16, helper_port: u16) -> anyhow::Result<()> {
     let targets = crate::cdp::list_targets(debug_port).await?;
-    let target = crate::cdp::pick_injectable_codex_page_target(&targets)?;
-    let websocket_url = target
-        .web_socket_debugger_url
-        .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("selected CDP target has no websocket URL"))?;
+    let targets = crate::cdp::injectable_codex_page_targets(&targets);
+    inject_targets(debug_port, helper_port, &targets).await?;
+    Ok(())
+}
+
+async fn inject_targets(
+    debug_port: u16,
+    helper_port: u16,
+    targets: &[crate::cdp::CdpTarget],
+) -> anyhow::Result<usize> {
+    if targets.is_empty() {
+        anyhow::bail!("No injectable Codex page target found");
+    }
     let settings = SettingsStore::default().load().unwrap_or_default();
     let script = crate::assets::injection_script_with_settings(helper_port, &settings);
     let ctx = crate::routes::BridgeContext::core(Arc::new(crate::routes::CoreRuntimeService::new(
         debug_port,
         StatusStore::default(),
     )));
-    crate::bridge::install_bridge(
-        websocket_url,
-        crate::bridge::BRIDGE_BINDING_NAME,
-        Arc::new(move |path, payload| {
-            let ctx = ctx.clone();
-            Box::pin(
-                async move { Ok(crate::routes::handle_bridge_request(ctx, &path, payload).await) },
-            )
-        }),
-        &[script],
-    )
-    .await
+    let mut injected = 0usize;
+    let mut errors = Vec::new();
+    for target in targets {
+        let Some(websocket_url) = target.web_socket_debugger_url.as_deref() else {
+            continue;
+        };
+        let ctx = ctx.clone();
+        let script = script.clone();
+        let install_result = crate::bridge::install_bridge(
+            websocket_url,
+            crate::bridge::BRIDGE_BINDING_NAME,
+            Arc::new(move |path, payload| {
+                let ctx = ctx.clone();
+                Box::pin(async move {
+                    Ok(crate::routes::handle_bridge_request(ctx, &path, payload).await)
+                })
+            }),
+            &[script],
+        )
+        .await;
+        match install_result {
+            Ok(()) => injected += 1,
+            Err(error) => {
+                errors.push(format!("{}: {error:#}", target.id));
+                let _ = crate::diagnostic_log::append_diagnostic_log(
+                    "bridge.inject_target_failed",
+                    serde_json::json!({
+                        "debug_port": debug_port,
+                        "helper_port": helper_port,
+                        "target_id": target.id,
+                        "message": error.to_string()
+                    }),
+                );
+            }
+        }
+    }
+    if injected == 0 {
+        anyhow::bail!(
+            "Codex injection failed for {} target(s): {}",
+            targets.len(),
+            errors.join("; ")
+        );
+    }
+    Ok(injected)
 }
 
 pub fn build_macos_open_command(
@@ -4389,5 +4609,138 @@ mod tests {
             3,
             &missing_runtime_package
         ));
+    }
+
+    #[test]
+    fn effective_codex_extra_args_adds_proxy_when_enabled() {
+        let settings = official_proxy_settings(BackendSettings {
+            codex_network_proxy_enabled: true,
+            codex_network_proxy_available: true,
+            codex_network_proxy_protocol: "socks5".to_string(),
+            codex_network_proxy_host: "127.0.0.1".to_string(),
+            codex_network_proxy_port: 10808,
+            ..BackendSettings::default()
+        });
+
+        let args = effective_codex_extra_args(&settings);
+
+        assert!(args.iter().any(|arg| arg == "--lang=zh-CN"));
+        assert!(
+            args.iter()
+                .any(|arg| arg == "--proxy-server=socks5://127.0.0.1:10808")
+        );
+    }
+
+    #[test]
+    fn effective_codex_extra_args_uses_manual_proxy_server_arg_first() {
+        let settings = official_proxy_settings(BackendSettings {
+            codex_network_proxy_enabled: true,
+            codex_network_proxy_available: true,
+            codex_network_proxy_protocol: "socks5".to_string(),
+            codex_network_proxy_host: "127.0.0.1".to_string(),
+            codex_network_proxy_port: 10808,
+            codex_extra_args: vec!["--proxy-server=http://127.0.0.1:7890".to_string()],
+            ..BackendSettings::default()
+        });
+
+        let args = effective_codex_extra_args(&settings);
+
+        assert_eq!(
+            args.iter()
+                .filter(|arg| arg.trim().starts_with("--proxy-server"))
+                .count(),
+            1
+        );
+        assert!(
+            args.iter()
+                .any(|arg| arg == "--proxy-server=http://127.0.0.1:7890")
+        );
+    }
+
+    #[test]
+    fn effective_codex_extra_args_skips_proxy_when_disabled() {
+        let settings = official_proxy_settings(BackendSettings {
+            codex_network_proxy_enabled: false,
+            codex_network_proxy_protocol: "http".to_string(),
+            codex_network_proxy_host: "127.0.0.1".to_string(),
+            codex_network_proxy_port: 7890,
+            ..BackendSettings::default()
+        });
+
+        let args = effective_codex_extra_args(&settings);
+
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.trim().starts_with("--proxy-server"))
+        );
+        assert!(args.iter().any(|arg| arg == "--lang=zh-CN"));
+    }
+
+    #[test]
+    fn effective_codex_extra_args_skips_proxy_when_runtime_unavailable() {
+        let settings = official_proxy_settings(BackendSettings {
+            codex_network_proxy_enabled: true,
+            codex_network_proxy_available: false,
+            codex_network_proxy_protocol: "socks5".to_string(),
+            codex_network_proxy_host: "127.0.0.1".to_string(),
+            codex_network_proxy_port: 10808,
+            ..BackendSettings::default()
+        });
+
+        let args = effective_codex_extra_args(&settings);
+
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.trim().starts_with("--proxy-server"))
+        );
+        assert!(args.iter().any(|arg| arg == "--lang=zh-CN"));
+    }
+
+    #[test]
+    fn effective_codex_extra_args_skips_proxy_for_non_official_api_key() {
+        let settings = BackendSettings {
+            codex_network_proxy_enabled: true,
+            codex_network_proxy_available: true,
+            codex_network_proxy_protocol: "socks5".to_string(),
+            codex_network_proxy_host: "127.0.0.1".to_string(),
+            codex_network_proxy_port: 10808,
+            relay_profiles_enabled: true,
+            active_relay_id: "third-party".to_string(),
+            relay_profiles: vec![crate::settings::RelayProfile {
+                id: "third-party".to_string(),
+                name: "第三方".to_string(),
+                base_url: "https://api.example.com/openai".to_string(),
+                api_key: "sk-user-key".to_string(),
+                relay_mode: crate::settings::RelayMode::PureApi,
+                ..crate::settings::RelayProfile::default()
+            }],
+            ..BackendSettings::default()
+        };
+
+        let args = effective_codex_extra_args(&settings);
+
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.trim().starts_with("--proxy-server"))
+        );
+        assert!(args.iter().any(|arg| arg == "--lang=zh-CN"));
+    }
+
+    fn official_proxy_settings(mut settings: BackendSettings) -> BackendSettings {
+        settings.relay_profiles_enabled = true;
+        settings.active_relay_id = crate::settings::OFFICIAL_RELAY_ID.to_string();
+        settings.relay_profiles = vec![crate::settings::RelayProfile {
+            id: crate::settings::OFFICIAL_RELAY_ID.to_string(),
+            name: "总量包".to_string(),
+            base_url: crate::settings::OFFICIAL_RELAY_BASE_URL.to_string(),
+            upstream_base_url: crate::settings::OFFICIAL_RELAY_BASE_URL.to_string(),
+            api_key: "sk-official-key".to_string(),
+            relay_mode: crate::settings::RelayMode::PureApi,
+            ..crate::settings::RelayProfile::default()
+        }];
+        settings
     }
 }

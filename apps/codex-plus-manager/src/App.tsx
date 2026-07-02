@@ -137,9 +137,16 @@ type ManagedSkillsSyncOptions = {
   settingsOverride?: BackendSettings | null;
 };
 
+type CodexNetworkProxyProtocol = "socks5" | "http";
+
 type BackendSettings = {
   codexAppPath: string;
   codexExtraArgs: string[];
+  codexNetworkProxyEnabled: boolean;
+  codexNetworkProxyAvailable: boolean;
+  codexNetworkProxyProtocol: CodexNetworkProxyProtocol;
+  codexNetworkProxyHost: string;
+  codexNetworkProxyPort: number;
   providerSyncEnabled: boolean;
   providerSyncSavedProviders: string[];
   providerSyncManualProviders: string[];
@@ -671,6 +678,11 @@ const routes: Array<{ id: Route; label: string; icon: LucideIcon; badge?: string
 const defaultSettings: BackendSettings = {
   codexAppPath: "",
   codexExtraArgs: [],
+  codexNetworkProxyEnabled: true,
+  codexNetworkProxyAvailable: false,
+  codexNetworkProxyProtocol: "socks5",
+  codexNetworkProxyHost: "127.0.0.1",
+  codexNetworkProxyPort: 10808,
   providerSyncEnabled: false,
   providerSyncSavedProviders: [],
   providerSyncManualProviders: [],
@@ -1222,17 +1234,26 @@ export function App() {
 
     updateLaunchProgress("checking", 18, "正在读取供应商配置...");
     const currentSettings = await refreshSettings(true);
-    const settingsForCheck = currentSettings ?? settingsForm;
-    if (!isOfficialRelayConfigured(settingsForCheck, normalized)) {
-      const prompt =
-        activeRelayProfile(settingsForCheck).relayMode === "official" || settingsForCheck.launchMode === "relay"
-          ? "当前供应商配置看起来是官方登录方式。继续打开会切换到账户额度里的 API Key，并写入本机 Codex 配置。"
-          : "当前供应商配置不是账户额度里的 API Key。继续打开会切换到账户额度里的 API Key，并写入本机 Codex 配置。";
-      const confirmed = await confirmAction("打开 Codex", prompt, "继续并配置", "取消");
-      if (!confirmed) {
-        updateLaunchProgress("failed", 100, "已取消打开 Codex。", false);
-        return false;
+    let settingsForCheck = currentSettings ?? settingsForm;
+    if (!settingsForCheck.enhancementsEnabled || !settingsForCheck.codexAppForceChineseLocale) {
+      updateLaunchProgress("checking", 24, "正在启用 Codex 中文增强...");
+      const forcedSettings = guardCodexNetworkProxyForOfficial({
+        ...settingsForCheck,
+        enhancementsEnabled: true,
+        codexAppForceChineseLocale: true,
+      });
+      const saveResult = await run(() => call<SettingsResult>("save_settings", { settings: forcedSettings }));
+      if (saveResult) {
+        setSettings(saveResult);
+        settingsForCheck = normalizeSettings(saveResult.settings);
+        setSettingsForm(settingsForCheck);
+      } else {
+        settingsForCheck = forcedSettings;
+        setSettingsForm(forcedSettings);
       }
+    }
+    if (!isOfficialRelayConfigured(settingsForCheck, normalized)) {
+      updateLaunchProgress("checking", 28, "正在切换到账户额度 API Key 配置...");
     }
 
     updateLaunchProgress("checking", 38, "正在写入 API Key 和 Codex 配置...");
@@ -1243,7 +1264,7 @@ export function App() {
       return false;
     }
     if (!managedSkillsReady) {
-      updateLaunchProgress("syncing", 62, "正在同步 crs-image、内置 Node 和 6 个托管 Skills...");
+      updateLaunchProgress("syncing", 58, "正在同步 crs-image、内置 Node 和 6 个托管 Skills...");
       const managedSkills = await ensureManagedSkillsForCodex({ silent: false });
       if (!managedSkills) {
         const message = "托管 Skills 安装或同步失败，请先在工具与插件页面修复后再打开 Codex。";
@@ -1252,7 +1273,12 @@ export function App() {
         return false;
       }
     } else {
-      updateLaunchProgress("syncing", 72, "crs-image 和托管 Skills 已就绪，跳过重复同步。");
+      updateLaunchProgress("syncing", 66, "crs-image 和托管 Skills 已就绪，跳过重复同步。");
+    }
+    updateLaunchProgress("syncing", 76, "正在同步 OpenAI 插件市场，确保更多 Skills 和 Plugins 可见...");
+    const pluginMarketplaceReady = await ensurePluginMarketplaceReadyForCodex({ silent: true });
+    if (!pluginMarketplaceReady) {
+      showNotice("插件市场", "插件市场暂未同步成功，Codex 会继续打开；稍后可在设置里点击“修复插件市场”。", "failed");
     }
     updateLaunchProgress("spawning", 88, "准备完成，正在拉起 Codex 窗口...");
     return true;
@@ -1589,8 +1615,25 @@ export function App() {
     if (confirmed) await performUpdate(selected);
   };
 
+  const guardCodexNetworkProxyForOfficial = (next: BackendSettings): BackendSettings => {
+    const normalized = normalizeSettings(next);
+    const allowed = isOfficialNetworkProxyAllowed(normalized);
+    if (!allowed) {
+      return {
+        ...normalized,
+        codexNetworkProxyEnabled: false,
+        codexNetworkProxyAvailable: false,
+      };
+    }
+    const alreadyUsingOfficial = isOfficialNetworkProxyAllowed(settingsForm);
+    return {
+      ...normalized,
+      codexNetworkProxyEnabled: alreadyUsingOfficial ? normalized.codexNetworkProxyEnabled : true,
+    };
+  };
+
   const saveSettings = async () => {
-    const next = normalizeSettings(settingsForm);
+    const next = guardCodexNetworkProxyForOfficial(settingsForm);
     const result = await run(() => call<SettingsResult>("save_settings", { settings: next }));
     if (result) {
       setSettings(result);
@@ -1600,7 +1643,7 @@ export function App() {
   };
 
   const saveSettingsValue = async (next: BackendSettings, silent = true) => {
-    const normalized = normalizeSettings(next);
+    const normalized = guardCodexNetworkProxyForOfficial(next);
     setSettingsForm(normalized);
     const result = await run(() => call<SettingsResult>("save_settings", { settings: normalized }));
     if (result) {
@@ -1701,7 +1744,8 @@ export function App() {
   };
 
   const applyRelayInjection = async (silent = false) => {
-    const settingsResult = await run(() => call<SettingsResult>("save_settings", { settings: settingsForm }));
+    const next = guardCodexNetworkProxyForOfficial(settingsForm);
+    const settingsResult = await run(() => call<SettingsResult>("save_settings", { settings: next }));
     if (settingsResult) {
       setSettings(settingsResult);
       setSettingsForm(normalizeSettings(settingsResult.settings));
@@ -1722,7 +1766,7 @@ export function App() {
   };
 
   const saveLaunchMode = async (launchMode: LaunchMode, silent = false, baseSettings: BackendSettings = settingsForm) => {
-    const next = { ...baseSettings, launchMode };
+    const next = guardCodexNetworkProxyForOfficial({ ...baseSettings, launchMode });
     setSettingsForm(next);
     const result = await run(() => call<SettingsResult>("save_settings", { settings: next }));
     if (result) {
@@ -1734,7 +1778,8 @@ export function App() {
   };
 
   const applyPureApiInjection = async (silent = false) => {
-    const settingsResult = await run(() => call<SettingsResult>("save_settings", { settings: settingsForm }));
+    const next = guardCodexNetworkProxyForOfficial(settingsForm);
+    const settingsResult = await run(() => call<SettingsResult>("save_settings", { settings: next }));
     if (settingsResult) {
       setSettings(settingsResult);
       setSettingsForm(normalizeSettings(settingsResult.settings));
@@ -1851,7 +1896,7 @@ export function App() {
       showNotice("供应商切换中", "上一次切换还没有完成，请稍后再试。", "failed");
       return;
     }
-    let switchSettings = normalizeSettings(next);
+    let switchSettings = guardCodexNetworkProxyForOfficial(next);
     if (!switchSettings.relayProfilesEnabled) {
       showNotice("供应商配置已关闭", "当前不会写入 Codex config.toml / auth.json。打开供应商配置总开关后再切换。", "failed");
       return;
@@ -2033,6 +2078,7 @@ export function App() {
       await refreshProviderSyncTargets(true);
       await refreshPendingProviderImport(true);
       void ensureManagedSkillsForCodex({ silent: true, settingsOverride: startupSettings });
+      void ensurePluginMarketplaceReadyForCodex({ silent: true });
     })();
   }, []);
 
@@ -2407,7 +2453,14 @@ export function App() {
           ) : null}
           {route === "about" ? <AboutScreen overview={overview} update={update} logs={logs} diagnostics={diagnostics} actions={actions} /> : null}
           {route === "settings" ? (
-            <SettingsScreen settings={settings} theme={theme} form={settingsForm} onFormChange={setSettingsForm} actions={actions} />
+            <SettingsScreen
+              settings={settings}
+              theme={theme}
+              form={settingsForm}
+              officialNetworkProxyAllowed={isOfficialNetworkProxyAllowed(settingsForm)}
+              onFormChange={setSettingsForm}
+              actions={actions}
+            />
           ) : null}
         </section>
       </main>
@@ -3810,15 +3863,18 @@ function SettingsScreen({
   settings,
   theme,
   form,
+  officialNetworkProxyAllowed,
   onFormChange,
   actions,
 }: {
   settings: SettingsResult | null;
   theme: Theme;
   form: BackendSettings;
+  officialNetworkProxyAllowed: boolean;
   onFormChange: (value: BackendSettings) => void;
   actions: Actions;
 }) {
+  const proxyEnabled = form.codexNetworkProxyEnabled && officialNetworkProxyAllowed;
   return (
     <>
       <Panel>
@@ -3913,6 +3969,30 @@ function SettingsScreen({
               重置背景
             </Button>
           </Toolbar>
+        </CardContent>
+      </Panel>
+      <Panel>
+        <CardHead title="Codex 直连网络代理" />
+        <CardContent>
+          <div className="settings-block">
+            <label className="switch-row">
+              <input
+                checked={proxyEnabled}
+                disabled={!officialNetworkProxyAllowed}
+                onChange={(event) =>
+                  onFormChange({
+                    ...form,
+                    codexNetworkProxyEnabled: event.currentTarget.checked,
+                    codexNetworkProxyAvailable: event.currentTarget.checked
+                      ? form.codexNetworkProxyAvailable
+                      : false,
+                  })
+                }
+                type="checkbox"
+              />
+              <strong>启用 Codex 直连代理</strong>
+            </label>
+          </div>
         </CardContent>
       </Panel>
       <Panel>
@@ -5362,7 +5442,7 @@ function ConfirmDialog({
 }) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className="modal-card">
+      <div className="modal-card confirm-modal">
         <div className="modal-head">
           <div>
             <h2>{confirm.title}</h2>
@@ -5371,10 +5451,7 @@ function ConfirmDialog({
           <button className="toast-close" onClick={onCancel} type="button">×</button>
         </div>
         <Toolbar>
-          <Button onClick={onConfirm}>
-            <Trash2 className="h-4 w-4" />
-            {confirm.confirmText}
-          </Button>
+          <Button onClick={onConfirm}>{confirm.confirmText}</Button>
           <Button onClick={onCancel} variant="secondary">{confirm.cancelText}</Button>
         </Toolbar>
       </div>
@@ -6302,9 +6379,17 @@ function normalizeSettings(settings: BackendSettings): BackendSettings {
   const activeRelayId = profiles.some((profile) => profile.id === settings.activeRelayId)
     ? settings.activeRelayId
     : profiles[0]?.id || "";
+  const codexNetworkProxyProtocol = settings.codexNetworkProxyProtocol === "http" ? "http" : "socks5";
+  const codexNetworkProxyHost = textValue(settings.codexNetworkProxyHost).trim() || defaultSettings.codexNetworkProxyHost;
+  const codexNetworkProxyPort = clampNumber(Number(settings.codexNetworkProxyPort) || defaultSettings.codexNetworkProxyPort, 1, 65535);
   return syncLegacyRelayFields({
     ...defaultSettings,
     ...settings,
+    codexNetworkProxyEnabled: settings.codexNetworkProxyEnabled === true,
+    codexNetworkProxyAvailable: settings.codexNetworkProxyAvailable === true,
+    codexNetworkProxyProtocol,
+    codexNetworkProxyHost,
+    codexNetworkProxyPort,
     relayProfilesEnabled: settings.relayProfilesEnabled !== false,
     computerUseGuardEnabled: settings.computerUseGuardEnabled === true,
     codexAppImageOverlayOpacity: clampNumber(settings.codexAppImageOverlayOpacity || 35, 1, 100),
@@ -7344,13 +7429,20 @@ function loadInitialRoute(): Route {
 }
 
 function isOfficialRelayConfigured(settings: BackendSettings, apiKey: string): boolean {
+  if (!apiKey.trim()) return false;
+  if (!isOfficialNetworkProxyAllowed(settings)) return false;
+  const profile = activeRelayProfile(settings);
+  return profile.apiKey.trim() === apiKey.trim();
+}
+
+function isOfficialNetworkProxyAllowed(settings: BackendSettings): boolean {
   const profile = activeRelayProfile(settings);
   return (
     settings.relayProfilesEnabled &&
     profile.id === OFFICIAL_RELAY_ID &&
     profile.relayMode === "pureApi" &&
     stripTrailingSlash(profile.baseUrl) === stripTrailingSlash(OFFICIAL_BASE_URL) &&
-    profile.apiKey.trim() === apiKey.trim()
+    Boolean(profile.apiKey.trim())
   );
 }
 

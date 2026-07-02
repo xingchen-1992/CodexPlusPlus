@@ -11,6 +11,8 @@ use crate::settings::{RelayContextSelection, RelayProfile, RelayProtocol};
 const RELAY_PROVIDER: &str = "custom";
 const LEGACY_RELAY_PROVIDERS: &[&str] = &["CodexPlusPlus", "CodexPP"];
 const CHAT_UPSTREAM_BASE_URL_KEY: &str = "codex_plus_chat_base_url";
+const CODEX_LOCALE_OVERRIDE_KEY: &str = "localeOverride";
+const CODEX_FORCE_LOCALE: &str = "zh-CN";
 const RESERVED_MODEL_PROVIDER_IDS: &[&str] = &[
     "amazon-bedrock",
     "openai",
@@ -1895,6 +1897,7 @@ fn complete_relay_profile_config(profile: &RelayProfile) -> anyhow::Result<Strin
     let mut doc = parse_toml_document(&profile.config_contents)?;
     let provider_id = active_or_default_provider_id(&doc);
     set_provider_id(&mut doc, &provider_id);
+    force_chinese_locale_override(&mut doc);
 
     let mut model = relay_profile_model(profile);
     // 若用户未填写默认模型，但 model_list 有内容，则取第一条作为默认 model，
@@ -2488,6 +2491,7 @@ fn upsert_model_provider_config_with_name(
     let mut doc = parse_toml_document(contents)?;
     let provider_id = active_or_default_provider_id(&doc);
     set_provider_id(&mut doc, &provider_id);
+    force_chinese_locale_override(&mut doc);
     for legacy_provider in LEGACY_RELAY_PROVIDERS {
         remove_provider_table(&mut doc, legacy_provider);
     }
@@ -2510,6 +2514,10 @@ fn upsert_model_provider_config_with_name(
     Ok(move_model_providers_before_profiles(
         &ensure_trailing_newline(doc.to_string()),
     ))
+}
+
+fn force_chinese_locale_override(doc: &mut DocumentMut) {
+    doc[CODEX_LOCALE_OVERRIDE_KEY] = toml_edit::value(CODEX_FORCE_LOCALE);
 }
 
 fn remove_table(contents: &str, table: &str) -> String {

@@ -77,16 +77,19 @@ pub fn pick_page_target(targets: &[CdpTarget]) -> anyhow::Result<CdpTarget> {
 }
 
 pub fn pick_injectable_codex_page_target(targets: &[CdpTarget]) -> anyhow::Result<CdpTarget> {
-    for target in targets
-        .iter()
-        .filter(|target| is_injectable_page_target(target))
-    {
-        if is_codex_page_target(target) {
-            return Ok(target.clone());
-        }
+    if let Some(target) = injectable_codex_page_targets(targets).into_iter().next() {
+        return Ok(target);
     }
 
     bail!("No injectable Codex page target found")
+}
+
+pub fn injectable_codex_page_targets(targets: &[CdpTarget]) -> Vec<CdpTarget> {
+    targets
+        .iter()
+        .filter(|target| is_injectable_page_target(target) && is_codex_page_target(target))
+        .cloned()
+        .collect()
 }
 
 pub fn is_injectable_page_target(target: &CdpTarget) -> bool {
@@ -103,4 +106,7 @@ pub fn is_codex_page_target(target: &CdpTarget) -> bool {
     }
     let haystack = format!("{} {}", target.title, target.url).to_lowercase();
     haystack.contains("codex")
+        || haystack.contains("chatgpt.com")
+        || haystack.contains("chat.openai.com")
+        || haystack.contains("app://")
 }

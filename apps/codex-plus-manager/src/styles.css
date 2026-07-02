@@ -2110,6 +2110,28 @@ body {
   padding: 18px;
 }
 
+.confirm-modal {
+  display: flex;
+  min-height: 300px;
+  width: min(420px, calc(100vw - 32px));
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 20px;
+}
+
+.confirm-modal .modal-head {
+  margin-bottom: 18px;
+}
+
+.confirm-modal .modal-message {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.confirm-modal .toolbar {
+  margin-top: 18px;
+}
+
 .modal-head {
   display: flex;
   align-items: flex-start;

@@ -50,6 +50,7 @@ pub fn build_codex_config_toml(base_url: &str) -> String {
     document["model_reasoning_effort"] = value("high");
     document["model_auto_compact_token_limit"] = value(188888);
     document["preferred_auth_method"] = value("apikey");
+    document["localeOverride"] = value("zh-CN");
     document["model_providers"]["crs"]["name"] = value("OpenAI");
     document["model_providers"]["crs"]["base_url"] = value(base_url);
     document["model_providers"]["crs"]["wire_api"] = value("responses");

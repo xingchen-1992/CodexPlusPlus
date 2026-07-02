@@ -58,6 +58,16 @@ const MENU_LABEL_TRANSLATIONS: &[(&str, &str)] = &[
     ("Focus Browser Address Bar", "聚焦浏览器地址栏"),
     ("Back", "后退"),
     ("Forward", "前进"),
+    ("Comment with Codex", "评论"),
+    ("Copy Link Address", "复制链接地址"),
+    ("Copy link address", "复制链接地址"),
+    ("Inspect", "检查"),
+    ("Open in Browser", "在浏览器中打开"),
+    ("Open in browser", "在浏览器中打开"),
+    ("Open in External Browser", "在外部浏览器中打开"),
+    ("Open in external browser", "在外部浏览器中打开"),
+    ("Open Link in New Tab", "在新标签页中打开链接"),
+    ("Open link in new tab", "在新标签页中打开链接"),
     ("Go to Chat 1", "转到对话 1"),
     ("Go to Chat 2", "转到对话 2"),
     ("Go to Chat 3", "转到对话 3"),
@@ -219,6 +229,8 @@ mod tests {
         assert!(script.contains("Menu.setApplicationMenu"));
         assert!(script.contains("Toggle Sidebar"));
         assert!(script.contains("切换边栏"));
+        assert!(script.contains("Open Link in New Tab"));
+        assert!(script.contains("在新标签页中打开链接"));
         assert!(!script.contains("app.asar"));
     }
 }

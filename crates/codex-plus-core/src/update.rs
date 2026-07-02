@@ -603,7 +603,7 @@ pub fn prepare_installer_for_launch(path: &Path) -> anyhow::Result<PathBuf> {
 }
 
 fn find_windows_setup_executable(root: &Path) -> anyhow::Result<PathBuf> {
-    let visible_setup = root.join("双击安装.exe");
+    let visible_setup = root.join("点我双击安装.exe");
     if visible_setup.is_file() {
         return Ok(visible_setup);
     }
@@ -624,7 +624,7 @@ fn find_windows_setup_executable(root: &Path) -> anyhow::Result<PathBuf> {
                 .and_then(|name| name.to_str())
                 .unwrap_or_default()
                 .to_string();
-            if file_name == "双击安装.exe" {
+            if file_name == "点我双击安装.exe" {
                 return Ok(path);
             }
             let lower_file_name = file_name.to_ascii_lowercase();
