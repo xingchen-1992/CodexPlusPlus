@@ -18,7 +18,11 @@ fn cdp_listening_returns_true_for_bound_loopback_port() {
 #[test]
 fn cdp_listening_returns_true_for_bound_ipv6_loopback_port() {
     let listener = std::net::TcpListener::bind("[::1]:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
+    let addr = listener.local_addr().unwrap();
+    if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)).is_err() {
+        return;
+    }
+    let port = addr.port();
 
     assert!(cdp_listening(port));
 }

@@ -53,7 +53,6 @@ fn parses_desktop_summary_payload() {
 
 #[tokio::test]
 async fn fetches_desktop_summary_from_portal_endpoint() {
-    let guard = ProxyGuard::disable();
     let server = spawn_summary_server(json!({
         "success": true,
         "data": {
@@ -82,12 +81,48 @@ async fn fetches_desktop_summary_from_portal_endpoint() {
         .await
         .unwrap();
     let request = server.finish();
-    drop(guard);
 
     assert_eq!(summary.api_key_preview, "cr_****cdef");
     assert_eq!(summary.topup_balance.value_text, "$8.00");
     assert_eq!(request.path, "/portal/desktop/summary");
     assert_eq!(request.authorization, "Bearer cr_live_secret_key");
+}
+
+#[tokio::test]
+async fn fetches_desktop_summary_without_system_proxy() {
+    let _guard = ProxyGuard::set_invalid();
+    let server = spawn_summary_server(json!({
+        "success": true,
+        "data": {
+            "apiKeyPreview": "sk-****5678",
+            "planName": "Desktop Plan",
+            "planExpiryLabel": "到期日期",
+            "planRemainingText": "剩余 11 天",
+            "runtimeAccessMode": "package_active",
+            "packageExpired": false,
+            "todayUsd": 1.5,
+            "totalUsd": 20.0,
+            "todayRequests": 3,
+            "totalRequests": 30,
+            "topupBalance": {
+                "visible": false,
+                "title": "总量包剩余额度",
+                "valueText": "$0.00",
+                "summaryText": "全部总量包合计剩余",
+                "details": [],
+                "expiry": "--"
+            }
+        }
+    }));
+
+    let summary = fetch_desktop_summary(&server.base_url, "sk-12345678")
+        .await
+        .unwrap();
+    let request = server.finish();
+
+    assert_eq!(summary.api_key_preview, "sk-****5678");
+    assert_eq!(request.path, "/portal/desktop/summary");
+    assert_eq!(request.authorization, "Bearer sk-12345678");
 }
 
 struct SummaryServer {
@@ -153,22 +188,42 @@ struct ProxyGuard {
     http_proxy: Option<String>,
     https_proxy: Option<String>,
     all_proxy: Option<String>,
+    no_proxy: Option<String>,
+    lowercase_http_proxy: Option<String>,
+    lowercase_https_proxy: Option<String>,
+    lowercase_all_proxy: Option<String>,
+    lowercase_no_proxy: Option<String>,
 }
 
 impl ProxyGuard {
-    fn disable() -> Self {
+    fn set_invalid() -> Self {
         let http_proxy = std::env::var("HTTP_PROXY").ok();
         let https_proxy = std::env::var("HTTPS_PROXY").ok();
         let all_proxy = std::env::var("ALL_PROXY").ok();
+        let no_proxy = std::env::var("NO_PROXY").ok();
+        let lowercase_http_proxy = std::env::var("http_proxy").ok();
+        let lowercase_https_proxy = std::env::var("https_proxy").ok();
+        let lowercase_all_proxy = std::env::var("all_proxy").ok();
+        let lowercase_no_proxy = std::env::var("no_proxy").ok();
         unsafe {
-            std::env::remove_var("HTTP_PROXY");
-            std::env::remove_var("HTTPS_PROXY");
-            std::env::remove_var("ALL_PROXY");
+            std::env::set_var("HTTP_PROXY", "http://127.0.0.1:9");
+            std::env::set_var("HTTPS_PROXY", "http://127.0.0.1:9");
+            std::env::set_var("ALL_PROXY", "http://127.0.0.1:9");
+            std::env::remove_var("NO_PROXY");
+            std::env::set_var("http_proxy", "http://127.0.0.1:9");
+            std::env::set_var("https_proxy", "http://127.0.0.1:9");
+            std::env::set_var("all_proxy", "http://127.0.0.1:9");
+            std::env::remove_var("no_proxy");
         }
         Self {
             http_proxy,
             https_proxy,
             all_proxy,
+            no_proxy,
+            lowercase_http_proxy,
+            lowercase_https_proxy,
+            lowercase_all_proxy,
+            lowercase_no_proxy,
         }
     }
 }
@@ -197,6 +252,46 @@ impl Drop for ProxyGuard {
             },
             None => unsafe {
                 std::env::remove_var("ALL_PROXY");
+            },
+        }
+        match self.no_proxy.as_ref() {
+            Some(value) => unsafe {
+                std::env::set_var("NO_PROXY", value);
+            },
+            None => unsafe {
+                std::env::remove_var("NO_PROXY");
+            },
+        }
+        match self.lowercase_http_proxy.as_ref() {
+            Some(value) => unsafe {
+                std::env::set_var("http_proxy", value);
+            },
+            None => unsafe {
+                std::env::remove_var("http_proxy");
+            },
+        }
+        match self.lowercase_https_proxy.as_ref() {
+            Some(value) => unsafe {
+                std::env::set_var("https_proxy", value);
+            },
+            None => unsafe {
+                std::env::remove_var("https_proxy");
+            },
+        }
+        match self.lowercase_all_proxy.as_ref() {
+            Some(value) => unsafe {
+                std::env::set_var("all_proxy", value);
+            },
+            None => unsafe {
+                std::env::remove_var("all_proxy");
+            },
+        }
+        match self.lowercase_no_proxy.as_ref() {
+            Some(value) => unsafe {
+                std::env::set_var("no_proxy", value);
+            },
+            None => unsafe {
+                std::env::remove_var("no_proxy");
             },
         }
     }

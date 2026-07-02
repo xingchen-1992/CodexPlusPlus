@@ -1,4 +1,12 @@
 pub fn proxied_client(user_agent: &str) -> anyhow::Result<reqwest::Client> {
+    Ok(client_builder(user_agent)?.build()?)
+}
+
+pub fn direct_client(user_agent: &str) -> anyhow::Result<reqwest::Client> {
+    Ok(client_builder(user_agent)?.no_proxy().build()?)
+}
+
+fn client_builder(user_agent: &str) -> anyhow::Result<reqwest::ClientBuilder> {
     let ua = if user_agent.trim().is_empty() {
         format!("CodexPlusPlus/{}", env!("CARGO_PKG_VERSION"))
     } else {
@@ -12,5 +20,5 @@ pub fn proxied_client(user_agent: &str) -> anyhow::Result<reqwest::Client> {
     {
         builder = builder.proxy(reqwest::Proxy::all(proxy.environment_proxy_url())?);
     }
-    Ok(builder.build()?)
+    Ok(builder)
 }

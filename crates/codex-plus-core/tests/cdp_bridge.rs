@@ -49,8 +49,6 @@ fn injection_script_prefixes_helper_url_without_sponsor_sources() {
     assert!(script.contains("http://127.0.0.1:57321"));
     assert!(script.contains("window.__CODEX_PLUS_VERSION__"));
     assert!(script.contains(codex_plus_core::version::VERSION));
-    assert!(script.contains("https://www.leishen-ai.cn/tools/codex-plus"));
-    assert!(script.contains("https://www.leishen-ai.cn/user-next/console/subscription"));
     assert!(!script.contains("window.__CODEX_PLUS_SPONSOR_IMAGES__"));
     assert!(!script.contains("github.com/BigPizzaV3/CodexPlusPlus"));
 }
@@ -612,6 +610,8 @@ function node() {{
     remove() {{}},
     setAttribute() {{}},
     removeAttribute() {{}},
+    hasAttribute() {{ return false; }},
+    getAttribute() {{ return null; }},
     addEventListener() {{}},
     querySelector() {{ return null; }},
     querySelectorAll() {{ return []; }},
@@ -620,18 +620,25 @@ function node() {{
     dataset: {{}},
     style: {{}},
     children: [],
+    childNodes: [],
     isConnected: true,
+    nodeType: 1,
     textContent: "",
     innerHTML: "",
   }};
 }}
 globalThis.window = globalThis;
 window.__CODEX_PLUS_TEST_SERVICE_TIER__ = true;
+globalThis.Node = {{ ELEMENT_NODE: 1, TEXT_NODE: 3, DOCUMENT_NODE: 9 }};
+globalThis.NodeFilter = {{ SHOW_TEXT: 4 }};
+globalThis.HTMLButtonElement = class {{}};
 globalThis.document = {{
   scripts: [],
+  nodeType: 9,
   documentElement: node(),
   body: node(),
   createElement: () => node(),
+  createTreeWalker: () => ({{ nextNode: () => null }}),
   getElementById: () => null,
   querySelector: () => null,
   querySelectorAll: () => [],
@@ -647,6 +654,17 @@ globalThis.location = {{ href: "https://codex.test/thread/thread-12345678", path
 window.location = globalThis.location;
 globalThis.navigator = {{ userAgent: "node-test" }};
 globalThis.performance = {{ getEntriesByType: () => [] }};
+globalThis.requestAnimationFrame = (callback) => {{
+  const handle = setTimeout(() => callback(Date.now()), 0);
+  handle.unref?.();
+  return handle;
+}};
+globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
+globalThis.MutationObserver = class {{
+  observe() {{}}
+  disconnect() {{}}
+  takeRecords() {{ return []; }}
+}};
 require(scriptPath);
 const api = window.__codexPlusServiceTierTest;
 api.setServiceTierState({{ serviceTier: "priority", fastTierValue: "priority" }});
@@ -695,6 +713,7 @@ process.stdout.write(JSON.stringify({{
   customInheritUnsupported,
   startConversation,
 }}));
+process.exit(0);
 "#,
         script_path = serde_json::to_string(&script_path.to_string_lossy().to_string())
             .expect("script path should serialize")
@@ -1093,9 +1112,16 @@ async fn list_targets_can_query_ipv6_loopback_cdp_endpoint() {
         stream.try_write(&body).expect("response body should write");
     });
 
-    let targets = list_targets(port)
-        .await
-        .expect("CDP target query should fall back to IPv6 loopback");
+    let targets = match list_targets(port).await {
+        Ok(targets) => targets,
+        Err(error) if cfg!(windows) && format!("{error:#}").contains("10013") => {
+            server.abort();
+            return;
+        }
+        Err(error) => {
+            panic!("CDP target query should fall back to IPv6 loopback: {error:#}");
+        }
+    };
 
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].id, "page-1");

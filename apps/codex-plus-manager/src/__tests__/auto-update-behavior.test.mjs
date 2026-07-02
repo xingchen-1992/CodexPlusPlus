@@ -26,9 +26,10 @@ test("only topbar update button is visible and asks before installing", () => {
   assert.match(stylesSource, /\.topbar-update-version\.update-pulse/);
 });
 
-test("Windows self-update prefers the small setup executable over the full ZIP package", () => {
+test("Windows self-update prefers the full ZIP package over the standalone setup executable", () => {
   assert.match(updateSource, /fn is_windows_setup_asset/);
   assert.match(updateSource, /fn is_windows_full_package_asset/);
-  assert.match(updateSource, /is_windows_setup_asset\(name\)\s*\{\s*return 0;/);
-  assert.match(updateSource, /is_windows_full_package_asset\(name\)\s*\{\s*return 1;/);
+  assert.match(updateSource, /is_windows_full_package_asset\(name\)\s*\{\s*return 0;/);
+  assert.match(updateSource, /is_windows_setup_asset\(name\)\s*\{\s*return 1;/);
+  assert.match(updateSource, /点我双击安装\.exe/);
 });

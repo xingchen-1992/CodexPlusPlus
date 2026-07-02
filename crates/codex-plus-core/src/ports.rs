@@ -321,6 +321,7 @@ mod tests {
 
     #[test]
     fn launcher_guard_port_returns_base_when_no_env_override() {
+        let _env_lock = _guard_port_env_lock();
         _clear_guard_port_env_vars();
         let port = launcher_guard_port();
         // On non-Windows: LAUNCHER_GUARD_PORT_BASE + 0
@@ -331,6 +332,7 @@ mod tests {
 
     #[test]
     fn manager_guard_port_returns_base_when_no_env_override() {
+        let _env_lock = _guard_port_env_lock();
         _clear_guard_port_env_vars();
         let port = manager_guard_port();
         assert!(port >= MANAGER_GUARD_PORT_BASE);
@@ -339,6 +341,7 @@ mod tests {
 
     #[test]
     fn launcher_guard_port_honors_env_override() {
+        let _env_lock = _guard_port_env_lock();
         _clear_guard_port_env_vars();
         unsafe { std::env::set_var("CODEX_PLUS_GUARD_PORT", "9999") };
         let port = launcher_guard_port();
@@ -348,6 +351,7 @@ mod tests {
 
     #[test]
     fn launcher_guard_port_honors_specific_env_override() {
+        let _env_lock = _guard_port_env_lock();
         _clear_guard_port_env_vars();
         unsafe { std::env::set_var("CODEX_PLUS_LAUNCHER_GUARD_PORT", "8888") };
         let port = launcher_guard_port();
@@ -357,6 +361,7 @@ mod tests {
 
     #[test]
     fn manager_guard_port_honors_specific_env_override() {
+        let _env_lock = _guard_port_env_lock();
         _clear_guard_port_env_vars();
         unsafe { std::env::set_var("CODEX_PLUS_MANAGER_GUARD_PORT", "7777") };
         let port = manager_guard_port();
@@ -366,6 +371,7 @@ mod tests {
 
     #[test]
     fn launcher_guard_port_honors_offset_env() {
+        let _env_lock = _guard_port_env_lock();
         _clear_guard_port_env_vars();
         unsafe { std::env::set_var("CODEX_PLUS_GUARD_PORT_OFFSET", "50") };
         let port = launcher_guard_port();
@@ -374,8 +380,19 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+static GUARD_PORT_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
+fn _guard_port_env_lock() -> std::sync::MutexGuard<'static, ()> {
+    GUARD_PORT_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Clear all guard-port env vars to prevent cross-test contamination
 /// when cargo runs tests in parallel threads.
+#[cfg(test)]
 fn _clear_guard_port_env_vars() {
     unsafe {
         let _ = std::env::remove_var("CODEX_PLUS_GUARD_PORT");

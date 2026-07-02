@@ -414,14 +414,14 @@ mod tests {
         assert!(!second.imported);
         assert_eq!(first.profile_id, second.profile_id);
         assert_eq!(settings.active_relay_id, first.profile_id);
-        assert_eq!(settings.relay_profiles.len(), 2);
+        assert_eq!(settings.relay_profiles.len(), 1);
         assert_eq!(
-            settings.relay_profiles[1].protocol,
+            settings.relay_profiles[0].protocol,
             RelayProtocol::Responses
         );
-        assert_eq!(settings.relay_profiles[1].relay_mode, RelayMode::PureApi);
+        assert_eq!(settings.relay_profiles[0].relay_mode, RelayMode::PureApi);
         assert_eq!(
-            settings.relay_profiles[1].upstream_base_url,
+            settings.relay_profiles[0].upstream_base_url,
             "https://www.leishen-ai.cn/openai"
         );
     }
@@ -472,7 +472,7 @@ mod tests {
         let settings = store.load().unwrap();
 
         assert!(result.imported);
-        assert_eq!(settings.relay_profiles.len(), 2);
+        assert_eq!(settings.relay_profiles.len(), 1);
         assert!(
             load_pending_provider_import_at(&pending_path)
                 .unwrap()
