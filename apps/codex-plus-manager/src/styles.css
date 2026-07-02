@@ -396,6 +396,247 @@ body {
   margin: 0 16px 16px;
 }
 
+.support-chat-panel {
+  min-height: calc(100vh - 128px);
+}
+
+.support-chat-content {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  min-height: calc(100vh - 220px);
+}
+
+.support-chat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--surface-raised));
+  padding: 10px 12px;
+}
+
+.support-chat-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.support-chat-state span {
+  min-width: 0;
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.support-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 360px;
+  max-height: calc(100vh - 358px);
+  overflow: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--background));
+  padding: 12px;
+  scrollbar-gutter: stable;
+}
+
+.support-message {
+  display: grid;
+  gap: 5px;
+  max-width: min(74%, 680px);
+}
+
+.support-message.mine {
+  align-self: flex-end;
+}
+
+.support-message.agent {
+  align-self: flex-start;
+}
+
+.support-message-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.support-message.mine .support-message-meta {
+  justify-content: flex-end;
+}
+
+.support-message-bubble {
+  display: grid;
+  gap: 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--surface-raised));
+  padding: 10px 12px;
+}
+
+.support-message.mine .support-message-bubble {
+  border-color: hsl(var(--primary) / 0.36);
+  background: hsl(var(--primary) / 0.15);
+}
+
+.support-message-bubble p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.support-message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.support-message-image {
+  display: grid;
+  place-items: center;
+  width: min(220px, 42vw);
+  min-width: 120px;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--card));
+  color: hsl(var(--muted-foreground));
+}
+
+.support-message-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.support-image-preview-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--surface-raised));
+  padding: 8px;
+}
+
+.support-image-preview {
+  position: relative;
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--card));
+}
+
+.support-image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.support-image-preview button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  background: hsl(var(--background) / 0.92);
+  color: hsl(var(--foreground));
+}
+
+.support-composer {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.support-file-input {
+  display: none;
+}
+
+.support-composer-input {
+  min-height: 42px;
+  max-height: 128px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.support-empty-state {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  min-height: calc(100vh - 250px);
+  gap: 10px;
+  text-align: center;
+}
+
+.support-empty-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid hsl(var(--primary) / 0.38);
+  border-radius: 8px;
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+}
+
+.support-empty-state h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.support-empty-state p {
+  margin: 0;
+  color: hsl(var(--muted-foreground));
+}
+
+.spin {
+  animation: support-spin 900ms linear infinite;
+}
+
+@keyframes support-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 820px) {
+  .support-message {
+    max-width: 92%;
+  }
+
+  .support-composer {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .support-composer > button:last-child {
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  .support-message-list {
+    max-height: none;
+  }
+}
+
 .panel {
   padding: 0;
   border-color: hsl(var(--border));

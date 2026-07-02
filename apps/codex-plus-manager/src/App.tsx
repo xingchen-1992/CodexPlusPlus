@@ -26,6 +26,7 @@ import {
   Download,
   Edit3,
   GripVertical,
+  Image as ImageIcon,
   Info,
   ExternalLink,
   Hammer,
@@ -35,12 +36,14 @@ import {
   FileCode2,
   Moon,
   Network,
+  Paperclip,
   Power,
   PowerOff,
   Plus,
   RefreshCw,
   Rocket,
   Save,
+  Send,
   Settings,
   ShieldCheck,
   ShieldAlert,
@@ -48,11 +51,12 @@ import {
   TestTube,
   Trash2,
   Wrench,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { ProviderPresetSelector } from "@/components/ProviderPresetSelector";
 import type { PresetPatch } from "@/components/ProviderPresetSelector";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { Badge as UiBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -276,6 +280,7 @@ const CHAT_UPSTREAM_BASE_URL_KEY = "codex_plus_chat_base_url";
 const SCRIPT_MARKET_REPOSITORY_URL = "https://www.leishen-ai.cn/tools/codex-plus/script-market";
 const SUBSCRIPTION_CENTER_URL = "https://www.leishen-ai.cn/user-next/console/subscription?desktop=codex-plus-taiying";
 const SUBSCRIPTION_CENTER_ORIGIN = "https://www.leishen-ai.cn";
+const SUPPORT_API_BASE_URL = "https://www.leishen-ai.cn/portal/support";
 const UPDATE_POLL_INTERVAL_MS = 10 * 60 * 1000;
 const UPDATE_BUTTON_TOOLTIP = "更新管理工具，不会影响 Codex 应用当前正常使用。";
 const API_KEY_BACKUP_REMINDER = "请务必保存好 API Key，丢失后无法在本工具中找回。";
@@ -659,12 +664,13 @@ type OfficialSyncResult = {
   message: string;
 };
 
-type Route = "overview" | "subscription" | "relay" | "mobileControl" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "maintenance" | "about" | "settings";
+type Route = "overview" | "subscription" | "support" | "relay" | "mobileControl" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "maintenance" | "about" | "settings";
 type Theme = "dark" | "light";
 
 const routes: Array<{ id: Route; label: string; icon: LucideIcon; badge?: string }> = [
   { id: "overview", label: "概览", icon: LayoutDashboard },
   { id: "subscription", label: "订阅中心", icon: CreditCard },
+  { id: "support", label: "联系客服", icon: MessageCircle },
   { id: "relay", label: "供应商配置", icon: KeyRound },
   { id: "mobileControl", label: "手机控制", icon: MessageCircle, badge: "测试版" },
   { id: "sessions", label: "会话管理", icon: MessageCircle },
@@ -2452,6 +2458,7 @@ export function App() {
             />
           ) : null}
           {route === "about" ? <AboutScreen overview={overview} update={update} logs={logs} diagnostics={diagnostics} actions={actions} /> : null}
+          {route === "support" ? <SupportScreen actions={actions} officialApiKey={officialApiKey} /> : null}
           {route === "settings" ? (
             <SettingsScreen
               settings={settings}
@@ -3800,6 +3807,392 @@ function MaintenanceScreen({
         </CardContent>
       </Panel>
     </>
+  );
+}
+
+type SupportAttachment = {
+  id: string;
+  type: string;
+  url: string;
+  thumbUrl: string;
+  contentType: string;
+  fileSize: number;
+  width: number;
+  height: number;
+};
+
+type SupportMessage = {
+  id: string;
+  content: string;
+  direction: "customer" | "agent";
+  createdAt: number;
+  attachments: SupportAttachment[];
+  senderName: string;
+};
+
+type SupportConversationPayload = {
+  conversationId: string;
+  status?: string;
+  messages: SupportMessage[];
+  maxImageCount?: number;
+  maxImageSizeBytes?: number;
+  updatedAt?: string;
+};
+
+type SupportApiEnvelope<T> = {
+  success: boolean;
+  enabled?: boolean;
+  message?: string;
+  data?: T;
+};
+
+type PendingSupportImage = {
+  id: string;
+  file: File;
+  url: string;
+  name: string;
+  size: number;
+};
+
+async function supportApiRequest<T>(path: string, apiKey: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("x-api-key", apiKey.trim());
+  headers.set("x-support-source", "desktop-manager");
+  if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const response = await fetch(`${SUPPORT_API_BASE_URL}${path}`, {
+    ...init,
+    headers,
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => null)) as SupportApiEnvelope<T> | null;
+  if (!response.ok || !payload?.success) {
+    throw new Error(payload?.message || `客服接口异常：HTTP ${response.status}`);
+  }
+  return payload.data as T;
+}
+
+function SupportScreen({ actions, officialApiKey }: { actions: Actions; officialApiKey: string }) {
+  const normalizedApiKey = officialApiKey.trim();
+  const [conversationId, setConversationId] = useState("");
+  const [messages, setMessages] = useState<SupportMessage[]>([]);
+  const [draft, setDraft] = useState("");
+  const [pendingImages, setPendingImages] = useState<PendingSupportImage[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState("");
+  const [maxImageCount, setMaxImageCount] = useState(4);
+  const [maxImageSizeBytes, setMaxImageSizeBytes] = useState(8 * 1024 * 1024);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingImagesRef = useRef<PendingSupportImage[]>([]);
+
+  useEffect(() => {
+    pendingImagesRef.current = pendingImages;
+  }, [pendingImages]);
+
+  useEffect(
+    () => () => {
+      pendingImagesRef.current.forEach((item) => URL.revokeObjectURL(item.url));
+    },
+    [],
+  );
+
+  const scrollMessagesToBottom = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const node = messageListRef.current;
+      if (node) {
+        node.scrollTop = node.scrollHeight;
+      }
+    });
+  }, []);
+
+  const applyConversationPayload = useCallback(
+    (payload: SupportConversationPayload) => {
+      setConversationId(payload.conversationId || "");
+      setMessages(Array.isArray(payload.messages) ? payload.messages : []);
+      setMaxImageCount(payload.maxImageCount || 4);
+      setMaxImageSizeBytes(payload.maxImageSizeBytes || 8 * 1024 * 1024);
+      setLastUpdatedAt(payload.updatedAt ? formatSupportUpdateTime(payload.updatedAt) : formatSupportUpdateTime(Date.now()));
+      scrollMessagesToBottom();
+    },
+    [scrollMessagesToBottom],
+  );
+
+  const loadConversation = useCallback(
+    async (silent = false) => {
+      if (!normalizedApiKey) {
+        setConversationId("");
+        setMessages([]);
+        setError("");
+        return;
+      }
+      if (!silent) setBusy(true);
+      try {
+        const payload = await supportApiRequest<SupportConversationPayload>("/conversation", normalizedApiKey, {
+          method: "POST",
+          body: JSON.stringify({ source: "desktop-manager" }),
+        });
+        applyConversationPayload(payload);
+        setError("");
+      } catch (loadError) {
+        setError(stringifyError(loadError));
+      } finally {
+        if (!silent) setBusy(false);
+      }
+    },
+    [applyConversationPayload, normalizedApiKey],
+  );
+
+  const refreshMessages = useCallback(
+    async (silent = false) => {
+      if (!normalizedApiKey) return;
+      if (!conversationId) {
+        await loadConversation(silent);
+        return;
+      }
+      if (!silent) setBusy(true);
+      try {
+        const payload = await supportApiRequest<SupportConversationPayload>(
+          `/conversation/messages?conversationId=${encodeURIComponent(conversationId)}`,
+          normalizedApiKey,
+        );
+        applyConversationPayload(payload);
+        setError("");
+      } catch (refreshError) {
+        if (!silent) {
+          setError(stringifyError(refreshError));
+        }
+      } finally {
+        if (!silent) setBusy(false);
+      }
+    },
+    [applyConversationPayload, conversationId, loadConversation, normalizedApiKey],
+  );
+
+  useEffect(() => {
+    void loadConversation();
+  }, [loadConversation]);
+
+  useEffect(() => {
+    if (!normalizedApiKey) return undefined;
+    const timer = window.setInterval(() => {
+      void refreshMessages(true);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [normalizedApiKey, refreshMessages]);
+
+  useEffect(() => {
+    scrollMessagesToBottom();
+  }, [messages, scrollMessagesToBottom]);
+
+  const clearPendingImages = useCallback(() => {
+    setPendingImages((current) => {
+      current.forEach((item) => URL.revokeObjectURL(item.url));
+      return [];
+    });
+  }, []);
+
+  const removePendingImage = (id: string) => {
+    setPendingImages((current) => {
+      const target = current.find((item) => item.id === id);
+      if (target) URL.revokeObjectURL(target.url);
+      return current.filter((item) => item.id !== id);
+    });
+  };
+
+  const handleImageSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.currentTarget.files || []);
+    event.currentTarget.value = "";
+    if (!selected.length) return;
+
+    const slots = Math.max(0, maxImageCount - pendingImages.length);
+    if (slots <= 0) {
+      setError(`一次最多发送 ${maxImageCount} 张图片`);
+      return;
+    }
+
+    const accepted: PendingSupportImage[] = [];
+    for (const file of selected) {
+      if (accepted.length >= slots) break;
+      if (!file.type.startsWith("image/")) {
+        setError("只能发送图片文件");
+        continue;
+      }
+      if (file.size > maxImageSizeBytes) {
+        setError(`单张图片不能超过 ${formatBytes(maxImageSizeBytes)}`);
+        continue;
+      }
+      accepted.push({
+        id: `${file.name}-${file.size}-${file.lastModified}-${cryptoRandomId()}`,
+        file,
+        url: URL.createObjectURL(file),
+        name: file.name,
+        size: file.size,
+      });
+    }
+
+    if (accepted.length) {
+      setPendingImages((current) => [...current, ...accepted]);
+      setError("");
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!normalizedApiKey || sending) return;
+    const content = draft.trim();
+    if (!content && pendingImages.length === 0) return;
+
+    const form = new FormData();
+    form.append("content", content);
+    if (conversationId) form.append("conversationId", conversationId);
+    pendingImages.forEach((item) => form.append("attachments", item.file, item.name));
+
+    setSending(true);
+    try {
+      const payload = await supportApiRequest<SupportConversationPayload>("/conversation/messages", normalizedApiKey, {
+        method: "POST",
+        body: form,
+      });
+      setDraft("");
+      clearPendingImages();
+      applyConversationPayload(payload);
+      setError("");
+    } catch (sendError) {
+      setError(stringifyError(sendError));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const canSend = normalizedApiKey && !sending && (draft.trim().length > 0 || pendingImages.length > 0);
+  const statusText = error || (busy ? "正在同步消息" : lastUpdatedAt ? `已同步 ${lastUpdatedAt}` : "已连接客服");
+
+  if (!normalizedApiKey) {
+    return (
+      <Panel className="support-chat-panel" fill>
+        <CardHead title="联系客服" detail="当前页面直接对话" />
+        <CardContent className="support-empty-state">
+          <div className="support-empty-mark">
+            <MessageCircle className="h-5 w-5" />
+          </div>
+          <h3>需要先配置 API Key</h3>
+          <p>账户额度里的 API Key 会用于确认你的客服身份。</p>
+          <Toolbar>
+            <Button onClick={() => void actions.goSubscriptionCenter()}>
+              <KeyRound className="h-4 w-4" />
+              账户额度
+            </Button>
+          </Toolbar>
+        </CardContent>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel className="support-chat-panel" fill>
+      <CardHead title="联系客服" detail={conversationId ? `会话 ${conversationId}` : "正在连接"} />
+      <CardContent className="support-chat-content">
+        <div className="support-chat-toolbar">
+          <div className="support-chat-state">
+            <Badge status={error ? "failed" : busy ? "accepted" : "ok"} />
+            <span>{statusText}</span>
+          </div>
+          <Button disabled={busy || sending} onClick={() => void refreshMessages()} size="icon" title="刷新消息" variant="outline">
+            <RefreshCw className={`h-4 w-4 ${busy ? "spin" : ""}`} />
+          </Button>
+        </div>
+
+        <div className="support-message-list" ref={messageListRef}>
+          {busy && messages.length === 0 ? <div className="empty">正在连接客服。</div> : null}
+          {!busy && messages.length === 0 ? <div className="empty">还没有消息。</div> : null}
+          {messages.map((message) => (
+            <SupportMessageBubble key={message.id || `${message.direction}-${message.createdAt}`} message={message} />
+          ))}
+        </div>
+
+        {pendingImages.length > 0 ? (
+          <div className="support-image-preview-row">
+            {pendingImages.map((item) => (
+              <div className="support-image-preview" key={item.id}>
+                <img alt={item.name} src={item.url} />
+                <button onClick={() => removePendingImage(item.id)} title="移除图片" type="button">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="support-composer">
+          <input
+            accept="image/*"
+            className="support-file-input"
+            multiple
+            onChange={handleImageSelection}
+            ref={fileInputRef}
+            type="file"
+          />
+          <Button
+            disabled={sending || pendingImages.length >= maxImageCount}
+            onClick={() => fileInputRef.current?.click()}
+            size="icon"
+            title="添加图片"
+            variant="outline"
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
+          <Textarea
+            className="support-composer-input"
+            disabled={sending}
+            onChange={(event) => setDraft(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault();
+                void sendMessage();
+              }
+            }}
+            placeholder="输入消息"
+            value={draft}
+          />
+          <Button disabled={!canSend} onClick={() => void sendMessage()}>
+            <Send className="h-4 w-4" />
+            {sending ? "发送中" : "发送"}
+          </Button>
+        </div>
+      </CardContent>
+    </Panel>
+  );
+}
+
+function SupportMessageBubble({ message }: { message: SupportMessage }) {
+  const isMine = message.direction === "customer";
+  return (
+    <div className={`support-message ${isMine ? "mine" : "agent"}`}>
+      <div className="support-message-meta">
+        <span>{isMine ? "我" : message.senderName || "客服"}</span>
+        <time>{formatSupportUpdateTime(message.createdAt)}</time>
+      </div>
+      <div className="support-message-bubble">
+        {message.content ? <p>{message.content}</p> : null}
+        {message.attachments.length > 0 ? (
+          <div className="support-message-images">
+            {message.attachments.map((attachment) => (
+              <div className="support-message-image" key={attachment.id || attachment.url}>
+                {attachment.thumbUrl || attachment.url ? (
+                  <img alt="客服图片" src={attachment.thumbUrl || attachment.url} />
+                ) : (
+                  <ImageIcon className="h-5 w-5" />
+                )}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -5657,6 +6050,7 @@ function routeSubtitle(route: Route) {
   const subtitles: Record<Route, string> = {
     overview: "检查问题、启动与快速修复",
     subscription: "购买总量包、生成 API Key 并回到概览刷新额度",
+    support: "打开官方客服会话，文字和图片只对客服可见",
     relay: "管理 API 供应商、协议、Key 与配置文件",
     mobileControl: "配置手机控制 relay、房间密钥和服务器状态",
     sessions: "查看、删除和修复 Codex 本地会话",
@@ -7393,6 +7787,22 @@ function formatDuration(startedAtMs: number): string {
   const hours = Math.floor(mins / 60);
   const remainMins = mins % 60;
   return `已运行 ${hours} 小时 ${remainMins} 分钟`;
+}
+
+function formatSupportUpdateTime(value: number | string) {
+  const date = typeof value === "number" ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function cryptoRandomId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2);
 }
 
 function stringifyError(error: unknown) {
