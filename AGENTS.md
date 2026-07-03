@@ -31,7 +31,8 @@
 - 删除只能单个文件，删除前确认
 - 禁止 sudo、提权、curl | bash
 - 禁止泄露密钥、.env、auth.json、config.toml 凭据
-- 禁止把 GitHub Token、账号密码、私钥等凭证写入 `AGENTS.md`、代码、脚本或任何可提交文件；发布时只允许从临时环境变量、CI Secret 或密码库读取，例如 `GH_TOKEN` / `GITHUB_TOKEN`。
+- GitHub 发布认证按用户提供的方式执行；优先使用临时环境变量 `GH_TOKEN` / `GITHUB_TOKEN`、CI Secret、密码库，或 `git -c http.extraheader` 这种单次命令认证方式。
+- Token、账号密码、私钥等凭据只按用户指定方式读取和使用；不要擅自改变认证方式，也不要把实际凭据混入代码、Release 说明、latest.json、发布包等会分发给用户的文件。
 - 禁止触发 GitHub 图形登录、浏览器登录、设备码登录或 Git Credential Manager 弹窗；如果当前没有 `GH_TOKEN` / `GITHUB_TOKEN` 或已配置好的非交互凭据，必须停止发布并说明缺少临时认证。
 - 覆盖文件前确认
 - 不擅自改 Cargo.toml、package.json、.gitignore（除非任务必需）
