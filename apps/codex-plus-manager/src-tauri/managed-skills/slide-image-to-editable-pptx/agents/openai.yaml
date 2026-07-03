@@ -1,0 +1,6 @@
+interface:
+  display_name: "Slide Image → Editable PPTX"
+  short_description: "Convert slide screenshots into high-fidelity editable PowerPoint with @crs image high-resolution visuals and native text/shapes."
+  default_prompt: "Convert the provided slide images into an editable PPTX. Analyze each slide, generate clean high-resolution visual assets with @crs image / crs-image, and build the deck with @presentations. All text must be editable, all complex visuals must be clean PNGs without text."
+policy:
+  allow_implicit_invocation: true

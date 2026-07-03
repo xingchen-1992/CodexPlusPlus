@@ -6089,12 +6089,13 @@ type ManagedSkillDefinition = {
 const MANAGED_SKILLS: ManagedSkillDefinition[] = [
   { id: CRS_IMAGE_SKILL_ID, title: "CRS Image" },
   { id: "humanizer-zh", title: "Humanizer Zh" },
-  { id: "ppt-master", title: "PPT Master" },
-  { id: "slide-image-editable-pptx", title: "Slide Image - Editable PPTX" },
+  { id: "ppt-magic", title: "PPT Magic" },
+  { id: "slide-image-to-editable-pptx", title: "Slide Image - Editable PPTX" },
   { id: "markitdown", title: "Markitdown" },
   { id: "spreadsheets", title: "Spreadsheets" },
 ];
-const MANAGED_SKILL_IDS = new Set(MANAGED_SKILLS.map((skill) => skill.id));
+const LEGACY_MANAGED_SKILL_IDS = ["ppt-master", "slide-image-editable-pptx"];
+const MANAGED_SKILL_IDS = new Set([...MANAGED_SKILLS.map((skill) => skill.id), ...LEGACY_MANAGED_SKILL_IDS]);
 
 function contextKindLabel(kind: ContextKind) {
   return contextKindOptions.find((option) => option.kind === kind)?.label ?? "扩展项";

@@ -1,0 +1,5 @@
+interface:
+  display_name: "PPT Magic"
+  short_description: "Picture-first decks with editable PPTX handoff"
+  brand_color: "#1E5AA8"
+  default_prompt: "Use $ppt-magic to turn this source document into a picture-first PPT workflow with editable PPTX reconstruction."

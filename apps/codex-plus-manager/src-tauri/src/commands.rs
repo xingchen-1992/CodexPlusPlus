@@ -29,42 +29,150 @@ const MANAGED_SKILL_SOURCES: &[ManagedSkillSource] = &[
         title: "CRS Image",
         url: CRS_IMAGE_SKILL_URL,
         required_marker: "name: crs-image",
-        contents: CRS_IMAGE_SKILL,
+        files: &[ManagedSkillFileSource {
+            relative_path: "SKILL.md",
+            contents: include_bytes!("../managed-skills/crs-image/SKILL.md"),
+        }],
     },
     ManagedSkillSource {
         id: "humanizer-zh",
         title: "Humanizer Zh",
         url: "bundled://managed-skills/humanizer-zh/SKILL.md",
         required_marker: "name: humanizer-zh",
-        contents: include_str!("../managed-skills/humanizer-zh/SKILL.md"),
+        files: &[ManagedSkillFileSource {
+            relative_path: "SKILL.md",
+            contents: include_bytes!("../managed-skills/humanizer-zh/SKILL.md"),
+        }],
     },
     ManagedSkillSource {
-        id: "ppt-master",
-        title: "PPT Master",
-        url: "bundled://managed-skills/ppt-master/SKILL.md",
-        required_marker: "name: ppt-master",
-        contents: include_str!("../managed-skills/ppt-master/SKILL.md"),
+        id: "ppt-magic",
+        title: "PPT Magic",
+        url: "bundled://managed-skills/ppt-magic/SKILL.md",
+        required_marker: "name: ppt-magic",
+        files: &[
+            ManagedSkillFileSource {
+                relative_path: "SKILL.md",
+                contents: include_bytes!("../managed-skills/ppt-magic/SKILL.md"),
+            },
+            ManagedSkillFileSource {
+                relative_path: "agents/openai.yaml",
+                contents: include_bytes!("../managed-skills/ppt-magic/agents/openai.yaml"),
+            },
+            ManagedSkillFileSource {
+                relative_path: "references/content-fidelity.md",
+                contents: include_bytes!(
+                    "../managed-skills/ppt-magic/references/content-fidelity.md"
+                ),
+            },
+            ManagedSkillFileSource {
+                relative_path: "references/quality-and-qa.md",
+                contents: include_bytes!(
+                    "../managed-skills/ppt-magic/references/quality-and-qa.md"
+                ),
+            },
+            ManagedSkillFileSource {
+                relative_path: "references/reconstruction-handoff.md",
+                contents: include_bytes!(
+                    "../managed-skills/ppt-magic/references/reconstruction-handoff.md"
+                ),
+            },
+        ],
     },
     ManagedSkillSource {
-        id: "slide-image-editable-pptx",
+        id: "slide-image-to-editable-pptx",
         title: "Slide Image - Editable PPTX",
-        url: "bundled://managed-skills/slide-image-editable-pptx/SKILL.md",
-        required_marker: "name: slide-image-editable-pptx",
-        contents: include_str!("../managed-skills/slide-image-editable-pptx/SKILL.md"),
+        url: "bundled://managed-skills/slide-image-to-editable-pptx/SKILL.md",
+        required_marker: "name: slide-image-to-editable-pptx",
+        files: &[
+            ManagedSkillFileSource {
+                relative_path: "SKILL.md",
+                contents: include_bytes!("../managed-skills/slide-image-to-editable-pptx/SKILL.md"),
+            },
+            ManagedSkillFileSource {
+                relative_path: "agents/openai.yaml",
+                contents: include_bytes!(
+                    "../managed-skills/slide-image-to-editable-pptx/agents/openai.yaml"
+                ),
+            },
+            ManagedSkillFileSource {
+                relative_path: "LICENSE",
+                contents: include_bytes!("../managed-skills/slide-image-to-editable-pptx/LICENSE"),
+            },
+            ManagedSkillFileSource {
+                relative_path: "README.md",
+                contents: include_bytes!(
+                    "../managed-skills/slide-image-to-editable-pptx/README.md"
+                ),
+            },
+            ManagedSkillFileSource {
+                relative_path: "README_ZH.md",
+                contents: include_bytes!(
+                    "../managed-skills/slide-image-to-editable-pptx/README_ZH.md"
+                ),
+            },
+            ManagedSkillFileSource {
+                relative_path: "assets/screenshots/10.jpg",
+                contents: include_bytes!(
+                    "../managed-skills/slide-image-to-editable-pptx/assets/screenshots/10.jpg"
+                ),
+            },
+            ManagedSkillFileSource {
+                relative_path: "assets/screenshots/8和9合在一起.jpg",
+                contents: include_bytes!(
+                    "../managed-skills/slide-image-to-editable-pptx/assets/screenshots/8和9合在一起.jpg"
+                ),
+            },
+            ManagedSkillFileSource {
+                relative_path: "assets/screenshots/第2张.jpg",
+                contents: include_bytes!(
+                    "../managed-skills/slide-image-to-editable-pptx/assets/screenshots/第2张.jpg"
+                ),
+            },
+            ManagedSkillFileSource {
+                relative_path: "assets/screenshots/第3张.jpg",
+                contents: include_bytes!(
+                    "../managed-skills/slide-image-to-editable-pptx/assets/screenshots/第3张.jpg"
+                ),
+            },
+            ManagedSkillFileSource {
+                relative_path: "assets/screenshots/第4张.jpg",
+                contents: include_bytes!(
+                    "../managed-skills/slide-image-to-editable-pptx/assets/screenshots/第4张.jpg"
+                ),
+            },
+            ManagedSkillFileSource {
+                relative_path: "assets/screenshots/第5张.jpg",
+                contents: include_bytes!(
+                    "../managed-skills/slide-image-to-editable-pptx/assets/screenshots/第5张.jpg"
+                ),
+            },
+            ManagedSkillFileSource {
+                relative_path: "assets/screenshots/第一张.jpg",
+                contents: include_bytes!(
+                    "../managed-skills/slide-image-to-editable-pptx/assets/screenshots/第一张.jpg"
+                ),
+            },
+        ],
     },
     ManagedSkillSource {
         id: "markitdown",
         title: "Markitdown",
         url: "bundled://managed-skills/markitdown/SKILL.md",
         required_marker: "name: markitdown",
-        contents: include_str!("../managed-skills/markitdown/SKILL.md"),
+        files: &[ManagedSkillFileSource {
+            relative_path: "SKILL.md",
+            contents: include_bytes!("../managed-skills/markitdown/SKILL.md"),
+        }],
     },
     ManagedSkillSource {
         id: "spreadsheets",
         title: "Spreadsheets",
         url: "bundled://managed-skills/spreadsheets/SKILL.md",
         required_marker: "name: spreadsheets",
-        contents: include_str!("../managed-skills/spreadsheets/SKILL.md"),
+        files: &[ManagedSkillFileSource {
+            relative_path: "SKILL.md",
+            contents: include_bytes!("../managed-skills/spreadsheets/SKILL.md"),
+        }],
     },
 ];
 const CODEX_WINDOWS_INSTALL_COMMAND: &str = "winget install --id 9PLM9XGG6VKS --exact --source msstore --accept-source-agreements --accept-package-agreements --silent --disable-interactivity";
@@ -87,13 +195,18 @@ struct ManagedSkillSource {
     title: &'static str,
     url: &'static str,
     required_marker: &'static str,
-    contents: &'static str,
+    files: &'static [ManagedSkillFileSource],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ManagedSkillFileSource {
+    relative_path: &'static str,
+    contents: &'static [u8],
 }
 
 #[derive(Debug, Clone)]
 struct ManagedSkillDocument {
     source: ManagedSkillSource,
-    contents: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2711,24 +2824,29 @@ pub async fn install_crs_image_skill() -> CommandResult<CrsImageInstallPayload> 
 fn bundled_managed_skill_documents() -> anyhow::Result<Vec<ManagedSkillDocument>> {
     let mut documents = Vec::with_capacity(MANAGED_SKILL_SOURCES.len());
     for source in MANAGED_SKILL_SOURCES {
-        validate_managed_skill_document(source, source.contents)?;
-        documents.push(ManagedSkillDocument {
-            source: *source,
-            contents: source.contents.to_string(),
-        });
+        validate_managed_skill_document(source)?;
+        documents.push(ManagedSkillDocument { source: *source });
     }
     Ok(documents)
 }
 
-fn validate_managed_skill_document(
-    source: &ManagedSkillSource,
-    contents: &str,
-) -> anyhow::Result<()> {
+fn validate_managed_skill_document(source: &ManagedSkillSource) -> anyhow::Result<()> {
     if !source.url.starts_with("bundled://managed-skills/") {
         anyhow::bail!("{} Skill 内置来源不符合预期", source.title);
     }
+    let skill_file = source
+        .files
+        .iter()
+        .find(|file| file.relative_path == "SKILL.md")
+        .with_context(|| format!("{} Skill 缺少 SKILL.md", source.title))?;
+    let contents = std::str::from_utf8(skill_file.contents)
+        .with_context(|| format!("{} Skill 文档不是有效 UTF-8", source.title))?;
     if !contents.contains(source.required_marker) {
         anyhow::bail!("{} Skill 文档内容不符合预期", source.title);
+    }
+    for file in source.files {
+        managed_skill_relative_path(file.relative_path)
+            .with_context(|| format!("{} Skill 文件路径不符合预期", source.title))?;
     }
     Ok(())
 }
@@ -2739,13 +2857,28 @@ fn install_managed_skill_documents(
 ) -> anyhow::Result<bool> {
     let mut updated = false;
     for document in documents {
-        let skill_path = codex_home
-            .join("skills")
-            .join(document.source.id)
-            .join("SKILL.md");
-        updated |= write_text_file_if_changed(&skill_path, &document.contents)?;
+        let skill_dir = codex_home.join("skills").join(document.source.id);
+        for file in document.source.files {
+            let relative_path = managed_skill_relative_path(file.relative_path)?;
+            let target_path = skill_dir.join(relative_path);
+            updated |= write_binary_file_if_changed(&target_path, file.contents)?;
+        }
     }
     Ok(updated)
+}
+
+fn managed_skill_relative_path(relative_path: &str) -> anyhow::Result<PathBuf> {
+    let path = Path::new(relative_path);
+    if relative_path.is_empty() || path.is_absolute() {
+        anyhow::bail!("托管 Skill 文件路径必须是相对路径：{relative_path}");
+    }
+    let safe = path
+        .components()
+        .all(|component| matches!(component, std::path::Component::Normal(_)));
+    if !safe {
+        anyhow::bail!("托管 Skill 文件路径包含不安全片段：{relative_path}");
+    }
+    Ok(path.to_path_buf())
 }
 
 #[tauri::command]
@@ -3839,6 +3972,10 @@ fn validate_crs_image_downloads(client: &str, skill: &str) -> anyhow::Result<()>
 }
 
 fn write_text_file(path: &Path, contents: &str) -> anyhow::Result<()> {
+    write_binary_file(path, contents.as_bytes())
+}
+
+fn write_binary_file(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("创建目录失败：{}", parent.display()))?;
@@ -3852,6 +3989,14 @@ fn write_text_file_if_changed(path: &Path, contents: &str) -> anyhow::Result<boo
         return Ok(false);
     }
     write_text_file(path, contents)?;
+    Ok(true)
+}
+
+fn write_binary_file_if_changed(path: &Path, contents: &[u8]) -> anyhow::Result<bool> {
+    if fs::read(path).ok().as_deref() == Some(contents) {
+        return Ok(false);
+    }
+    write_binary_file(path, contents)?;
     Ok(true)
 }
 
@@ -5309,6 +5454,57 @@ mod tests {
             "{}\n"
         );
         assert!(save_relay_file_in_home(temp.path(), "../bad", "").is_err());
+    }
+
+    #[test]
+    fn install_managed_skill_documents_writes_auxiliary_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let documents = bundled_managed_skill_documents().unwrap();
+
+        let updated = install_managed_skill_documents(temp.path(), &documents).unwrap();
+        assert!(updated);
+
+        let skills_dir = temp.path().join("skills");
+        assert!(
+            std::fs::read_to_string(skills_dir.join("ppt-magic").join("SKILL.md"))
+                .unwrap()
+                .contains("name: ppt-magic")
+        );
+        assert!(
+            std::fs::read_to_string(
+                skills_dir
+                    .join("ppt-magic")
+                    .join("references")
+                    .join("content-fidelity.md")
+            )
+            .unwrap()
+            .contains("Visible slide text must come from the confirmed page copy")
+        );
+        assert!(
+            std::fs::read_to_string(
+                skills_dir
+                    .join("slide-image-to-editable-pptx")
+                    .join("agents")
+                    .join("openai.yaml")
+            )
+            .unwrap()
+            .contains("Slide Image")
+        );
+        assert!(
+            std::fs::read(
+                skills_dir
+                    .join("slide-image-to-editable-pptx")
+                    .join("assets")
+                    .join("screenshots")
+                    .join("第一张.jpg")
+            )
+            .unwrap()
+            .len()
+                > 1024
+        );
+
+        let second = install_managed_skill_documents(temp.path(), &documents).unwrap();
+        assert!(!second);
     }
 
     #[test]

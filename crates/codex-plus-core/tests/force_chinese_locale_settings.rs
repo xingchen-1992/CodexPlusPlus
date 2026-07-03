@@ -84,7 +84,7 @@ fn injection_script_includes_force_chinese_locale_global_and_patch() {
     assert!(script.contains("__codexPlusSuppressOfficialAppUpdatesInstalled"));
     assert!(script.contains("data-codex-plus-official-update-hidden"));
     assert!(script.contains("20260702-i18n-targets-v2"));
-    assert!(script.contains("20260702-recursive-i18n-assets-v5"));
+    assert!(script.contains("20260703-access-i18n-v6"));
     assert!(script.contains("72216192"));
     assert!(script.contains("enable_i18n"));
     assert!(script.contains("locale_source"));
@@ -117,6 +117,22 @@ fn injection_script_includes_force_chinese_locale_global_and_patch() {
     assert!(script.contains("默认终端位置"));
     assert!(script.contains("Learn more"));
     assert!(script.contains("了解更多"));
+    assert!(script.contains("How should Codex actions be approved?"));
+    assert!(script.contains("Codex 执行操作时如何确认？"));
+    assert!(script.contains("Always ask to edit external files and use the internet"));
+    assert!(script.contains("编辑外部文件或使用互联网前始终询问"));
+    assert!(script.contains("Unrestricted access to the internet and any file on your computer"));
+    assert!(script.contains("可不受限制地访问互联网和你电脑上的任意文件"));
+    assert!(script.contains("Are you sure?"));
+    assert!(script.contains("确认要继续吗？"));
+    assert!(script.contains("Turn on full access"));
+    assert!(script.contains("开启完全访问"));
+    assert!(script.contains("Full access lets Codex access the internet and edit any file on your computer without asking for your approval."));
+    assert!(
+        script.contains(
+            "完全访问会允许 Codex 无需再次确认即可访问互联网，并编辑你电脑上的任意文件。"
+        )
+    );
     assert!(script.contains("Process Manager"));
     assert!(script.contains("进程管理器"));
     assert!(script.contains("Approval policy"));

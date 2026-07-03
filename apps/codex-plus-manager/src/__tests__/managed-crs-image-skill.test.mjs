@@ -24,9 +24,10 @@ test("managed skill UI stays simple and has no separate update controls", () => 
   }
   assert.match(appSource, /const MANAGED_SKILLS/);
   assert.match(appSource, /id: CRS_IMAGE_SKILL_ID/);
-  for (const id of ["humanizer-zh", "ppt-master", "slide-image-editable-pptx", "markitdown", "spreadsheets"]) {
+  for (const id of ["humanizer-zh", "ppt-magic", "slide-image-to-editable-pptx", "markitdown", "spreadsheets"]) {
     assert.match(appSource, new RegExp(`id: "${id}"`));
   }
+  assert.match(appSource, /LEGACY_MANAGED_SKILL_IDS = \["ppt-master", "slide-image-editable-pptx"\]/);
   assert.match(card[0], /role="switch"/);
 });
 
@@ -100,15 +101,19 @@ test("installer prewarms managed skills and plugin marketplace before first laun
 
 test("managed skills are installed from bundled resources and hidden from manual editing", () => {
   assert.match(commandsSource, /MANAGED_SKILL_SOURCES/);
-  for (const id of ["crs-image", "humanizer-zh", "ppt-master", "slide-image-editable-pptx", "markitdown", "spreadsheets"]) {
+  for (const id of ["crs-image", "humanizer-zh", "ppt-magic", "slide-image-to-editable-pptx", "markitdown", "spreadsheets"]) {
     assert.match(commandsSource, new RegExp(`id: "${id}"`));
     assert.match(commandsSource, new RegExp(`bundled://managed-skills/${id}/SKILL\\.md`));
   }
-  for (const id of ["humanizer-zh", "ppt-master", "slide-image-editable-pptx", "markitdown", "spreadsheets"]) {
-    assert.match(commandsSource, new RegExp(`include_str!\\("\\.\\./managed-skills/${id}/SKILL\\.md"\\)`));
+  for (const id of ["humanizer-zh", "ppt-magic", "slide-image-to-editable-pptx", "markitdown", "spreadsheets"]) {
+    assert.match(commandsSource, new RegExp(`include_bytes!\\("\\.\\./managed-skills/${id}/SKILL\\.md"\\)`));
   }
   assert.match(commandsSource, /const CRS_IMAGE_SKILL: &str = include_str!\("\.\.\/managed-skills\/crs-image\/SKILL\.md"\);/);
   assert.match(commandsSource, /const CRS_IMAGE_CLIENT: &str = include_str!\("\.\.\/managed-skills\/crs-image\.mjs"\);/);
+  assert.match(commandsSource, /references\/content-fidelity\.md/);
+  assert.match(commandsSource, /assets\/screenshots\/第一张\.jpg/);
+  assert.match(commandsSource, /write_binary_file_if_changed/);
+  assert.match(commandsSource, /managed_skill_relative_path/);
   assert.match(appSource, /MANAGED_SKILL_IDS\.has\(id\.trim\(\)\)/);
   assert.match(appSource, /MANAGED_SKILL_IDS\.has\(entry\.id\)/);
 });

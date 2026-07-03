@@ -412,7 +412,7 @@
   function installCodexPlusChineseTextFallback() {
     const config = window.__CODEX_PLUS_FORCE_CHINESE_LOCALE__;
     if (!config || config.enabled !== true) return;
-    const installVersion = "20260702-recursive-i18n-assets-v5";
+    const installVersion = "20260703-access-i18n-v6";
     if (window.__codexPlusChineseTextFallbackInstalled === installVersion) return;
     window.__codexPlusChineseTextFallbackInstalled = installVersion;
 
@@ -502,8 +502,19 @@
       ["Default permissions", "默认权限"],
       ["By default, Codex can read and edit files in its workspace. It can ask for additional access when needed", "默认情况下，Codex 可以读取并编辑其工作区中的文件。必要时，它可以请求额外的访问权限"],
       ["Default permissions are always shown", "默认权限始终显示"],
+      ["How should Codex actions be approved?", "Codex 执行操作时如何确认？"],
+      ["Always ask to edit files and use the internet", "编辑文件或使用互联网前始终询问"],
+      ["Always ask to edit external files and use the internet", "编辑外部文件或使用互联网前始终询问"],
+      ["Always ask to edit files outside the workspace and use the internet", "编辑工作区外文件或使用互联网前始终询问"],
+      ["Always ask to edit files outside your workspace and use the internet", "编辑工作区外文件或使用互联网前始终询问"],
       ["Full access", "完全访问"],
+      ["Unrestricted access to the internet and any file on your computer", "可不受限制地访问互联网和你电脑上的任意文件"],
       ["When Codex runs with full access, it can edit any file on your computer and run commands with network, without your approval. This significantly increases the risk of data loss, leaks, or unexpected behavior.", "当 Codex 以完全访问权限运行时，无需你批准，即可编辑你的电脑上的任何文件并运行联网命令。这会显著增加数据丢失、泄露或意外行为的风险。"],
+      ["Are you sure?", "确认要继续吗？"],
+      ["Full access lets Codex access the internet and edit any file on your computer without asking for your approval.", "完全访问会允许 Codex 无需再次确认即可访问互联网，并编辑你电脑上的任意文件。"],
+      ["This comes with risks like data loss and prompt injection.", "这可能带来数据丢失、提示注入等风险。"],
+      ["Full access lets Codex access the internet and edit any file on your computer without asking for your approval. This comes with risks like data loss and prompt injection.", "完全访问会允许 Codex 无需再次确认即可访问互联网，并编辑你电脑上的任意文件。这可能带来数据丢失、提示注入等风险。"],
+      ["Turn on full access", "开启完全访问"],
       ["Learn more", "了解更多"],
       ["about elevated risks.", "有关高风险的信息。"],
       ["Show Full access in the composer", "在输入框中显示完全访问"],
