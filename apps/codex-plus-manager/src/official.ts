@@ -32,6 +32,8 @@ export type CommandResult<T> = T & {
   message: string;
 };
 
+export type OfficialApiKeyWriteMode = "always" | "missing";
+
 export async function fetchOfficialSetupStatus(): Promise<CommandResult<OfficialSetupStatus>> {
   return invoke<CommandResult<OfficialSetupStatus>>("official_setup_status");
 }
@@ -42,9 +44,12 @@ export async function fetchOfficialBalance(apiKey: string): Promise<CommandResul
   });
 }
 
-export async function configureOfficialApiKey(apiKey: string): Promise<CommandResult<Record<string, unknown>>> {
+export async function configureOfficialApiKey(
+  apiKey: string,
+  options: { writeMode?: OfficialApiKeyWriteMode } = {},
+): Promise<CommandResult<Record<string, unknown>>> {
   return invoke<CommandResult<Record<string, unknown>>>("configure_official_api_key", {
-    request: { apiKey },
+    request: { apiKey, writeMode: options.writeMode || "always" },
   });
 }
 

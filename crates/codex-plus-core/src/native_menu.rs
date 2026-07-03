@@ -85,7 +85,7 @@ const MENU_LABEL_TRANSLATIONS: &[(&str, &str)] = &[
     ("Toggle Full Screen", "切换全屏"),
     ("Codex Documentation", "Codex 文档"),
     ("What's new", "更新内容"),
-    ("Automations", "自动化"),
+    ("Automations", "自动化任务"),
     ("Local Environments", "本地环境"),
     ("Worktrees", "工作树"),
     ("Skills", "技能"),
@@ -231,6 +231,8 @@ mod tests {
         assert!(script.contains("切换边栏"));
         assert!(script.contains("Open Link in New Tab"));
         assert!(script.contains("在新标签页中打开链接"));
+        assert!(script.contains("Automations"));
+        assert!(script.contains("自动化任务"));
         assert!(!script.contains("app.asar"));
     }
 }

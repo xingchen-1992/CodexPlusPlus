@@ -1,4 +1,4 @@
-﻿Unicode true
+Unicode true
 !include "MUI2.nsh"
 
 !ifndef VERSION
@@ -7,14 +7,29 @@
 !define ROOT "..\..\.."
 !define CODEX_MSIX_FILENAME "CodexOfficialApp-x64.msix"
 !define CODEX_MSIX_DIR "RequiredFiles"
+!define CODEX_MSIX_URL "https://codexapp.agentsmirror.com/latest/win-x64"
+!define NODE_RUNTIME_FILENAME "node-v24.18.0-win-x64.zip"
+!define NODE_RUNTIME_DIR "RequiredFiles"
+!define NODE_RUNTIME_URL "https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip"
 !define PYTHON_INSTALLER_FILENAME "python-3.13.14-amd64.exe"
 !define PYTHON_INSTALLER_DIR "RequiredFiles"
+!define PYTHON_INSTALLER_URL "https://www.python.org/ftp/python/3.13.14/python-3.13.14-amd64.exe"
 
+!ifdef UPDATE_ONLY
+Name "Codex官方管理工具更新器"
+OutFile "${ROOT}\dist\windows\CodexPlusOfficial-${VERSION}-windows-x64-updater.exe"
+!else
+!ifdef ONLINE_COMPONENTS
+Name "Codex官方管理工具在线安装器"
+OutFile "${ROOT}\dist\windows\CodexPlusOfficial-${VERSION}-windows-x64-online.exe"
+!else
 Name "Codex官方管理工具"
 OutFile "${ROOT}\dist\windows\CodexPlusOfficial-${VERSION}-windows-x64-setup.exe"
+!endif
+!endif
 InstallDir "$LOCALAPPDATA\Programs\Codex官方管理工具"
 InstallDirRegKey HKCU "Software\CodexOfficialManager" "InstallDir"
-RequestExecutionLevel admin
+RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 !define MUI_ICON "${ROOT}\apps\codex-plus-manager\src-tauri\icons\icon.ico"
@@ -42,18 +57,19 @@ Section "安装主程序" SEC_MAIN
   SectionIn RO
   SetOutPath "$INSTDIR\app"
 
-  nsExec::ExecToLog 'taskkill /IM codex-plus-plus.exe /F'
+  DetailPrint "Closing running Codex manager processes..."
+  nsExec::ExecToLog 'taskkill /IM codex-plus-plus-manager.exe /F /T'
   Pop $0
-  nsExec::ExecToLog 'taskkill /IM codex-plus-plus-manager.exe /F'
+  nsExec::ExecToLog 'taskkill /IM codex-plus-plus.exe /F /T'
   Pop $0
   !insertmacro RemoveLegacyVisibleEntries
 
   File "${ROOT}\dist\windows\app\codex-plus-plus.exe"
   File "${ROOT}\dist\windows\app\codex-plus-plus-manager.exe"
-  SetOutPath "$INSTDIR\app\resources\node"
-  File /nonfatal /r "${ROOT}\dist\windows\app\resources\node\*.*"
   SetOutPath "$INSTDIR\app\resources\official-proxy"
   File /nonfatal /r "${ROOT}\dist\windows\app\resources\official-proxy\*.*"
+  SetOutPath "$INSTDIR\app\resources\node"
+  File /nonfatal /r "${ROOT}\dist\windows\app\resources\node\*.*"
   SetOutPath "$INSTDIR\app"
   SetOutPath "$INSTDIR\app\Codex"
   File /nonfatal /r "${ROOT}\dist\windows\app\Codex\*.*"
@@ -76,43 +92,50 @@ Section "安装主程序" SEC_MAIN
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexOfficialManager" "UninstallString" "$INSTDIR\app\uninstall.exe"
 SectionEnd
 
-Section "安装 Codex 应用" SEC_CODEX_APP
-  StrCpy $0 "$EXEDIR\${CODEX_MSIX_DIR}\${CODEX_MSIX_FILENAME}"
-  IfFileExists "$0" codex_msix_found 0
-  StrCpy $0 "$EXEDIR\${CODEX_MSIX_FILENAME}"
-  IfFileExists "$0" codex_msix_found codex_msix_missing
-
-  codex_msix_found:
-  DetailPrint "Installing OpenAI Codex app package..."
-  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop'; $$msix='$0'; try { Add-AppxPackage -Path $$msix -ForceApplicationShutdown; exit 0 } catch { $$existing=Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue; if ($$existing) { exit 0 }; Write-Error $$_; exit 1 }"`
+!ifndef UPDATE_ONLY
+Section "安装 Node 运行时" SEC_NODE
+  IfFileExists "$INSTDIR\app\resources\node\node.exe" node_done 0
+  StrCpy $0 "$EXEDIR\${NODE_RUNTIME_DIR}\${NODE_RUNTIME_FILENAME}"
+  IfFileExists "$0" node_zip_found 0
+!ifdef ONLINE_COMPONENTS
+  StrCpy $0 "$TEMP\CodexPlusComponents\${NODE_RUNTIME_FILENAME}"
+  DetailPrint "Downloading Node runtime..."
+  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop'; $$ProgressPreference='SilentlyContinue'; $$out='$0'; New-Item -ItemType Directory -Force (Split-Path $$out) | Out-Null; Invoke-WebRequest -Uri '${NODE_RUNTIME_URL}' -OutFile $$out -UseBasicParsing; if ((Get-Item $$out).Length -lt 20MB) { throw 'Node runtime is unexpectedly small' }; exit 0"`
   Pop $1
-  StrCmp $1 "0" codex_msix_done 0
-  MessageBox MB_ICONEXCLAMATION "Codex 应用安装失败。请重新下载完整安装包后再运行。"
-  Goto codex_msix_done
+  StrCmp $1 "0" node_zip_found 0
+  MessageBox MB_ICONEXCLAMATION "Node 运行时下载失败。管理工具仍可使用；需要托管 Skills 时请重新运行在线安装器或使用完整离线包。"
+  Goto node_done
+!else
+  MessageBox MB_ICONEXCLAMATION "未找到 Node 运行时。请重新下载完整离线包后再运行。"
+  Goto node_done
+!endif
 
-  codex_msix_missing:
-    MessageBox MB_ICONEXCLAMATION "未找到 Codex 应用安装文件。请重新下载完整安装包后再运行。"
+  node_zip_found:
+  DetailPrint "Installing Node runtime..."
+  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop'; $$zip='$0'; $$dest='$INSTDIR\app\resources\node'; $$parent=Split-Path $$dest -Parent; New-Item -ItemType Directory -Force $$parent | Out-Null; $$extract=Join-Path $$parent ('node-extract-' + [Guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Force $$extract | Out-Null; try { $$tar=Join-Path $$env:WINDIR 'System32\tar.exe'; if (Test-Path $$tar) { & $$tar -xf $$zip -C $$extract; if ($$LASTEXITCODE -ne 0) { throw 'tar failed' } } else { Expand-Archive -Force -LiteralPath $$zip -DestinationPath $$extract }; $$source=Get-ChildItem -LiteralPath $$extract -Directory | Where-Object { $$_.Name -like 'node-v*-win-x64' } | Select-Object -First 1; if (-not $$source) { throw 'node root not found' }; if (Test-Path $$dest) { Remove-Item $$dest -Recurse -Force }; Move-Item -LiteralPath $$source.FullName -Destination $$dest -Force; if (-not (Test-Path (Join-Path $$dest 'node.exe'))) { throw 'node.exe missing' }; exit 0 } finally { if (Test-Path $$extract) { Remove-Item $$extract -Recurse -Force -ErrorAction SilentlyContinue } }"`
+  Pop $1
+  StrCmp $1 "0" node_done 0
+  MessageBox MB_ICONEXCLAMATION "Node 运行时安装失败。管理工具仍可使用；需要托管 Skills 时请重新运行在线安装器或使用完整离线包。"
 
-  codex_msix_done:
+  node_done:
 SectionEnd
 
-Section "安装 Python" SEC_PYTHON
-  StrCpy $0 "$EXEDIR\${PYTHON_INSTALLER_DIR}\${PYTHON_INSTALLER_FILENAME}"
-  IfFileExists "$0" python_installer_found python_installer_missing
-
-  python_installer_found:
-  DetailPrint "Installing Python runtime..."
-  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='SilentlyContinue'; function Test-Python3 { try { $$v = (& py -3 --version 2>&1); if ($$LASTEXITCODE -eq 0 -and ('' + $$v) -match '^Python 3\.') { return $$true } } catch {}; try { $$v = (& python --version 2>&1); if ($$LASTEXITCODE -eq 0 -and ('' + $$v) -match '^Python 3\.') { return $$true } } catch {}; return $$false }; if (Test-Python3) { exit 0 }; $$installer='$0'; $$args=@('/quiet','InstallAllUsers=1','PrependPath=1','Include_launcher=1','Include_pip=1','Include_test=0','Shortcuts=0','SimpleInstall=1'); $$p=Start-Process -FilePath $$installer -ArgumentList $$args -Wait -PassThru; if ($$p.ExitCode -eq 0 -or $$p.ExitCode -eq 3010) { exit 0 }; exit $$p.ExitCode"`
+Section "并行安装 Codex 应用和 Python" SEC_RUNTIME_COMPONENTS
+  InitPluginsDir
+  File /oname=$PLUGINSDIR\InstallComponents.ps1 "${ROOT}\scripts\installer\windows\InstallComponents.ps1"
+  DetailPrint "Installing Codex app and Python in parallel..."
+!ifdef ONLINE_COMPONENTS
+  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\InstallComponents.ps1" -CodexMsixPath "$EXEDIR\${CODEX_MSIX_DIR}\${CODEX_MSIX_FILENAME}" -PythonInstallerPath "$EXEDIR\${PYTHON_INSTALLER_DIR}\${PYTHON_INSTALLER_FILENAME}" -CodexMsixUrl "${CODEX_MSIX_URL}" -PythonInstallerUrl "${PYTHON_INSTALLER_URL}" -OnlineComponents`
+!else
+  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\InstallComponents.ps1" -CodexMsixPath "$EXEDIR\${CODEX_MSIX_DIR}\${CODEX_MSIX_FILENAME}" -PythonInstallerPath "$EXEDIR\${PYTHON_INSTALLER_DIR}\${PYTHON_INSTALLER_FILENAME}"`
+!endif
   Pop $1
-  StrCmp $1 "0" python_done 0
-  MessageBox MB_ICONEXCLAMATION "Python 安装失败。管理工具仍可使用；如果需要 Python，请重新下载完整安装包后再运行。"
-  Goto python_done
+  StrCmp $1 "0" components_done 0
+  MessageBox MB_ICONEXCLAMATION "Codex 应用或 Python 未完全安装成功。管理工具仍可使用；如需完整环境，请重新运行完整离线包或在线安装器。"
 
-  python_installer_missing:
-    MessageBox MB_ICONEXCLAMATION "未找到 Python 安装文件。请重新下载完整安装包后再运行。"
-
-  python_done:
+  components_done:
 SectionEnd
+!endif
 
 Section "创建桌面快捷方式" SEC_DESKTOP_SHORTCUTS
   CreateShortcut "$DESKTOP\Codex官方管理工具.lnk" "$INSTDIR\app\codex-plus-plus-manager.exe" "" "$INSTDIR\app\codex-plus-plus-manager.exe"

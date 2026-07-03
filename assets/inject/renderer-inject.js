@@ -687,7 +687,114 @@
       ["Mark all as complete", "全部标记为完成"],
       ["Library", "库"],
       ["Mark all as read", "全部标记为已读"],
-      ["Scheduled", "计划任务"],
+      ["Automations", "自动化任务"],
+      ["Scheduled", "自动化任务"],
+      ["Scheduled task", "自动化任务"],
+      ["Scheduled tasks", "自动化任务"],
+      ["New scheduled task", "新建自动化任务"],
+      ["Create scheduled task", "创建自动化任务"],
+      ["Create manually", "手动创建"],
+      ["Create via chat", "通过对话创建"],
+      ["View templates", "查看模板"],
+      ["Create your first automation", "创建第一个自动化任务"],
+      ["Create your first scheduled task", "创建第一个自动化任务"],
+      ["Run chats on a schedule or whenever you need them.", "按计划运行对话，或在需要时自动处理任务。"],
+      ["Run chats on a schedule or whenever you need them", "按计划运行对话，或在需要时自动处理任务"],
+      ["Ask ChatGPT to schedule tasks, set reminders, or monitor for updates.", "让 Codex 安排任务、设置提醒或监控更新。"],
+      ["Manage recurring tasks, reminders, and monitors", "管理周期任务、提醒和监控"],
+      ["Start with a scheduled task template", "从自动化任务模板开始"],
+      ["Scheduled tasks or templates", "自动化任务或模板"],
+      ["Search scheduled tasks", "搜索自动化任务"],
+      ["Search templates", "搜索模板"],
+      ["No scheduled tasks found", "没有找到自动化任务"],
+      ["No templates found", "没有找到模板"],
+      ["Try another search", "换个关键词试试"],
+      ["Back to Scheduled", "返回自动化任务"],
+      ["Personalize with Codex", "让 Codex 帮我配置"],
+      ["Scheduled task started", "自动化任务已启动"],
+      ["Scheduled task not found", "未找到自动化任务"],
+      ["Scheduled task unavailable", "自动化任务不可用"],
+      ["Could not create scheduled task", "无法创建自动化任务"],
+      ["Could not update scheduled task", "无法更新自动化任务"],
+      ["Could not save scheduled task", "无法保存自动化任务"],
+      ["Could not start scheduled task", "无法启动自动化任务"],
+      ["Delete scheduled task", "删除自动化任务"],
+      ["Edit scheduled task", "编辑自动化任务"],
+      ["Pause scheduled task", "暂停自动化任务"],
+      ["Resume scheduled task", "恢复自动化任务"],
+      ["Discard scheduled task draft?", "放弃自动化任务草稿？"],
+      ["This will permanently delete the scheduled task and stop future runs.", "这会永久删除该自动化任务，并停止之后的运行。"],
+      ["This scheduled task may have been deleted or is no longer available on this machine.", "该自动化任务可能已被删除，或在这台电脑上不再可用。"],
+      ["This scheduled task may have been deleted or is no longer available on this machine", "该自动化任务可能已被删除，或在这台电脑上不再可用"],
+      ["Scheduled tasks can only be created for local projects", "自动化任务只能为本地项目创建"],
+      ["Daily brief", "每日简报"],
+      ["Weekly review", "每周回顾"],
+      ["Project monitor", "项目监控"],
+      ["Daily bug scan", "每日缺陷扫描"],
+      ["Daily classic game", "每日经典游戏"],
+      ["CI monitor", "CI 监控"],
+      ["Issue triage", "问题分拣"],
+      ["Dependency and SDK drift", "依赖与 SDK 变更监控"],
+      ["Dependency sweep", "依赖巡检"],
+      ["Performance audit", "性能审计"],
+      ["Performance regression watch", "性能回归监控"],
+      ["Pre-release check", "发布前检查"],
+      ["Skill progression map", "技能进展图"],
+      ["Standup summary", "站会总结"],
+      ["Test gap detection", "测试缺口检测"],
+      ["Update AGENTS.md", "更新 AGENTS.md"],
+      ["Update changelog", "更新变更日志"],
+      ["Weekly engineering summary", "每周工程总结"],
+      ["Weekly PR summary", "每周 PR 总结"],
+      ["Weekly release notes", "每周发布说明"],
+      ["Templates", "模板"],
+      ["Tasks", "任务"],
+      ["Previous runs", "历史运行"],
+      ["Previous run actions", "历史运行操作"],
+      ["Last ran", "上次运行"],
+      ["Next run", "下次运行"],
+      ["Runs in", "运行于"],
+      ["Run now", "立即运行"],
+      ["Run was archived", "运行记录已归档"],
+      ["Apply changes", "应用更改"],
+      ["Current", "当前"],
+      ["Custom schedule", "自定义计划"],
+      ["Details", "详情"],
+      ["Environment", "环境"],
+      ["Execution environment", "执行环境"],
+      ["Interval", "间隔"],
+      ["Model", "模型"],
+      ["Prompt", "提示词"],
+      ["Repeats", "重复"],
+      ["Retry save", "重试保存"],
+      ["Select project", "选择项目"],
+      ["Status", "状态"],
+      ["System", "系统"],
+      ["Uses {sources}", "使用 {sources}"],
+      ["Daily", "每天"],
+      ["Hourly", "每小时"],
+      ["Weekly", "每周"],
+      ["Every minute", "每分钟"],
+      ["Mondays", "每周一"],
+      ["Tuesdays", "每周二"],
+      ["Wednesdays", "每周三"],
+      ["Thursdays", "每周四"],
+      ["Fridays", "每周五"],
+      ["Saturdays", "每周六"],
+      ["Sundays", "每周日"],
+      ["weekdays", "工作日"],
+      ["weekends", "周末"],
+      ["Weekdays at {time}", "工作日 {time}"],
+      ["Weekends at {time}", "周末 {time}"],
+      ["Daily at {time}", "每天 {time}"],
+      ["Every {count, plural, one {# minute} other {# minutes}}", "每 {count} 分钟"],
+      ["Every {count, plural, one {# hour} other {# hours}}", "每 {count} 小时"],
+      ["Every {count, plural, one {# day} other {# days}}", "每 {count} 天"],
+      ["Every {count, plural, one {# week} other {# weeks}}", "每 {count} 周"],
+      ["Active", "已启用"],
+      ["Paused", "已暂停"],
+      ["Pause", "暂停"],
+      ["Resume", "恢复"],
       ["Pull requests", "拉取请求"],
       ["Debug", "调试"],
       ["Add new project", "添加新项目"],
@@ -797,7 +904,7 @@
       ["Switch to mode 2", "切换到模式 2"],
       ["Personality", "个性化"],
       ["Show keyboard shortcuts", "显示键盘快捷键"],
-      ["Manage scheduled tasks", "管理计划任务"],
+      ["Manage scheduled tasks", "管理自动化任务"],
       ["Force reload skills", "强制重新加载技能"],
       ["Install Codex Workspace", "安装 Codex 工作区"],
       ["Go to skills", "前往技能"],
@@ -871,7 +978,7 @@
       ["Adjust tone and response style", "调整语气和回复风格"],
       ["Customize keyboard shortcuts", "自定义键盘快捷键"],
       ["Show the shortcuts available right now", "显示当前可用快捷键"],
-      ["Create or manage scheduled tasks from the current page", "从当前页面创建或管理计划任务"],
+      ["Create or manage scheduled tasks from the current page", "从当前页面创建或管理自动化任务"],
       ["View and manage chat-started processes", "查看并管理聊天启动的进程"],
       ["Refresh the skill catalog for the current context", "刷新当前上下文的技能目录"],
       ["Install dependencies for advanced local features", "安装高级本地功能所需依赖"],
@@ -1340,6 +1447,21 @@
       if (usageRemainingMatch) return `剩余 ${usageRemainingMatch[1]}% 用量`;
       const resetAtMatch = trimmed.match(/^Resets (.+)$/);
       if (resetAtMatch) return `${resetAtMatch[1]} 重置`;
+      const todayAtMatch = trimmed.match(/^Today at (.+)$/);
+      if (todayAtMatch) return `今天 ${todayAtMatch[1]}`;
+      const yesterdayAtMatch = trimmed.match(/^Yesterday at (.+)$/);
+      if (yesterdayAtMatch) return `昨天 ${yesterdayAtMatch[1]}`;
+      const dailyAtMatch = trimmed.match(/^Daily at (.+)$/);
+      if (dailyAtMatch) return `每天 ${dailyAtMatch[1]}`;
+      const weekdaysAtMatch = trimmed.match(/^Weekdays at (.+)$/);
+      if (weekdaysAtMatch) return `工作日 ${weekdaysAtMatch[1]}`;
+      const weekendsAtMatch = trimmed.match(/^Weekends at (.+)$/);
+      if (weekendsAtMatch) return `周末 ${weekendsAtMatch[1]}`;
+      const everyIntervalMatch = trimmed.match(/^Every (\d+) (minute|minutes|hour|hours|day|days|week|weeks)$/);
+      if (everyIntervalMatch) {
+        const unitMap = { minute: "分钟", minutes: "分钟", hour: "小时", hours: "小时", day: "天", days: "天", week: "周", weeks: "周" };
+        return `每 ${everyIntervalMatch[1]} ${unitMap[everyIntervalMatch[2]]}`;
+      }
       const pluginsNeedSetupMatch = trimmed.match(/^(\d+) plugins? needs? setup$/);
       if (pluginsNeedSetupMatch) return `${pluginsNeedSetupMatch[1]} 个插件需要设置`;
       const createInProjectMatch = trimmed.match(/^What should we (build|work on) in (.+)\?$/);
@@ -2429,7 +2551,7 @@
   }
 
   function defaultCodexPlusSettings() {
-    return { pluginMarketplaceUnlock: true, forcePluginInstall: false, pluginAutoExpand: true, modelWhitelistUnlock: true, sessionDelete: true, markdownExport: true, pasteFix: false, projectMove: true, threadIdBadge: false, conversationView: false, conversationViewMaxWidth: conversationViewDefaultWidth, threadScrollRestore: true, zedRemoteOpen: true, upstreamWorktreeCreate: true, nativeMenuPlacement: true, serviceTierControls: false };
+    return { pluginMarketplaceUnlock: true, forcePluginInstall: false, pluginAutoExpand: true, modelWhitelistUnlock: true, scheduledTasksUnlock: true, sessionDelete: true, markdownExport: true, pasteFix: false, projectMove: true, threadIdBadge: false, conversationView: false, conversationViewMaxWidth: conversationViewDefaultWidth, threadScrollRestore: true, zedRemoteOpen: true, upstreamWorktreeCreate: true, nativeMenuPlacement: true, serviceTierControls: false };
   }
 
   const codexPlusBackendSettingMap = {
@@ -2437,6 +2559,7 @@
     forcePluginInstall: "codexAppForcePluginInstall",
     pluginAutoExpand: "codexAppPluginAutoExpand",
     modelWhitelistUnlock: "codexAppModelWhitelistUnlock",
+    scheduledTasksUnlock: "codexAppScheduledTasksUnlock",
     sessionDelete: "codexAppSessionDelete",
     markdownExport: "codexAppMarkdownExport",
     projectMove: "codexAppProjectMove",
@@ -2468,6 +2591,7 @@
         forcePluginInstall: false,
         pluginAutoExpand: false,
         modelWhitelistUnlock: false,
+        scheduledTasksUnlock: false,
         sessionDelete: false,
         markdownExport: false,
         pasteFix: false,
@@ -3574,6 +3698,10 @@
             <div class="codex-plus-row">
               <div><div class="codex-plus-row-title">模型白名单解锁</div><div class="codex-plus-row-description">从环境变量和 Codex config.toml 中的中转站 /v1/models 拉取模型，并补进模型选择列表。</div></div>
               <button type="button" class="codex-plus-toggle" data-codex-plus-setting="modelWhitelistUnlock"><span></span></button>
+            </div>
+            <div class="codex-plus-row">
+              <div><div class="codex-plus-row-title">自动化任务入口</div><div class="codex-plus-row-description">打开 Codex 左侧自动化任务入口，可按计划运行对话、提醒或监控项目。</div></div>
+              <button type="button" class="codex-plus-toggle" data-codex-plus-setting="scheduledTasksUnlock"><span></span></button>
             </div>
             <div class="codex-plus-row">
               <div><div class="codex-plus-row-title">Fast 按钮</div><div class="codex-plus-row-description">显示服务模式切换按钮；Fast 仅支持 ${codexServiceTierFastModelListLabel()}，其他模型按 Standard 发送。</div></div>
@@ -5718,7 +5846,10 @@
   let codexModelCatalogPromise = null;
   let codexModelWhitelistRefreshTimer = 0;
   let codexModelWhitelistRefreshUntil = 0;
+  let codexScheduledTasksGateRefreshTimer = 0;
+  let codexScheduledTasksGateRefreshUntil = 0;
   const codexPlusModelListRequestIds = new Set();
+  const codexPlusScheduledTasksGateNames = new Set(["3075919032", "1488233300"]);
 
   if (window.__CODEX_PLUS_TEST_SERVICE_TIER__) {
     window.__codexPlusServiceTierTest = {
@@ -5758,6 +5889,10 @@
 
   function codexPlusModelUnlockEnabled() {
     return !!codexPlusSettings().modelWhitelistUnlock;
+  }
+
+  function codexPlusScheduledTasksUnlockEnabled() {
+    return !!codexPlusSettings().scheduledTasksUnlock;
   }
 
   function codexPlusModelNames() {
@@ -5996,6 +6131,87 @@
       } catch {
       }
     });
+  }
+
+  function codexPlusShouldForceScheduledTasksGate(name) {
+    return codexPlusScheduledTasksUnlockEnabled() && codexPlusScheduledTasksGateNames.has(String(name || ""));
+  }
+
+  function codexPlusForcedScheduledTasksGate(name, gate) {
+    if (!codexPlusShouldForceScheduledTasksGate(name)) return gate;
+    const next = gate && typeof gate === "object" ? { ...gate } : {};
+    next.name = next.name || String(name || "");
+    next.value = true;
+    if (!next.ruleID) next.ruleID = "codex-plus-scheduled-tasks";
+    try {
+      if (next.details && typeof next.details === "object") {
+        next.details = { ...next.details, reason: next.details.reason || "CodexPlusOverride" };
+      }
+    } catch {
+    }
+    return next;
+  }
+
+  function notifyStatsigScheduledTasksGateUpdated(client) {
+    try {
+      if (typeof client.$emt === "function") {
+        client.$emt({ name: "values_updated", status: "Ready", values: {} });
+      }
+    } catch {
+    }
+  }
+
+  function patchStatsigScheduledTasksGateClient(client) {
+    if (!client || typeof client !== "object") return false;
+    let patched = false;
+    if (typeof client.checkGate === "function" && !client.__codexPlusScheduledTasksCheckGatePatched) {
+      const originalCheckGate = client.checkGate.bind(client);
+      client.checkGate = (name, options) => codexPlusShouldForceScheduledTasksGate(name) ? true : originalCheckGate(name, options);
+      client.__codexPlusScheduledTasksCheckGatePatched = true;
+      patched = true;
+    }
+    if (typeof client.getFeatureGate === "function" && !client.__codexPlusScheduledTasksFeatureGatePatched) {
+      const originalGetFeatureGate = client.getFeatureGate.bind(client);
+      client.getFeatureGate = (name, options) => codexPlusForcedScheduledTasksGate(name, originalGetFeatureGate(name, options));
+      client.__codexPlusScheduledTasksFeatureGatePatched = true;
+      patched = true;
+    }
+    if (patched) notifyStatsigScheduledTasksGateUpdated(client);
+    return patched;
+  }
+
+  function runCodexScheduledTasksGateRefreshPass() {
+    if (!codexPlusScheduledTasksUnlockEnabled()) return false;
+    let patched = false;
+    statsigClients().forEach((client) => {
+      if (patchStatsigScheduledTasksGateClient(client)) patched = true;
+      if (codexPlusShouldForceScheduledTasksGate("3075919032")) notifyStatsigScheduledTasksGateUpdated(client);
+    });
+    return patched;
+  }
+
+  function scheduleCodexScheduledTasksGateRefresh(durationMs = 5000) {
+    if (!codexPlusScheduledTasksUnlockEnabled()) return;
+    codexScheduledTasksGateRefreshUntil = Math.max(codexScheduledTasksGateRefreshUntil, Date.now() + durationMs);
+    if (codexScheduledTasksGateRefreshTimer) return;
+    sendCodexPlusDiagnostic("scheduled_tasks_gate_refresh_scheduled", { durationMs });
+    const tick = () => {
+      codexScheduledTasksGateRefreshTimer = 0;
+      runCodexScheduledTasksGateRefreshPass();
+      if (Date.now() < codexScheduledTasksGateRefreshUntil) {
+        codexScheduledTasksGateRefreshTimer = window.setTimeout(tick, 120);
+      }
+    };
+    tick();
+  }
+
+  function patchCodexScheduledTasksGateUnlock() {
+    if (!codexPlusScheduledTasksUnlockEnabled()) return;
+    runCodexScheduledTasksGateRefreshPass();
+    if (!window.__codexPlusScheduledTasksGateScanRefreshStarted) {
+      window.__codexPlusScheduledTasksGateScanRefreshStarted = true;
+      scheduleCodexScheduledTasksGateRefresh(4000);
+    }
   }
 
   function patchObjectGraphForModels(root, visited, depth = 0) {
@@ -9780,6 +9996,7 @@
     refreshConversationView();
     installCodexServiceTierBadge();
     scheduleThreadScrollSync();
+    patchCodexScheduledTasksGateUnlock();
     refreshCodexModelWhitelistFromScan(window.__codexSessionDeleteLastMutations);
     schedulePluginAutoExpand();
   }
@@ -9875,6 +10092,7 @@
 
   void loadBackendSettingsForStartup();
   void loadCodexServiceTierState();
+  scheduleCodexScheduledTasksGateRefresh(8000);
   installUpstreamBranchDropdownAdapter();
   installUpstreamWorktreeNativeAdapter();
   scan();

@@ -219,6 +219,21 @@ fn injection_script_localizes_codex_menu_commands() {
 }
 
 #[test]
+fn injection_script_localizes_codex_automations_page() {
+    let script = assets::injection_script(57321);
+
+    assert!(script.contains("[\"Automations\", \"自动化任务\"]"));
+    assert!(script.contains("[\"View templates\", \"查看模板\"]"));
+    assert!(script.contains("[\"Create via chat\", \"通过对话创建\"]"));
+    assert!(script.contains("[\"Run chats on a schedule or whenever you need them.\", \"按计划运行对话，或在需要时自动处理任务。\"]"));
+    assert!(script.contains("[\"Daily brief\", \"每日简报\"]"));
+    assert!(script.contains("[\"Weekly review\", \"每周回顾\"]"));
+    assert!(script.contains("[\"Project monitor\", \"项目监控\"]"));
+    assert!(script.contains("function codexPlusScheduledTasksUnlockEnabled()"));
+    assert!(script.contains("自动化任务入口"));
+}
+
+#[test]
 fn injection_script_unlocks_nested_disabled_plugin_install_buttons() {
     let script = assets::injection_script(57321);
 
@@ -474,6 +489,22 @@ fn injection_script_unlocks_custom_model_catalog() {
     assert!(script.contains("isWorkspaceChromeNode"));
     assert!(script.contains("refreshCodexModelWhitelistFromScan"));
     assert!(!script.contains("querySelectorAll(\"button, [role='menu']"));
+}
+
+#[test]
+fn injection_script_unlocks_codex_scheduled_tasks_entry() {
+    let script = assets::injection_script(57321);
+
+    assert!(script.contains("scheduledTasksUnlock: true"));
+    assert!(script.contains("codexAppScheduledTasksUnlock"));
+    assert!(script.contains("3075919032"));
+    assert!(script.contains("1488233300"));
+    assert!(script.contains("codexPlusScheduledTasksGateNames"));
+    assert!(script.contains("patchStatsigScheduledTasksGateClient"));
+    assert!(script.contains("client.checkGate ="));
+    assert!(script.contains("client.getFeatureGate ="));
+    assert!(script.contains("scheduled_tasks_gate_refresh_scheduled"));
+    assert!(script.contains("data-codex-plus-setting=\"scheduledTasksUnlock\""));
 }
 
 #[test]

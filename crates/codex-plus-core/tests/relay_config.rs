@@ -1,9 +1,10 @@
 use codex_plus_core::codex_sqlite::codex_session_db_path_from_home;
 use codex_plus_core::relay_config::{
-    apply_named_pure_api_config_to_home_with_protocol, apply_pure_api_config_to_home,
+    apply_named_pure_api_config_to_home_with_protocol,
+    apply_named_pure_api_endpoint_to_home_with_protocol, apply_pure_api_config_to_home,
     apply_relay_config_file_to_home, apply_relay_config_to_home, apply_relay_files_to_home,
-    apply_relay_files_to_home_with_common, apply_relay_profile_files_to_home_with_context,
-    apply_relay_profile_to_home_with_switch_rules,
+    apply_relay_files_to_home_with_common, apply_relay_profile_endpoint_to_home_with_switch_rules,
+    apply_relay_profile_files_to_home_with_context, apply_relay_profile_to_home_with_switch_rules,
     apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard,
     backfill_relay_profile_from_home, backfill_relay_profile_from_home_with_common,
     chatgpt_auth_status_from_home, clear_relay_config_to_home,
@@ -502,6 +503,110 @@ fn apply_named_pure_api_config_writes_topup_provider_display_name() {
     assert!(config.contains(r#"experimental_bearer_token = "sk-topup-test""#));
     assert!(config.contains(r#"localeOverride = "zh-CN""#));
     assert_eq!(auth, serde_json::json!({"OPENAI_API_KEY": "sk-topup-test"}));
+}
+
+#[test]
+fn apply_named_pure_api_endpoint_creates_missing_config_and_auth() {
+    let temp = tempfile::tempdir().unwrap();
+
+    let result = apply_named_pure_api_endpoint_to_home_with_protocol(
+        temp.path(),
+        "https://www.leishen-ai.cn/openai",
+        "sk-topup-test",
+        RelayProtocol::Responses,
+        57321,
+        "总量包",
+    )
+    .unwrap();
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    let auth: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(temp.path().join("auth.json")).unwrap())
+            .unwrap();
+    assert!(result.configured);
+    assert!(config.contains(r#"model_provider = "custom""#));
+    assert!(config.contains("[model_providers.custom]"));
+    assert!(config.contains(r#"name = "总量包""#));
+    assert!(config.contains(r#"base_url = "https://www.leishen-ai.cn/openai""#));
+    assert!(config.contains(r#"experimental_bearer_token = "sk-topup-test""#));
+    assert_eq!(auth["OPENAI_API_KEY"], "sk-topup-test");
+}
+
+#[test]
+fn apply_relay_profile_endpoint_only_updates_url_and_key() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("config.toml"),
+        r#"model_provider = "old_provider"
+model = "user-model"
+theme = "dark"
+profile = "personal"
+
+[ui]
+appearance = "dark"
+
+[mcp_servers.manual]
+command = "manual"
+
+[skills.user_skill]
+enabled = true
+
+[plugins.user_plugin]
+enabled = true
+
+[model_providers.old_provider]
+name = "Old Provider"
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "https://old.example/v1"
+
+[profiles.personal]
+model_provider = "old_provider"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        temp.path().join("auth.json"),
+        r#"{"auth_mode":"chatgpt","tokens":{"access_token":"keep"}}"#,
+    )
+    .unwrap();
+    let profile = RelayProfile {
+        id: "supplier-a".to_string(),
+        name: "供应商 A".to_string(),
+        relay_mode: RelayMode::PureApi,
+        base_url: "https://supplier-a.example/v1".to_string(),
+        api_key: "sk-supplier-a".to_string(),
+        config_contents: r#"model_provider = "supplier_a"
+
+[model_providers.supplier_a]
+name = "供应商 A"
+"#
+        .to_string(),
+        ..RelayProfile::default()
+    };
+
+    apply_relay_profile_endpoint_to_home_with_switch_rules(temp.path(), &profile).unwrap();
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    let auth: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(temp.path().join("auth.json")).unwrap())
+            .unwrap();
+    assert!(config.contains(r#"model_provider = "supplier_a""#));
+    assert!(config.contains(r#"model = "user-model""#));
+    assert!(config.contains(r#"theme = "dark""#));
+    assert!(config.contains(r#"profile = "personal""#));
+    assert!(config.contains("[ui]"));
+    assert!(config.contains("[mcp_servers.manual]"));
+    assert!(config.contains("[skills.user_skill]"));
+    assert!(config.contains("[plugins.user_plugin]"));
+    assert!(config.contains("[model_providers.old_provider]"));
+    assert!(config.contains("[model_providers.supplier_a]"));
+    assert!(config.contains(r#"name = "供应商 A""#));
+    assert!(config.contains(r#"base_url = "https://supplier-a.example/v1""#));
+    assert!(config.contains(r#"experimental_bearer_token = "sk-supplier-a""#));
+    assert_eq!(auth["OPENAI_API_KEY"], "sk-supplier-a");
+    assert_eq!(auth["auth_mode"], "chatgpt");
+    assert_eq!(auth["tokens"]["access_token"], "keep");
 }
 
 #[test]
@@ -2331,6 +2436,73 @@ requires_openai_auth = true
     assert!(config.contains(r#"base_url = "https://max2.jojocode.com/v1""#));
     assert!(!config.contains("experimental_bearer_token"));
     assert!(!config.contains("[model_providers.custom]"));
+}
+
+#[test]
+fn apply_relay_profile_to_home_preserves_codex_user_preferences() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("config.toml"),
+        r#"model_provider = "old_provider"
+model = "old-model"
+theme = "dark"
+profile = "personal"
+model_context_window = 100000
+
+[ui]
+appearance = "dark"
+density = "compact"
+
+[features]
+some_user_feature = true
+
+[model_providers.old_provider]
+name = "old"
+base_url = "https://old.example/v1"
+
+[profiles.personal]
+model_provider = "old_provider"
+"#,
+    )
+    .unwrap();
+    let profile = RelayProfile {
+        id: "relay-a".to_string(),
+        relay_mode: RelayMode::PureApi,
+        config_contents: r#"model_provider = "max_ai"
+model = "gpt-5.4"
+
+[features]
+js_repl = false
+
+[model_providers.max_ai]
+name = "max_ai"
+base_url = "https://max2.jojocode.com/v1"
+wire_api = "responses"
+requires_openai_auth = true
+"#
+        .to_string(),
+        auth_contents: r#"{"OPENAI_API_KEY":"sk-new"}"#.to_string(),
+        ..RelayProfile::default()
+    };
+
+    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, "").unwrap();
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(config.contains(r#"model = "gpt-5.4""#));
+    assert!(config.contains(r#"model_provider = "max_ai""#));
+    assert!(config.contains("[model_providers.max_ai]"));
+    assert!(!config.contains("old_provider"));
+    assert!(!config.contains("model_context_window = 100000"));
+    assert!(!config.contains(r#"profile = "personal""#));
+    assert!(!config.contains("[profiles.personal]"));
+    assert!(config.contains(r#"theme = "dark""#));
+    assert!(config.contains("[ui]"));
+    assert!(config.contains(r#"appearance = "dark""#));
+    assert!(config.contains(r#"density = "compact""#));
+    assert!(config.contains("[features]"));
+    assert!(config.contains("js_repl = false"));
+    assert!(config.contains("some_user_feature = true"));
+    assert!(config.contains(r#"localeOverride = "zh-CN""#));
 }
 
 #[cfg(windows)]

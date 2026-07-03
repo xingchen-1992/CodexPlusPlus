@@ -275,7 +275,7 @@ pub fn select_update_asset_for_target(
     let mut best: Option<(u8, &str, &str)> = None;
     for (name, url) in named {
         let rank = platform_asset_rank_for(&name.to_ascii_lowercase(), target_os, target_arch);
-        if rank >= 2 {
+        if rank >= 9 {
             continue;
         }
         if best.map_or(true, |(r, _, _)| rank < r) {
@@ -490,12 +490,12 @@ pub fn safe_asset_name(name: &str) -> anyhow::Result<String> {
 }
 
 fn platform_asset_rank_for(name: &str, target_os: &str, target_arch: &str) -> u8 {
-    // 0 = exact match (current OS + native arch)
-    // 1 = same OS, other arch (acceptable fallback, e.g. x86_64 on arm64 or vice versa)
-    // 2 = wrong platform
+    // Lower rank wins. Windows separates the small self-updater from
+    // online/offline installers so auto-update never grabs the full package
+    // when a dedicated updater is present.
     if target_os == "macos" {
         if !is_macos_installer_asset(name) {
-            return 2;
+            return 9;
         }
         if is_macos_native_arch_asset_for(name, target_arch) {
             return 0;
@@ -503,14 +503,17 @@ fn platform_asset_rank_for(name: &str, target_os: &str, target_arch: &str) -> u8
         return 1;
     }
     if target_os == "windows" {
-        if is_windows_full_package_asset(name) {
+        if is_windows_update_asset(name) {
             return 0;
         }
         if is_windows_setup_asset(name) {
             return 1;
         }
+        if is_windows_full_package_asset(name) {
+            return 2;
+        }
     }
-    2
+    9
 }
 
 fn is_macos_native_arch_asset_for(name: &str, target_arch: &str) -> bool {
@@ -541,10 +544,21 @@ fn is_macos_native_arch_asset_for(name: &str, target_arch: &str) -> bool {
     true
 }
 
+fn is_windows_update_asset(name: &str) -> bool {
+    name.contains("codex")
+        && name.contains("plus")
+        && (name.ends_with("-updater.exe")
+            || name.ends_with("_updater.exe")
+            || name.ends_with("-update.exe")
+            || name.ends_with("_update.exe"))
+}
+
 fn is_windows_setup_asset(name: &str) -> bool {
     name.contains("codex")
         && name.contains("plus")
         && (name.ends_with(".msi")
+            || name.ends_with("-online.exe")
+            || name.ends_with("_online.exe")
             || name.ends_with("-setup.exe")
             || name.ends_with("_setup.exe")
             || name.ends_with("setup.exe")
@@ -682,6 +696,35 @@ mod tests {
             }))
             .as_deref(),
             Some("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824")
+        );
+    }
+
+    #[test]
+    fn windows_update_asset_prefers_dedicated_updater() {
+        let assets = vec![
+            (
+                "CodexPlusOfficial-1.0.0-official.1-windows-x64.zip".to_string(),
+                "https://example.test/offline.zip".to_string(),
+            ),
+            (
+                "CodexPlusOfficial-1.0.0-official.1-windows-x64-online.exe".to_string(),
+                "https://example.test/online.exe".to_string(),
+            ),
+            (
+                "CodexPlusOfficial-1.0.0-official.1-windows-x64-updater.exe".to_string(),
+                "https://example.test/updater.exe".to_string(),
+            ),
+        ];
+
+        let selected = select_update_asset_for_target(&assets, "windows", "x86_64").unwrap();
+
+        assert_eq!(
+            selected.name,
+            "CodexPlusOfficial-1.0.0-official.1-windows-x64-updater.exe"
+        );
+        assert_eq!(
+            selected.browser_download_url,
+            "https://example.test/updater.exe"
         );
     }
 }

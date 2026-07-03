@@ -140,21 +140,29 @@ fn windows_installer_optionally_bundles_codex_app() {
         .expect("read Windows installer script");
 
     assert!(script.contains("dist\\windows\\app\\Codex\\*.*"));
+    assert!(script.contains("dist\\windows\\app\\resources\\node\\*.*"));
     assert!(script.contains("File /nonfatal /r"));
     assert!(script.contains("RMDir /r \"$INSTDIR\\app\\Codex\""));
     assert!(script.contains("CodexOfficialApp-x64.msix"));
     assert!(script.contains("!define CODEX_MSIX_DIR \"RequiredFiles\""));
     assert!(script.contains("$EXEDIR\\${CODEX_MSIX_DIR}\\${CODEX_MSIX_FILENAME}"));
-    assert!(script.contains("$EXEDIR\\${CODEX_MSIX_FILENAME}"));
-    assert!(script.contains("Add-AppxPackage -Path $$msix"));
+    assert!(script.contains("InstallComponents.ps1"));
+    assert!(script.contains("并行安装 Codex 应用和 Python"));
+    assert!(script.contains("Installing Codex app and Python in parallel"));
     assert!(script.contains("!define PYTHON_INSTALLER_FILENAME \"python-3.13.14-amd64.exe\""));
     assert!(script.contains("!define PYTHON_INSTALLER_DIR \"RequiredFiles\""));
-    assert!(script.contains("Section \"安装 Python\""));
     assert!(script.contains("$EXEDIR\\${PYTHON_INSTALLER_DIR}\\${PYTHON_INSTALLER_FILENAME}"));
-    assert!(script.contains("InstallAllUsers=1"));
-    assert!(script.contains("PrependPath=1"));
-    assert!(script.contains("Include_pip=1"));
     assert!(!script.contains("请确认已完整解压压缩包"));
+
+    let components_script =
+        std::fs::read_to_string("../../scripts/installer/windows/InstallComponents.ps1")
+            .expect("read Windows component installer script");
+    assert!(components_script.contains("Start-Job -Name \"CodexApp\""));
+    assert!(components_script.contains("Start-Job -Name \"Python\""));
+    assert!(components_script.contains("Add-AppxPackage -Path $PackagePath"));
+    assert!(components_script.contains("InstallAllUsers=0"));
+    assert!(components_script.contains("PrependPath=1"));
+    assert!(components_script.contains("Include_pip=1"));
 }
 
 #[test]

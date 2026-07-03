@@ -296,24 +296,32 @@ fn asset_selection_prefers_current_platform_artifacts() {
 }
 
 #[test]
-fn windows_update_asset_selection_prefers_full_zip_over_standalone_setup() {
+fn windows_update_asset_selection_prefers_dedicated_updater_over_installers() {
     let assets = vec![
         (
             "CodexPlusOfficial-1.0.17-official.1-windows-x64-setup.exe".to_string(),
             "https://example.test/setup.exe".to_string(),
         ),
         (
+            "CodexPlusOfficial-1.0.17-official.1-windows-x64-online.exe".to_string(),
+            "https://example.test/online.exe".to_string(),
+        ),
+        (
             "CodexPlusOfficial-1.0.17-official.1-windows-x64.zip".to_string(),
             "https://example.test/package.zip".to_string(),
+        ),
+        (
+            "CodexPlusOfficial-1.0.17-official.1-windows-x64-updater.exe".to_string(),
+            "https://example.test/updater.exe".to_string(),
         ),
     ];
 
     let selected = select_update_asset_for_target(&assets, "windows", "x86_64")
-        .expect("Windows updater should select the full ZIP package");
+        .expect("Windows updater should select the dedicated updater");
 
     assert_eq!(
         selected.name,
-        "CodexPlusOfficial-1.0.17-official.1-windows-x64.zip"
+        "CodexPlusOfficial-1.0.17-official.1-windows-x64-updater.exe"
     );
 }
 

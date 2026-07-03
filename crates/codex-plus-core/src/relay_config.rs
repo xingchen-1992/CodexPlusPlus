@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use toml_edit::{DocumentMut, Item, Table, TableLike};
 
-use crate::settings::{RelayContextSelection, RelayProfile, RelayProtocol};
+use crate::settings::{RelayContextSelection, RelayMode, RelayProfile, RelayProtocol};
 
 const RELAY_PROVIDER: &str = "custom";
 const LEGACY_RELAY_PROVIDERS: &[&str] = &["CodexPlusPlus", "CodexPP"];
@@ -384,6 +384,123 @@ pub fn apply_relay_profile_to_home_with_switch_rules(
     )
 }
 
+pub fn apply_relay_profile_endpoint_to_home_with_switch_rules(
+    home: &Path,
+    profile: &RelayProfile,
+) -> anyhow::Result<RelayApplyResult> {
+    apply_relay_profile_endpoint_to_home_with_switch_rules_and_computer_use_guard(
+        home, profile, false,
+    )
+}
+
+pub fn apply_relay_profile_endpoint_to_home_with_switch_rules_and_computer_use_guard(
+    home: &Path,
+    profile: &RelayProfile,
+    preserve_computer_use_guard: bool,
+) -> anyhow::Result<RelayApplyResult> {
+    if profile.relay_mode == RelayMode::Official && !profile.official_mix_api_key {
+        let auth_contents =
+            (!profile.auth_contents.trim().is_empty()).then_some(profile.auth_contents.as_str());
+        return clear_relay_config_to_home_with_auth_and_computer_use_guard(
+            home,
+            auth_contents,
+            preserve_computer_use_guard,
+        );
+    }
+
+    let base_url = relay_profile_base_url(profile);
+    let base_url = base_url.trim();
+    if base_url.is_empty() {
+        anyhow::bail!("供应商 Base URL 不能为空");
+    }
+    let api_key = relay_profile_api_key(profile);
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        anyhow::bail!("供应商 API Key 不能为空");
+    }
+
+    std::fs::create_dir_all(home)?;
+    let live_config = read_optional_text(&home.join("config.toml"))?;
+    let live_config_empty = live_config.trim().is_empty();
+    let mut doc = parse_toml_document(&live_config)?;
+    let profile_doc = parse_toml_document(&profile.config_contents)?;
+    let provider_id = endpoint_patch_provider_id(&doc, &profile_doc);
+    set_provider_id(&mut doc, &provider_id);
+
+    if live_config_empty {
+        let model = relay_profile_model(profile);
+        let (model, _) = crate::model_suffix::parse_model_suffix(&model);
+        if !model.trim().is_empty() {
+            doc["model"] = toml_edit::value(model.trim());
+        }
+    }
+
+    let codex_base_url = codex_base_url_for_protocol(
+        base_url,
+        profile.protocol,
+        crate::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT,
+    );
+    let provider = ensure_provider_table(&mut doc, &provider_id)?;
+    let profile_provider_name = provider_name_from_config(&profile.config_contents)
+        .or_else(|| (!profile.name.trim().is_empty()).then(|| profile.name.trim().to_string()));
+    if provider
+        .get("name")
+        .and_then(Item::as_str)
+        .map(str::trim)
+        .is_none_or(str::is_empty)
+    {
+        provider["name"] = toml_edit::value(
+            profile_provider_name
+                .as_deref()
+                .unwrap_or(provider_id.as_str()),
+        );
+    }
+    if provider
+        .get("wire_api")
+        .and_then(Item::as_str)
+        .map(str::trim)
+        .is_none_or(str::is_empty)
+    {
+        provider["wire_api"] = toml_edit::value("responses");
+    }
+    if provider
+        .get("requires_openai_auth")
+        .and_then(Item::as_bool)
+        .is_none()
+    {
+        provider["requires_openai_auth"] = toml_edit::value(true);
+    }
+    provider["base_url"] = toml_edit::value(codex_base_url.trim());
+    provider["experimental_bearer_token"] = toml_edit::value(api_key);
+
+    let config_contents =
+        move_model_providers_before_profiles(&ensure_trailing_newline(doc.to_string()));
+    let auth_contents = match profile.relay_mode {
+        RelayMode::PureApi | RelayMode::Aggregate => auth_json_with_openai_api_key(home, api_key)?,
+        RelayMode::Official | RelayMode::MixedApi => {
+            let auth = official_profile_auth_for_switch(home, &profile.auth_contents)?;
+            if auth.trim().is_empty() {
+                "{}\n".to_string()
+            } else {
+                auth
+            }
+        }
+    };
+
+    let backup_path = write_codex_live_atomic(
+        home,
+        Some(&config_contents),
+        Some(auth_contents.as_bytes()),
+        preserve_computer_use_guard,
+    )?;
+    let status = relay_config_status_from_home(home);
+    Ok(RelayApplyResult {
+        config_path: status.config_path,
+        backup_path,
+        configured: status.configured,
+    })
+}
+
 pub fn apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
     home: &Path,
     profile: &RelayProfile,
@@ -405,11 +522,13 @@ pub fn apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
         &profile.auto_compact_limit,
     )?;
     let config_with_catalog = apply_model_catalog_to_config(home, profile, &config_with_limits)?;
+    let config_with_user_preferences =
+        preserve_unmanaged_live_user_preferences(home, &config_with_catalog)?;
 
     if profile.relay_mode == crate::settings::RelayMode::PureApi {
         apply_relay_files_to_home_with_computer_use_guard(
             home,
-            &config_with_catalog,
+            &config_with_user_preferences,
             &profile.auth_contents,
             preserve_computer_use_guard,
         )
@@ -417,7 +536,7 @@ pub fn apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
         let auth_contents = official_profile_auth_for_switch(home, &profile.auth_contents)?;
         apply_relay_files_to_home_with_computer_use_guard(
             home,
-            &config_with_catalog,
+            &config_with_user_preferences,
             &auth_contents,
             preserve_computer_use_guard,
         )
@@ -442,7 +561,9 @@ pub fn apply_relay_profile_config_to_home_with_context(
         &profile.auto_compact_limit,
     )?;
     let config_with_catalog = apply_model_catalog_to_config(home, profile, &config_with_limits)?;
-    apply_relay_config_file_to_home(home, &config_with_catalog)
+    let config_with_user_preferences =
+        preserve_unmanaged_live_user_preferences(home, &config_with_catalog)?;
+    apply_relay_config_file_to_home(home, &config_with_user_preferences)
 }
 
 pub fn apply_relay_config_file_to_home(
@@ -511,6 +632,35 @@ pub fn apply_named_pure_api_config_to_home_with_protocol(
         backup_path,
         configured: status.configured,
     })
+}
+
+pub fn apply_named_pure_api_endpoint_to_home_with_protocol(
+    home: &Path,
+    base_url: &str,
+    bearer_token: &str,
+    protocol: RelayProtocol,
+    proxy_port: u16,
+    provider_name: &str,
+) -> anyhow::Result<RelayApplyResult> {
+    let base_url = base_url.trim();
+    if base_url.is_empty() {
+        anyhow::bail!("中转 Base URL 不能为空");
+    }
+    let bearer_token = bearer_token.trim();
+    if bearer_token.is_empty() {
+        anyhow::bail!("中转 Key 不能为空");
+    }
+    let profile = RelayProfile {
+        name: provider_name.trim().to_string(),
+        base_url: base_url.to_string(),
+        upstream_base_url: base_url.to_string(),
+        api_key: bearer_token.to_string(),
+        protocol,
+        relay_mode: RelayMode::PureApi,
+        ..RelayProfile::default()
+    };
+    let _ = proxy_port;
+    apply_relay_profile_endpoint_to_home_with_switch_rules(home, &profile)
 }
 
 pub async fn test_relay_profile(
@@ -1141,6 +1291,14 @@ fn active_or_default_provider_id(doc: &DocumentMut) -> String {
         .unwrap_or_else(|| RELAY_PROVIDER.to_string())
 }
 
+fn endpoint_patch_provider_id(live_doc: &DocumentMut, profile_doc: &DocumentMut) -> String {
+    active_provider_id(profile_doc)
+        .filter(|provider| {
+            is_custom_provider_id(provider) && !LEGACY_RELAY_PROVIDERS.contains(&provider.as_str())
+        })
+        .unwrap_or_else(|| active_or_default_provider_id(live_doc))
+}
+
 fn is_custom_provider_id(provider: &str) -> bool {
     !provider.is_empty() && !RESERVED_MODEL_PROVIDER_IDS.contains(&provider)
 }
@@ -1429,6 +1587,68 @@ fn apply_model_catalog_to_config(
     let mut doc = parse_toml_document(config_text)?;
     doc["model_catalog_json"] = toml_edit::value(catalog_relative);
     Ok(normalize_optional_toml(doc))
+}
+
+fn preserve_unmanaged_live_user_preferences(
+    home: &Path,
+    config_text: &str,
+) -> anyhow::Result<String> {
+    let live_config = read_optional_text(&home.join("config.toml"))?;
+    if live_config.trim().is_empty() {
+        return Ok(config_text.to_string());
+    }
+    let Ok(live_doc) = parse_toml_document(&live_config) else {
+        return Ok(config_text.to_string());
+    };
+    let mut target_doc = parse_toml_document(config_text)?;
+    preserve_unmanaged_toml_items(target_doc.as_table_mut(), live_doc.as_table());
+    Ok(move_model_providers_before_profiles(
+        &normalize_optional_toml(target_doc),
+    ))
+}
+
+fn preserve_unmanaged_toml_items(target: &mut dyn TableLike, live: &dyn TableLike) {
+    for (key, live_item) in live.iter() {
+        if is_managed_live_config_key(key) {
+            continue;
+        }
+        match target.get_mut(key) {
+            Some(target_item) => preserve_missing_toml_item(target_item, live_item),
+            None => {
+                target.insert(key, live_item.clone());
+            }
+        }
+    }
+}
+
+fn preserve_missing_toml_item(target: &mut Item, live: &Item) {
+    let Some(live_table) = live.as_table_like() else {
+        return;
+    };
+    let Some(target_table) = target.as_table_like_mut() else {
+        return;
+    };
+    preserve_unmanaged_toml_items(target_table, live_table);
+}
+
+fn is_managed_live_config_key(key: &str) -> bool {
+    matches!(
+        key,
+        "model"
+            | "model_provider"
+            | "base_url"
+            | "profile"
+            | "model_catalog_json"
+            | "model_context_window"
+            | "model_auto_compact_token_limit"
+            | "model_providers"
+            | "mcp_servers"
+            | "skills"
+            | "plugins"
+            | "profiles"
+            | CHAT_UPSTREAM_BASE_URL_KEY
+            | CODEX_LOCALE_OVERRIDE_KEY
+    )
 }
 
 fn sanitize_catalog_filename(id: &str) -> String {
@@ -1828,6 +2048,23 @@ fn codex_auth_api_key(auth_contents: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn auth_json_with_openai_api_key(home: &Path, api_key: &str) -> anyhow::Result<String> {
+    let source = read_optional_text(&home.join("auth.json"))?;
+    let mut value = if source.trim().is_empty() {
+        json!({})
+    } else {
+        serde_json::from_str::<Value>(&source).with_context(|| "auth.json JSON 解析失败")?
+    };
+    let Some(object) = value.as_object_mut() else {
+        anyhow::bail!("auth.json 必须是 JSON 对象");
+    };
+    object.insert(
+        "OPENAI_API_KEY".to_string(),
+        Value::String(api_key.trim().to_string()),
+    );
+    Ok(format!("{}\n", serde_json::to_string_pretty(&value)?))
+}
+
 /// 解析 profile 實際使用的模型：優先取 config.toml 裡的 `model =`，
 /// 否則退回 profile.model 欄位。供應商測試用它做回退，避免串到別家供應商的模型名。
 pub fn relay_profile_model(profile: &RelayProfile) -> String {
@@ -2115,6 +2352,10 @@ fn provider_string_from_config(config_contents: &str, key: &str) -> Option<Strin
         }
     }
     None
+}
+
+fn provider_name_from_config(config_contents: &str) -> Option<String> {
+    provider_string_from_config(config_contents, "name")
 }
 
 fn experimental_bearer_token_from_config(config_contents: &str) -> anyhow::Result<Option<String>> {

@@ -15,11 +15,7 @@ fn switch_rolls_back_active_settings_when_live_write_fails() {
     };
     store.save(&original).unwrap();
     std::fs::create_dir(temp.path().join("codex")).unwrap();
-    std::fs::write(
-        temp.path().join("codex").join("auth.json"),
-        r#"{"OPENAI_API_KEY":"sk-a"}"#,
-    )
-    .unwrap();
+    std::fs::write(temp.path().join("codex").join("auth.json"), r#"{"bad""#).unwrap();
     std::fs::write(
         temp.path().join("codex").join("config.toml"),
         r#"model_provider = "custom"
@@ -36,14 +32,7 @@ base_url = "https://a.example/v1"
         active_relay_id: "b".to_string(),
         relay_profiles: vec![
             pure_profile("a", "https://a.example/v1", "sk-a"),
-            RelayProfile {
-                id: "b".to_string(),
-                name: "B".to_string(),
-                relay_mode: RelayMode::PureApi,
-                config_contents: "model_provider = \"custom\"\n".to_string(),
-                auth_contents: "{bad json".to_string(),
-                ..RelayProfile::default()
-            },
+            pure_profile("b", "https://b.example/v1", "sk-b"),
         ],
         ..BackendSettings::default()
     };
@@ -56,7 +45,7 @@ base_url = "https://a.example/v1"
 }
 
 #[test]
-fn switch_backfills_previous_profile_from_live_before_selecting_target() {
+fn switch_does_not_backfill_previous_profile_from_live_before_selecting_target() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().join("codex");
     std::fs::create_dir(&home).unwrap();
@@ -104,12 +93,18 @@ base_url = "https://edited-a.example/v1"
         .iter()
         .find(|profile| profile.id == "a")
         .unwrap();
-    assert!(previous.config_contents.contains("edited-live-model"));
-    assert!(previous.config_contents.contains("manual_a"));
-    assert_eq!(previous.context_window, "1000000");
-    assert_eq!(previous.auto_compact_limit, "900000");
+    assert!(!previous.config_contents.contains("edited-live-model"));
+    assert!(!previous.config_contents.contains("manual_a"));
+    assert!(previous.config_contents.contains("https://a.example/v1"));
+    assert_eq!(previous.context_window, "");
+    assert_eq!(previous.auto_compact_limit, "");
     assert_eq!(stored.active_relay_id, "b");
     assert_eq!(stored.launch_mode, LaunchMode::Patch);
+
+    let live = std::fs::read_to_string(home.join("config.toml")).unwrap();
+    assert!(live.contains(r#"model = "edited-live-model""#));
+    assert!(live.contains(r#"model_context_window = 1000000"#));
+    assert!(live.contains(r#"base_url = "https://b.example/v1""#));
 }
 
 #[test]
@@ -158,7 +153,7 @@ fn switch_to_aggregate_relay_allows_empty_config_snapshot() {
 }
 
 #[test]
-fn switch_returns_normalized_previous_official_profile_after_backfill() {
+fn switch_keeps_previous_official_profile_normalized_without_backfill() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().join("codex");
     std::fs::create_dir(&home).unwrap();

@@ -11,12 +11,17 @@ const launcherAppSource = fs.readFileSync(
   new URL("../../../codex-plus-launcher/src/main.rs", import.meta.url),
   "utf8",
 );
+const commandsSource = fs.readFileSync(new URL("../../src-tauri/src/commands.rs", import.meta.url), "utf8");
 
-test("script market route is hidden from the sidebar", () => {
+test("script page is visible and remote market failure is non-blocking", () => {
   const routes = appSource.match(/const routes:[\s\S]*?=\s*\[([\s\S]*?)\];/);
   assert.ok(routes, "routes should exist");
-  assert.equal(routes[1].includes('id: "userScripts"'), false);
-  assert.equal(routes[1].includes("脚本市场"), false);
+  assert.equal(routes[1].includes('id: "userScripts"'), true);
+  assert.equal(routes[1].includes('label: "脚本"'), true);
+  assert.match(appSource, /route === "userScripts"/);
+  assert.match(appSource, /function UserScriptsScreen/);
+  assert.match(commandsSource, /unavailable_script_market_payload/);
+  assert.match(commandsSource, /远程脚本市场暂未配置，本地脚本仍可正常管理。/);
 });
 
 test("empty legacy default relay is not shown as a provider", () => {

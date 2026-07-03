@@ -11,20 +11,27 @@ test("release workflow verifies NSIS before building Windows installer", () => {
   assert.match(workflowSource, /NSIS makensis\.exe was not found/);
 });
 
-test("release workflow publishes a Windows ZIP with bundled Codex MSIX", () => {
+test("release workflow publishes componentized Windows installer assets", () => {
   assert.match(workflowSource, /Download Codex Windows MSIX/);
   assert.match(workflowSource, /Download Python Windows installer/);
+  assert.match(workflowSource, /Download Node Windows runtime/);
+  assert.match(workflowSource, /Embed Node Windows runtime into setup/);
   assert.match(workflowSource, /CodexOfficialApp-x64\.msix/);
   assert.match(workflowSource, /python-3\.13\.14-amd64\.exe/);
+  assert.match(workflowSource, /node-\$\{env:NODE_RUNTIME_VERSION\}-win-x64\.zip/);
+  assert.match(workflowSource, /\/DUPDATE_ONLY=1/);
+  assert.match(workflowSource, /\/DONLINE_COMPONENTS=1/);
   assert.match(workflowSource, /package-root/);
   assert.match(workflowSource, /\$resourcesDir = "\$packageRoot\/RequiredFiles"/);
   assert.match(workflowSource, /Copy-Item \$setup "\$packageRoot\/点我双击安装\.exe"/);
   assert.match(workflowSource, /Copy-Item \$msix "\$resourcesDir\/CodexOfficialApp-x64\.msix"/);
   assert.match(workflowSource, /Copy-Item \$python "\$resourcesDir\/python-3\.13\.14-amd64\.exe"/);
+  assert.match(workflowSource, /Copy-Item \$node "\$resourcesDir\/node-\$\{env:NODE_RUNTIME_VERSION\}-win-x64\.zip"/);
   assert.match(workflowSource, /\$expectedRootNames = @\("RequiredFiles", "点我双击安装\.exe"\)/);
   assert.match(workflowSource, /Package root must contain exactly one setup executable/);
   assert.match(workflowSource, /Package resources are missing CodexOfficialApp-x64\.msix/);
   assert.match(workflowSource, /Package resources are missing python-3\.13\.14-amd64\.exe/);
+  assert.match(workflowSource, /Package resources are missing node-\$\{env:NODE_RUNTIME_VERSION\}-win-x64\.zip/);
   assert.doesNotMatch(workflowSource, /\$packageRoot\/安装资源/);
   assert.doesNotMatch(workflowSource, /\$packageRoot\/双击安装\.exe/);
   assert.equal(workflowSource.includes("请先解压后运行安装程序"), false);
@@ -32,13 +39,22 @@ test("release workflow publishes a Windows ZIP with bundled Codex MSIX", () => {
   assert.match(workflowSource, /-Path "\$packageRoot\/\*"/);
   assert.match(workflowSource, /CodexPlusOfficial-\$\{version\}-windows-x64\.zip/);
   assert.match(workflowSource, /dist\/windows\/CodexPlusOfficial-\$\{version\}-windows-x64-setup\.exe/);
+  assert.match(workflowSource, /dist\/windows\/\*-online\.exe/);
+  assert.match(workflowSource, /dist\/windows\/\*-updater\.exe/);
   assert.match(workflowSource, /dist\/windows\/\*\.zip/);
   assert.match(workflowSource, /dist\/windows\/\*-setup\.exe/);
 });
 
-test("release latest manifest excludes standalone Windows setup from automatic update", () => {
+test("release manifests separate automatic update from public downloads", () => {
   assert.match(workflowSource, /asset\.name !== "latest\.json"/);
-  assert.match(workflowSource, /lower\.includes\("windows"\) && lower\.endsWith\("-setup\.exe"\)/);
+  assert.match(workflowSource, /asset\.name !== "download-latest\.json"/);
+  assert.match(workflowSource, /asset\.name !== "components\.json"/);
+  assert.match(workflowSource, /latestPayload/);
+  assert.match(workflowSource, /asset\.purpose === "updater"/);
+  assert.match(workflowSource, /downloadPayload/);
+  assert.match(workflowSource, /\["installer", "offline"\]\.includes\(asset\.purpose\)/);
+  assert.match(workflowSource, /download-latest\.json/);
+  assert.match(workflowSource, /components\.json/);
 });
 
 test("release workflow only builds Windows assets for now", () => {
@@ -64,5 +80,7 @@ test("release workflow bundles a managed Node runtime for clean computers", () =
   assert.match(workflowSource, /NODE_WINDOWS_X64_ZIP_URL/);
   assert.match(workflowSource, /Cache Node Windows runtime/);
   assert.match(workflowSource, /Download Node Windows runtime/);
+  assert.match(workflowSource, /dist\/windows\/package\/node-\$\{env:NODE_RUNTIME_VERSION\}-win-x64\.zip/);
   assert.match(workflowSource, /dist\/windows\/app\/resources\/node/);
+  assert.match(workflowSource, /Embedded Node runtime is missing node\.exe/);
 });

@@ -659,33 +659,9 @@ impl LaunchHooks for DefaultLaunchHooks {
         }
         let profile = settings.active_relay_profile();
         let home = crate::relay_config::default_codex_home_dir();
-        let common_config = crate::relay_config::normalize_config_text(
-            &[
-                settings.relay_common_config_contents.as_str(),
-                settings.relay_context_config_contents.as_str(),
-            ]
-            .into_iter()
-            .map(str::trim)
-            .filter(|section| !section.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n\n"),
-        );
-        if profile.relay_mode == crate::settings::RelayMode::Official
-            && !profile.official_mix_api_key
-        {
-            let auth_contents = (!profile.auth_contents.trim().is_empty())
-                .then_some(profile.auth_contents.as_str());
-            crate::relay_config::clear_relay_config_to_home_with_auth_and_computer_use_guard(
-                &home,
-                auth_contents,
-                settings.computer_use_guard_enabled,
-            )?;
-            return Ok(());
-        }
-        crate::relay_config::apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
+        crate::relay_config::apply_relay_profile_endpoint_to_home_with_switch_rules_and_computer_use_guard(
             &home,
             &profile,
-            &common_config,
             settings.computer_use_guard_enabled,
         )?;
         Ok(())

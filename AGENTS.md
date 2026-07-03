@@ -41,9 +41,12 @@
 - 新版本先修改、验证、提交、打 tag，再通过 GitHub Release 触发 Actions 生成 Windows 安装包。
 - 推送分支、推送 tag、创建 GitHub Release 和上传资产只能使用非交互认证；不得让命令弹出 “Connect to GitHub / Sign in” 等登录窗口。
 - 当前优先发布 Windows 包；macOS 包不要在 Linux 服务器本地强行打包。
-- Actions 产物同步到 `/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 后，再更新 `/home/claude-realy-service/public/tools/codex-plus/latest.json`。
-- 自动更新源必须优先暴露完整 ZIP 包，不要把单独的 Windows `*-setup.exe` 作为旧客户端自动更新入口；否则可能缺少随包 Codex App / Node / RequiredFiles。
+- Actions 产物同步到 `/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 后，再更新 `/home/claude-realy-service/public/tools/codex-plus/latest.json` 和 `/home/claude-realy-service/public/tools/codex-plus/download-latest.json`。
+- 自动更新源 `latest.json` 只允许暴露轻量 `*-updater.exe`，禁止把完整离线 ZIP 作为管理工具自动更新入口。
+- 官网下载清单使用 `download-latest.json`，可暴露在线安装器 `*-online.exe` 和完整离线 ZIP。离线 ZIP 仍必须包含 `点我双击安装.exe` 与 `RequiredFiles/`。
+- Codex App、Python、Node runtime 必须作为组件按需安装：在线安装器缺哪个下哪个，完整离线包把组件放进 `RequiredFiles/`，管理工具小版本自更新不要重复下载这些大组件。
 - `crs-image`、托管 Skills、Node runtime、Codex App 相关改动必须考虑“干净电脑首次安装即可使用”，不能只验证已有环境的电脑。
+- 管理工具打开 Codex 时只能写入自己负责的配置项，禁止全量覆盖用户在 Codex App 里修改的外观、偏好、功能开关等设置。修改 `~/.codex/config.toml` 时必须保留未知根配置和未知表，只替换 `model`、`model_provider`、`model_providers`、上下文、模型 catalog 等管理工具管辖字段。
 - 同一轮虚拟机测试发现问题后，只要重新修改代码并重新给测试包，就必须升一个新的小版本号并新建对应版本目录，不要覆盖旧测试包目录，避免虚拟机拿错包。
 
 ## 命令执行

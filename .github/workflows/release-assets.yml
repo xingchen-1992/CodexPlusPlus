@@ -132,10 +132,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $nodeRoot = "dist/windows/node"
-          $zip = "$nodeRoot/node-runtime.zip"
+          New-Item -ItemType Directory -Force dist/windows/package | Out-Null
+          $zip = "dist/windows/package/node-${env:NODE_RUNTIME_VERSION}-win-x64.zip"
           $cache = Join-Path $env:USERPROFILE ".cache\codex-plus-release\windows\node-${env:NODE_RUNTIME_VERSION}-win-x64.zip"
-          New-Item -ItemType Directory -Force $nodeRoot | Out-Null
           New-Item -ItemType Directory -Force (Split-Path $cache) | Out-Null
           if (Test-Path $cache) {
             Copy-Item $cache $zip -Force
@@ -147,23 +146,43 @@ jobs:
           if ($size -lt 20MB) {
             throw "Downloaded Node runtime is unexpectedly small: $size bytes"
           }
-          $extract = "$nodeRoot/extracted"
-          if (Test-Path $extract) {
-            Remove-Item $extract -Recurse -Force
-          }
-          Expand-Archive -Force -Path $zip -DestinationPath $extract
-          $source = Get-ChildItem $extract -Directory | Where-Object { $_.Name -like "node-v*-win-x64" } | Select-Object -First 1
-          if (-not $source) {
-            throw "No Node win-x64 runtime directory found"
+
+      - name: Embed Node Windows runtime into setup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = "dist/windows/package/node-${env:NODE_RUNTIME_VERSION}-win-x64.zip"
+          if (-not (Test-Path $zip)) {
+            throw "Missing Node runtime zip: $zip"
           }
           $dest = "dist/windows/app/resources/node"
+          $extract = "dist/windows/node/extracted"
           if (Test-Path $dest) {
             Remove-Item $dest -Recurse -Force
           }
-          New-Item -ItemType Directory -Force $dest | Out-Null
-          Copy-Item "$($source.FullName)\*" $dest -Recurse -Force
-          if (-not (Test-Path "$dest\node.exe")) {
-            throw "Bundled Node node.exe was not staged"
+          if (Test-Path $extract) {
+            Remove-Item $extract -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force $extract | Out-Null
+          $tar = Join-Path $env:WINDIR "System32\tar.exe"
+          if (Test-Path $tar) {
+            & $tar -xf $zip -C $extract
+            if ($LASTEXITCODE -ne 0) {
+              throw "Windows tar failed to extract Node runtime"
+            }
+          } else {
+            Expand-Archive -Force -LiteralPath $zip -DestinationPath $extract
+          }
+          $source = Get-ChildItem -LiteralPath $extract -Directory |
+            Where-Object { $_.Name -like "node-v*-win-x64" } |
+            Select-Object -First 1
+          if (-not $source) {
+            throw "Extracted Node runtime root was not found"
+          }
+          New-Item -ItemType Directory -Force (Split-Path $dest) | Out-Null
+          Move-Item -LiteralPath $source.FullName -Destination $dest -Force
+          if (-not (Test-Path "$dest/node.exe")) {
+            throw "Embedded Node runtime is missing node.exe"
           }
 
       - name: Cache Codex Windows MSIX
@@ -219,6 +238,7 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $version = "${{ github.event.release.tag_name }}".TrimStart("v", "V")
           $makensis = $env:NSIS_MAKENSIS
           if (-not $makensis -or -not (Test-Path $makensis)) {
@@ -231,7 +251,12 @@ jobs:
             throw "NSIS makensis.exe was not found"
           }
           Push-Location scripts/installer/windows
+          & $makensis "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DUPDATE_ONLY=1" CodexPlusPlus.nsi
+          if ($LASTEXITCODE -ne 0) { throw "NSIS updater build failed" }
+          & $makensis "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DONLINE_COMPONENTS=1" CodexPlusPlus.nsi
+          if ($LASTEXITCODE -ne 0) { throw "NSIS online installer build failed" }
           & $makensis "/INPUTCHARSET" "UTF8" "/DVERSION=$version" CodexPlusPlus.nsi
+          if ($LASTEXITCODE -ne 0) { throw "NSIS offline setup build failed" }
           Pop-Location
 
       - name: Build Windows ZIP package
@@ -242,6 +267,7 @@ jobs:
           $setup = "dist/windows/CodexPlusOfficial-${version}-windows-x64-setup.exe"
           $msix = "dist/windows/package/CodexOfficialApp-x64.msix"
           $python = "dist/windows/package/python-3.13.14-amd64.exe"
+          $node = "dist/windows/package/node-${env:NODE_RUNTIME_VERSION}-win-x64.zip"
           if (-not (Test-Path $setup)) {
             throw "Missing setup executable: $setup"
           }
@@ -250,6 +276,9 @@ jobs:
           }
           if (-not (Test-Path $python)) {
             throw "Missing Python installer: $python"
+          }
+          if (-not (Test-Path $node)) {
+            throw "Missing Node runtime: $node"
           }
           $packageRoot = "dist/windows/package-root"
           if (Test-Path $packageRoot) {
@@ -261,6 +290,7 @@ jobs:
           Copy-Item $setup "$packageRoot/点我双击安装.exe"
           Copy-Item $msix "$resourcesDir/CodexOfficialApp-x64.msix"
           Copy-Item $python "$resourcesDir/python-3.13.14-amd64.exe"
+          Copy-Item $node "$resourcesDir/node-${env:NODE_RUNTIME_VERSION}-win-x64.zip"
           $rootNames = @(Get-ChildItem -LiteralPath $packageRoot -Force | ForEach-Object { $_.Name } | Sort-Object)
           $expectedRootNames = @("RequiredFiles", "点我双击安装.exe")
           if (@(Compare-Object $rootNames $expectedRootNames).Length -ne 0) {
@@ -276,6 +306,9 @@ jobs:
           if (-not (Test-Path "$resourcesDir/python-3.13.14-amd64.exe")) {
             throw "Package resources are missing python-3.13.14-amd64.exe"
           }
+          if (-not (Test-Path "$resourcesDir/node-${env:NODE_RUNTIME_VERSION}-win-x64.zip")) {
+            throw "Package resources are missing node-${env:NODE_RUNTIME_VERSION}-win-x64.zip"
+          }
           Compress-Archive -Force -Path "$packageRoot/*" -DestinationPath "dist/windows/CodexPlusOfficial-${version}-windows-x64.zip"
 
       - name: Upload Windows assets
@@ -285,6 +318,8 @@ jobs:
           files: |
             dist/windows/*.zip
             dist/windows/*-setup.exe
+            dist/windows/*-online.exe
+            dist/windows/*-updater.exe
 
   latest-json:
     name: Upload static latest.json
@@ -306,19 +341,26 @@ jobs:
           const release = JSON.parse(fs.readFileSync("release.json", "utf8"));
           const tag = release.tag_name || process.env.TAG;
           const version = tag.replace(/^v/i, "");
-          const assets = (release.assets || [])
+          const rawAssets = (release.assets || [])
             .filter((asset) => asset.name !== "latest.json")
-            .filter((asset) => {
-              const lower = String(asset.name || "").toLowerCase();
-              return !(lower.includes("windows") && lower.endsWith("-setup.exe"));
-            })
+            .filter((asset) => asset.name !== "download-latest.json")
+            .filter((asset) => asset.name !== "components.json")
             .map((asset) => {
+              const lower = String(asset.name || "").toLowerCase();
               const digest = typeof asset.digest === "string" ? asset.digest : "";
               const sha256 = digest.toLowerCase().startsWith("sha256:") ? digest.slice("sha256:".length) : undefined;
               const name = asset.name;
               const platform = name.toLowerCase().includes("macos") || name.toLowerCase().endsWith(".dmg") ? "macos" : "windows";
               const arch = name.toLowerCase().includes("arm64") || name.toLowerCase().includes("aarch64") ? "arm64" : "x64";
-              const purpose = name.toLowerCase().endsWith(".zip") ? "download" : "updater";
+              const purpose = lower.endsWith("-updater.exe")
+                ? "updater"
+                : lower.endsWith("-online.exe")
+                  ? "installer"
+                  : lower.endsWith(".zip")
+                    ? "offline"
+                    : lower.endsWith("-setup.exe")
+                      ? "offline-setup"
+                      : "download";
               return {
                 name,
                 platform,
@@ -331,25 +373,67 @@ jobs:
             })
             .sort((left, right) => {
               const platformOrder = { windows: 0, macos: 1 };
-              const purposeOrder = { updater: 0, download: 1 };
+              const purposeOrder = { updater: 0, installer: 1, offline: 2, "offline-setup": 3, download: 4 };
               return (platformOrder[left.platform] ?? 9) - (platformOrder[right.platform] ?? 9)
                 || (purposeOrder[left.purpose] ?? 9) - (purposeOrder[right.purpose] ?? 9)
                 || left.name.localeCompare(right.name);
             });
-          const payload = {
+          const latestPayload = {
             version: `v${version}`,
             url: release.html_url || `https://github.com/${process.env.REPO}/releases/tag/${tag}`,
             body: release.body || "",
-            assets
+            assets: rawAssets.filter((asset) => asset.purpose === "updater")
           };
-          fs.writeFileSync("latest.json", `${JSON.stringify(payload, null, 2)}\n`);
+          const downloadPayload = {
+            version: `v${version}`,
+            url: release.html_url || `https://github.com/${process.env.REPO}/releases/tag/${tag}`,
+            body: release.body || "",
+            assets: rawAssets.filter((asset) => ["installer", "offline"].includes(asset.purpose))
+          };
+          const componentsPayload = {
+            version: `v${version}`,
+            components: [
+              {
+                id: "codex-app",
+                name: "CodexOfficialApp-x64.msix",
+                platform: "windows",
+                arch: "x64",
+                url: process.env.CODEX_WINDOWS_X64_MSIX_URL || "https://codexapp.agentsmirror.com/latest/win-x64"
+              },
+              {
+                id: "python",
+                name: "python-3.13.14-amd64.exe",
+                platform: "windows",
+                arch: "x64",
+                url: process.env.PYTHON_WINDOWS_X64_INSTALLER_URL || "https://www.python.org/ftp/python/3.13.14/python-3.13.14-amd64.exe"
+              },
+              {
+                id: "node-runtime",
+                name: "node-v24.18.0-win-x64.zip",
+                platform: "windows",
+                arch: "x64",
+                url: process.env.NODE_WINDOWS_X64_ZIP_URL || "https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip"
+              }
+            ]
+          };
+          if (latestPayload.assets.length === 0) {
+            throw new Error("latest.json must expose at least one updater asset");
+          }
+          if (downloadPayload.assets.length === 0) {
+            throw new Error("download-latest.json must expose installer or offline download assets");
+          }
+          fs.writeFileSync("latest.json", `${JSON.stringify(latestPayload, null, 2)}\n`);
+          fs.writeFileSync("download-latest.json", `${JSON.stringify(downloadPayload, null, 2)}\n`);
+          fs.writeFileSync("components.json", `${JSON.stringify(componentsPayload, null, 2)}\n`);
           NODE
           cat latest.json
+          cat download-latest.json
+          cat components.json
 
-      - name: Upload latest.json
+      - name: Upload update manifests
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.release.tag_name }}
           REPO: ${{ github.repository }}
         shell: bash
-        run: gh release upload "$TAG" latest.json --clobber --repo "$REPO"
+        run: gh release upload "$TAG" latest.json download-latest.json components.json --clobber --repo "$REPO"

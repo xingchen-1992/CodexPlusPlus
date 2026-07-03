@@ -229,6 +229,8 @@ pub struct BackendSettings {
     pub codex_app_plugin_auto_expand: bool,
     #[serde(rename = "codexAppModelWhitelistUnlock", default = "default_true")]
     pub codex_app_model_whitelist_unlock: bool,
+    #[serde(rename = "codexAppScheduledTasksUnlock", default = "default_true")]
+    pub codex_app_scheduled_tasks_unlock: bool,
     #[serde(rename = "codexAppSessionDelete", default = "default_true")]
     pub codex_app_session_delete: bool,
     #[serde(rename = "codexAppMarkdownExport", default = "default_true")]
@@ -376,6 +378,7 @@ impl Default for BackendSettings {
             codex_app_force_plugin_install: false,
             codex_app_plugin_auto_expand: true,
             codex_app_model_whitelist_unlock: true,
+            codex_app_scheduled_tasks_unlock: true,
             codex_app_session_delete: true,
             codex_app_markdown_export: true,
             codex_app_paste_fix: false,
@@ -804,6 +807,7 @@ fn merge_known_setting_fields(target: &mut Map<String, Value>, source: &Map<Stri
     merge_bool_setting(target, source, "codexAppForcePluginInstall");
     merge_bool_setting(target, source, "codexAppPluginAutoExpand");
     merge_bool_setting(target, source, "codexAppModelWhitelistUnlock");
+    merge_bool_setting(target, source, "codexAppScheduledTasksUnlock");
     merge_bool_setting(target, source, "codexAppSessionDelete");
     merge_bool_setting(target, source, "codexAppMarkdownExport");
     merge_bool_setting(target, source, "codexAppPasteFix");

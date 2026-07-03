@@ -162,6 +162,7 @@ type BackendSettings = {
   codexAppForcePluginInstall: boolean;
   codexAppPluginAutoExpand: boolean;
   codexAppModelWhitelistUnlock: boolean;
+  codexAppScheduledTasksUnlock: boolean;
   codexAppSessionDelete: boolean;
   codexAppMarkdownExport: boolean;
   codexAppPasteFix: boolean;
@@ -657,6 +658,7 @@ type StartupResult = CommandResult<{
 type OfficialSyncOptions = {
   refreshBalance?: boolean;
   silent?: boolean;
+  writeMode?: "always" | "missing";
 };
 
 type OfficialSyncResult = {
@@ -675,6 +677,7 @@ const routes: Array<{ id: Route; label: string; icon: LucideIcon; badge?: string
   { id: "mobileControl", label: "手机控制", icon: MessageCircle, badge: "测试版" },
   { id: "sessions", label: "会话管理", icon: MessageCircle },
   { id: "context", label: "工具与插件", icon: Network },
+  { id: "userScripts", label: "脚本", icon: FileCode2 },
   { id: "enhance", label: "Codex增强", icon: Hammer },
   { id: "maintenance", label: "安装维护", icon: Wrench },
   { id: "about", label: "关于", icon: Info },
@@ -700,6 +703,7 @@ const defaultSettings: BackendSettings = {
   codexAppForcePluginInstall: false,
   codexAppPluginAutoExpand: true,
   codexAppModelWhitelistUnlock: true,
+  codexAppScheduledTasksUnlock: true,
   codexAppSessionDelete: true,
   codexAppMarkdownExport: true,
   codexAppPasteFix: false,
@@ -1123,7 +1127,9 @@ export function App() {
     setOfficialBalanceBusy(true);
     try {
       setOfficialBalanceMessage("正在写入本机 Codex 配置...");
-      const configureResult = await configureOfficialApiKey(normalized);
+      const configureResult = await configureOfficialApiKey(normalized, {
+        writeMode: options.writeMode || "always",
+      });
       if (!isSuccessStatus(configureResult.status)) {
         throw new Error(configureResult.message || "本机 Codex 配置失败");
       }
@@ -1262,8 +1268,12 @@ export function App() {
       updateLaunchProgress("checking", 28, "正在切换到账户额度 API Key 配置...");
     }
 
-    updateLaunchProgress("checking", 38, "正在写入 API Key 和 Codex 配置...");
-    const sync = await saveOfficialApiKey(normalized, { refreshBalance: false, silent: true });
+    updateLaunchProgress("checking", 38, "正在确认供应商 URL 和 API Key...");
+    const sync = await saveOfficialApiKey(normalized, {
+      refreshBalance: false,
+      silent: true,
+      writeMode: "missing",
+    });
     if (!sync.ok) {
       showNotice("打开 Codex", sync.message, "failed");
       updateLaunchProgress("failed", 100, sync.message, false);
@@ -1925,7 +1935,6 @@ export function App() {
       showNotice("供应商配置可能不正确", validationError, "failed");
       return;
     }
-    switchSettings = await snapshotActiveRelayFilesBeforeSwitch(switchSettings, previousActiveRelayId);
     const selectedAfterSave = activeRelayProfile(switchSettings);
     const command = relayProfileSwitchCommand(selectedAfterSave);
 
@@ -3201,6 +3210,7 @@ function EnhanceScreen({
             <FeatureToggle title="特殊插件强制安装" detail="解除 App unavailable / 应用不可用导致的前端安装禁用。" checked={form.codexAppForcePluginInstall} disabled={!masterEnabled || !patchMode} onChange={(value) => setEnhanceFlag("codexAppForcePluginInstall", value)} />
             <FeatureToggle title="插件列表全量展示" detail="进入插件页后自动连续展开“更多”，尽量一次显示完整插件列表。" checked={form.codexAppPluginAutoExpand} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppPluginAutoExpand", value)} />
             <FeatureToggle title="模型白名单解锁" detail="从环境变量和 config.toml 的 /v1/models 拉取模型并补进模型列表。" checked={form.codexAppModelWhitelistUnlock} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppModelWhitelistUnlock", value)} />
+            <FeatureToggle title="自动化任务入口" detail="打开 Codex 左侧自动化任务入口，可按计划运行对话、提醒或监控项目。" checked={form.codexAppScheduledTasksUnlock} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppScheduledTasksUnlock", value)} />
             <FeatureToggle title="Fast 按钮" detail="显示服务模式切换按钮；Fast 仅支持 gpt-5.4 / gpt-5.5，其他模型按 Standard 发送。" checked={form.codexAppServiceTierControls} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppServiceTierControls", value)} />
             <FeatureToggle title="会话删除" detail="在会话列表悬停显示删除按钮，并支持撤销。" checked={form.codexAppSessionDelete} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppSessionDelete", value)} />
             <FeatureToggle title="Markdown 导出" detail="在会话列表显示导出按钮，导出带时间戳的 Markdown。" checked={form.codexAppMarkdownExport} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppMarkdownExport", value)} />

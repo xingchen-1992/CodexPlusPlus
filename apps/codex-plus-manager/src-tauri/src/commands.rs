@@ -432,6 +432,16 @@ pub struct OfficialBalanceRequest {
 #[serde(rename_all = "camelCase")]
 pub struct OfficialApiKeyConfigureRequest {
     pub api_key: String,
+    #[serde(default)]
+    pub write_mode: OfficialApiKeyWriteMode,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OfficialApiKeyWriteMode {
+    #[default]
+    Always,
+    Missing,
 }
 
 #[tauri::command]
@@ -535,9 +545,11 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
     }
 
     let home = codex_plus_core::relay_config::default_codex_home_dir();
-    let applied = true;
-    let apply_result =
-        match codex_plus_core::relay_config::apply_named_pure_api_config_to_home_with_protocol(
+    let live_status_before = codex_plus_core::relay_config::relay_status_from_home(&home);
+    let should_write_live_files =
+        request.write_mode == OfficialApiKeyWriteMode::Always || !live_status_before.configured;
+    let apply_result = if should_write_live_files {
+        match codex_plus_core::relay_config::apply_named_pure_api_endpoint_to_home_with_protocol(
             &home,
             OFFICIAL_BASE_URL,
             &api_key,
@@ -545,7 +557,7 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
             codex_plus_core::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT,
             OFFICIAL_RELAY_NAME,
         ) {
-            Ok(result) => result,
+            Ok(result) => Some(result),
             Err(error) => {
                 let status = codex_plus_core::relay_config::relay_status_from_home(&home);
                 return failed(
@@ -553,36 +565,17 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
                     json!({
                         "configured": status.configured,
                         "applied": false,
-                        "entrypointsInstalled": false,
-                    }),
-                );
-            }
-        };
-
-    let mut settings_for_wrapper = settings.clone();
-    if let Some(active_profile) = settings_for_wrapper
-        .relay_profiles
-        .iter_mut()
-        .find(|profile| profile.id == OFFICIAL_RELAY_ID)
-    {
-        match codex_plus_core::relay_config::backfill_relay_profile_from_home(&home, active_profile)
-        {
-            Ok(()) => {}
-            Err(error) => {
-                return failed(
-                    &format!("回填总量包配置失败：{error}"),
-                    json!({
-                        "configured": false,
-                        "applied": true,
+                        "writeMode": format!("{:?}", request.write_mode),
                         "entrypointsInstalled": false,
                     }),
                 );
             }
         }
-    }
-    if let Err(error) = store.save(&settings_for_wrapper) {
-        return failed(&format!("保存总量包配置快照失败：{error}"), json!({}));
-    }
+    } else {
+        None
+    };
+
+    let settings_for_wrapper = settings.clone();
 
     let _ = codex_plus_core::cli_wrapper::ensure_cli_wrapper(&settings_for_wrapper);
 
@@ -606,7 +599,8 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
             "总量包配置已保存，但 Codex config.toml/auth.json 尚未完整写入。",
             json!({
                 "configured": false,
-                "applied": applied,
+                "applied": should_write_live_files,
+                "writeMode": format!("{:?}", request.write_mode),
                 "entrypointsInstalled": entrypoints.status == "ok",
                 "entrypointsMessage": entrypoints.message,
             }),
@@ -614,13 +608,18 @@ pub fn configure_official_api_key(request: OfficialApiKeyConfigureRequest) -> Co
     }
 
     let entrypoints_ok = entrypoints.status == "ok";
-    let message = "总量包 API Key 已写入 Codex 配置。";
+    let message = if should_write_live_files {
+        "总量包 API Key 已写入 Codex 配置。"
+    } else {
+        "总量包 API Key 已保存；Codex 配置已存在，本次未重复写入。"
+    };
     let payload = json!({
         "configured": true,
-        "applied": applied,
+        "applied": should_write_live_files,
+        "writeMode": format!("{:?}", request.write_mode),
         "entrypointsInstalled": entrypoints_ok,
         "entrypointsMessage": entrypoints.message,
-        "backupPath": apply_result.backup_path,
+        "backupPath": apply_result.and_then(|result| result.backup_path),
     });
     if entrypoints_ok {
         ok(message, payload)
@@ -2395,9 +2394,9 @@ pub async fn refresh_script_market() -> CommandResult<ScriptMarketPayload> {
             "脚本市场已刷新。",
             script_market_payload_from_manifest(&manifest, "ok", "脚本市场已刷新。"),
         ),
-        Err(error) => failed(
-            &format!("脚本市场加载失败：{error}"),
-            failed_script_market_payload(&format!("脚本市场加载失败：{error}")),
+        Err(error) => ok(
+            "远程脚本市场暂未配置，本地脚本仍可正常管理。",
+            unavailable_script_market_payload(&format!("远程脚本市场暂未配置或暂不可用：{error}")),
         ),
     }
 }
@@ -3475,66 +3474,11 @@ pub fn apply_relay_injection() -> CommandResult<RelayPayload> {
     if settings.active_aggregate_relay_profile().is_some() {
         return apply_aggregate_relay_injection_to_home(&home);
     }
-    if relay_has_complete_files(&relay) {
-        return match codex_plus_core::relay_config::apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
-            &home,
-            &relay,
-            &relay_combined_common_config(&settings),
-            settings.computer_use_guard_enabled,
-        ) {
-            Ok(result) => {
-                let status = codex_plus_core::relay_config::relay_status_from_home(&home);
-                log_relay_apply_result(
-                    "manager.apply_relay_injection.ok",
-                    &relay,
-                    &status,
-                    result.backup_path.as_ref(),
-                    None,
-                );
-                ok(
-                    "已按兼容切换规则切换供应商。",
-                    relay_payload(status, result.backup_path),
-                )
-            }
-            Err(error) => {
-                let status = codex_plus_core::relay_config::relay_status_from_home(&home);
-                log_relay_apply_result(
-                    "manager.apply_relay_injection.failed",
-                    &relay,
-                    &status,
-                    None,
-                    Some(error.to_string()),
-                );
-                failed(
-                    &format!("切换完整中转配置失败：{error}"),
-                    relay_payload(status, None),
-                )
-            }
-        };
-    }
 
-    let auth = codex_plus_core::relay_config::chatgpt_auth_status_from_home(&home);
-    if !auth.authenticated {
-        let status = codex_plus_core::relay_config::relay_status_from_home(&home);
-        log_relay_apply_result(
-            "manager.apply_relay_injection.failed",
-            &relay,
-            &status,
-            None,
-            Some("未检测到 ChatGPT 登录状态".to_string()),
-        );
-        return failed(
-            "未检测到 ChatGPT 登录状态，已停止写入中转配置。",
-            relay_payload(status, None),
-        );
-    }
-
-    match codex_plus_core::relay_config::apply_relay_config_to_home_with_protocol(
+    match codex_plus_core::relay_config::apply_relay_profile_endpoint_to_home_with_switch_rules_and_computer_use_guard(
         &home,
-        &relay.base_url,
-        &relay.api_key,
-        relay.protocol,
-        codex_plus_core::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT,
+        &relay,
+        settings.computer_use_guard_enabled,
     ) {
         Ok(result) => {
             let status = codex_plus_core::relay_config::relay_status_from_home(&home);
@@ -3546,7 +3490,7 @@ pub fn apply_relay_injection() -> CommandResult<RelayPayload> {
                 None,
             );
             ok(
-                "中转配置已写入，密钥未在界面明文显示。",
+                "供应商 URL 和 API Key 已写入，其他 Codex 配置保持不变。",
                 relay_payload(status, result.backup_path),
             )
         }
@@ -3568,14 +3512,15 @@ pub fn apply_relay_injection() -> CommandResult<RelayPayload> {
 }
 
 fn apply_aggregate_relay_injection_to_home(home: &Path) -> CommandResult<RelayPayload> {
-    match codex_plus_core::relay_config::apply_relay_config_to_home_with_protocol(
-        home,
-        &codex_plus_core::protocol_proxy::local_responses_proxy_base_url(
-            codex_plus_core::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT,
-        ),
-        "codex-plus-aggregate",
-        codex_plus_core::settings::RelayProtocol::Responses,
-        codex_plus_core::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT,
+    let profile = RelayProfile {
+        id: "aggregate".to_string(),
+        name: "聚合供应商".to_string(),
+        relay_mode: codex_plus_core::settings::RelayMode::Aggregate,
+        protocol: codex_plus_core::settings::RelayProtocol::Responses,
+        ..RelayProfile::default()
+    };
+    match codex_plus_core::relay_config::apply_relay_profile_endpoint_to_home_with_switch_rules(
+        home, &profile,
     ) {
         Ok(result) => {
             let status = codex_plus_core::relay_config::relay_status_from_home(home);
@@ -3607,56 +3552,10 @@ pub fn apply_pure_api_injection() -> CommandResult<RelayPayload> {
     }
     let relay = settings.active_relay_profile();
     log_relay_apply_request("manager.apply_pure_api_injection", &settings, &relay);
-    if relay_has_complete_files(&relay) {
-        return match codex_plus_core::relay_config::apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
-            &home,
-            &relay,
-            &relay_combined_common_config(&settings),
-            settings.computer_use_guard_enabled,
-        ) {
-            Ok(result) => {
-                let status = codex_plus_core::relay_config::relay_status_from_home(&home);
-                log_relay_apply_result(
-                    "manager.apply_pure_api_injection.ok",
-                    &relay,
-                    &status,
-                    result.backup_path.as_ref(),
-                    None,
-                );
-                if !status.configured {
-                    return failed(
-                        "纯 API 配置写入后未检测到完整 custom provider，请检查 config.toml 和供应商 API Key。",
-                        relay_payload(status, result.backup_path),
-                    );
-                }
-                ok(
-                    "已按兼容切换规则切换供应商。",
-                    relay_payload(status, result.backup_path),
-                )
-            }
-            Err(error) => {
-                let status = codex_plus_core::relay_config::relay_status_from_home(&home);
-                log_relay_apply_result(
-                    "manager.apply_pure_api_injection.failed",
-                    &relay,
-                    &status,
-                    None,
-                    Some(error.to_string()),
-                );
-                failed(
-                    &format!("切换纯 API 配置失败：{error}"),
-                    relay_payload(status, None),
-                )
-            }
-        };
-    }
-
-    match codex_plus_core::relay_config::apply_pure_api_config_to_home_with_protocol(
+    match codex_plus_core::relay_config::apply_relay_profile_endpoint_to_home_with_switch_rules_and_computer_use_guard(
         &home,
-        &relay.base_url,
-        &relay.api_key,
-        relay.protocol,
-        codex_plus_core::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT,
+        &relay,
+        settings.computer_use_guard_enabled,
     ) {
         Ok(result) => {
             let status = codex_plus_core::relay_config::relay_status_from_home(&home);
@@ -3674,7 +3573,7 @@ pub fn apply_pure_api_injection() -> CommandResult<RelayPayload> {
                 );
             }
             ok(
-                "纯 API 模式已写入：config.toml 已写入 custom provider，auth.json 已切换为当前供应商。",
+                "纯 API 模式已写入当前供应商 URL 和 API Key，其他 Codex 配置保持不变。",
                 relay_payload(status, result.backup_path),
             )
         }
@@ -3736,15 +3635,6 @@ pub fn clear_relay_injection() -> CommandResult<RelayPayload> {
             )
         }
     }
-}
-
-fn relay_has_complete_files(relay: &codex_plus_core::settings::RelayProfile) -> bool {
-    if relay.relay_mode == codex_plus_core::settings::RelayMode::Official
-        && relay.official_mix_api_key
-    {
-        return !relay.config_contents.trim().is_empty();
-    }
-    !relay.config_contents.trim().is_empty() && !relay.auth_contents.trim().is_empty()
 }
 
 fn log_relay_apply_request(
@@ -4252,9 +4142,17 @@ fn user_script_inventory() -> Value {
 }
 
 fn failed_script_market_payload(message: &str) -> ScriptMarketPayload {
+    empty_script_market_payload("failed", message)
+}
+
+fn unavailable_script_market_payload(message: &str) -> ScriptMarketPayload {
+    empty_script_market_payload("unavailable", message)
+}
+
+fn empty_script_market_payload(status: &str, message: &str) -> ScriptMarketPayload {
     ScriptMarketPayload {
         market: json!({
-            "status": "failed",
+            "status": status,
             "message": message,
             "indexUrl": script_market::DEFAULT_MARKET_INDEX_URL,
             "updatedAt": "",

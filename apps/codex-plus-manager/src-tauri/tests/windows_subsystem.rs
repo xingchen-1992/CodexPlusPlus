@@ -57,7 +57,7 @@ fn launcher_binary_embeds_codex_icon_resource() {
 }
 
 #[test]
-fn windows_binaries_request_administrator_privileges() {
+fn windows_binaries_run_as_current_user_for_componentized_updates() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let manager_build =
         std::fs::read_to_string(manifest_dir.join("build.rs")).expect("read manager build.rs");
@@ -80,9 +80,10 @@ fn windows_binaries_request_administrator_privileges() {
 
     assert!(manager_build.contains("windows-app-manifest.xml"));
     assert!(launcher_build.contains("windows-app-manifest.xml"));
-    assert!(windows_manifest.contains("requireAdministrator"));
+    assert!(windows_manifest.contains("asInvoker"));
+    assert!(!windows_manifest.contains("requireAdministrator"));
     assert!(windows_manifest.contains("Microsoft.Windows.Common-Controls"));
-    assert!(windows_installer.contains("RequestExecutionLevel admin"));
+    assert!(windows_installer.contains("RequestExecutionLevel user"));
 }
 
 #[test]
@@ -98,6 +99,8 @@ fn windows_installer_uses_official_setup_filename() {
         std::fs::read_to_string(&windows_installer).expect("read windows installer");
 
     assert!(windows_installer.contains("CodexPlusOfficial-${VERSION}-windows-x64-setup.exe"));
+    assert!(windows_installer.contains("CodexPlusOfficial-${VERSION}-windows-x64-online.exe"));
+    assert!(windows_installer.contains("CodexPlusOfficial-${VERSION}-windows-x64-updater.exe"));
     assert!(windows_installer.contains("Name \"Codex官方管理工具\""));
     assert!(
         windows_installer.contains("InstallDir \"$LOCALAPPDATA\\Programs\\Codex官方管理工具\"")
@@ -120,10 +123,20 @@ fn windows_installer_uses_official_setup_filename() {
         windows_installer
             .contains("!define PYTHON_INSTALLER_FILENAME \"python-3.13.14-amd64.exe\"")
     );
+    assert!(
+        windows_installer.contains("!define NODE_RUNTIME_FILENAME \"node-v24.18.0-win-x64.zip\"")
+    );
     assert!(windows_installer.contains("Section \"安装 Python\""));
-    assert!(windows_installer.contains("InstallAllUsers=1"));
+    assert!(windows_installer.contains("Section \"安装 Node 运行时\""));
+    assert!(windows_installer.contains("Section \"安装 Codex 应用\""));
+    assert!(windows_installer.contains("taskkill /IM codex-plus-plus-manager.exe /F /T"));
+    assert!(windows_installer.contains("taskkill /IM codex-plus-plus.exe /F /T"));
+    assert!(windows_installer.contains("InstallAllUsers=0"));
     assert!(windows_installer.contains("PrependPath=1"));
     assert!(windows_installer.contains("Include_pip=1"));
+    assert!(windows_installer.contains("Invoke-WebRequest -Uri '${CODEX_MSIX_URL}'"));
+    assert!(windows_installer.contains("Invoke-WebRequest -Uri '${PYTHON_INSTALLER_URL}'"));
+    assert!(windows_installer.contains("Invoke-WebRequest -Uri '${NODE_RUNTIME_URL}'"));
     assert!(windows_installer.contains("!define MUI_FINISHPAGE_RUN_FUNCTION LaunchInstalledApps"));
     assert!(
         windows_installer
@@ -222,9 +235,7 @@ fn subscription_center_is_only_mounted_on_subscription_route() {
     )
     .expect("read App.tsx");
 
-    assert!(app_tsx.contains(
-        "{route === \"subscription\" ? <SubscriptionCenterScreen actions={actions} /> : null}"
-    ));
+    assert!(app_tsx.contains("{route === \"subscription\" ? <SubscriptionCenterScreen /> : null}"));
     assert!(!app_tsx.contains("subscription-center-route"));
 }
 
@@ -241,10 +252,13 @@ fn update_install_button_is_named_update_and_only_shown_when_available() {
     assert!(app_tsx.contains("if (!silent) {"));
     assert!(app_tsx.contains("const confirmed = await confirmAction("));
     assert!(app_tsx.contains("\"发现可用更新\""));
-    assert!(app_tsx.contains("if (confirmed) await performUpdate(result);"));
+    assert!(app_tsx.contains("if (confirmed) await performUpdate(selected);"));
     assert!(app_tsx.contains("showNotice(\"发现可用更新\""));
-    assert!(app_tsx.contains("className=\"topbar-update-version\""));
-    assert!(app_tsx.contains("update?.updateAvailable === true ? ("));
+    assert!(app_tsx.contains("className=\"topbar-update-version update-pulse\""));
+    assert!(
+        app_tsx.contains("const hasUpdate = update?.updateAvailable === true || updateInstalling;")
+    );
+    assert!(app_tsx.contains("{hasUpdate ? ("));
     assert!(app_tsx.contains("更新版本"));
     assert!(app_tsx.contains("更新"));
     assert!(!app_tsx.contains(">下载并运行安装包</Button>"));
@@ -278,7 +292,7 @@ fn official_macos_packager_hides_silent_launcher_but_not_manager_and_uses_dmg_fi
 }
 
 #[test]
-fn github_release_workflow_builds_separate_official_macos_x64_and_arm64_dmgs() {
+fn github_release_workflow_builds_componentized_windows_assets_for_now() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let workflow = manifest_dir
         .parent()
@@ -288,20 +302,19 @@ fn github_release_workflow_builds_separate_official_macos_x64_and_arm64_dmgs() {
         .join(".github/workflows/release-assets.yml");
     let workflow = std::fs::read_to_string(&workflow).expect("read release assets workflow");
 
-    assert!(workflow.contains("macos-15-intel"));
-    assert!(workflow.contains("x86_64-apple-darwin"));
-    assert!(workflow.contains("macos-14"));
-    assert!(workflow.contains("aarch64-apple-darwin"));
-    assert!(workflow.contains("package-dmg.sh \"$VERSION\" \"${{ matrix.arch }}\""));
-    assert!(workflow.contains("target/${{ matrix.target }}/release"));
-    assert!(workflow.contains("files: dist/macos/*.dmg"));
-    assert!(workflow.contains("dist/macos/stage/Codex官方管理工具.app"));
-    assert!(workflow.contains("\"$app/Contents/MacOS/codex-plus-plus\""));
-    assert!(!workflow.contains("CodexPlusPlus-${VERSION}-macos-${ARCH}.dmg"));
+    assert!(workflow.contains("windows-installer:"));
+    assert!(workflow.contains("dist/windows/*-updater.exe"));
+    assert!(workflow.contains("dist/windows/*-online.exe"));
+    assert!(workflow.contains("CodexPlusOfficial-${version}-windows-x64-setup.exe"));
+    assert!(workflow.contains("CodexPlusOfficial-${version}-windows-x64.zip"));
+    assert!(workflow.contains("/DUPDATE_ONLY=1"));
+    assert!(workflow.contains("/DONLINE_COMPONENTS=1"));
+    assert!(!workflow.contains("macos-15-intel"));
+    assert!(!workflow.contains("macos-14"));
 }
 
 #[test]
-fn github_release_workflow_uploads_static_latest_json() {
+fn github_release_workflow_uploads_static_update_manifests() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let workflow = manifest_dir
         .parent()
@@ -313,7 +326,11 @@ fn github_release_workflow_uploads_static_latest_json() {
 
     assert!(workflow.contains("latest-json:"));
     assert!(workflow.contains("latest.json"));
-    assert!(workflow.contains("gh release upload \"$TAG\" latest.json --clobber"));
+    assert!(workflow.contains("download-latest.json"));
+    assert!(workflow.contains("components.json"));
+    assert!(workflow.contains(
+        "gh release upload \"$TAG\" latest.json download-latest.json components.json --clobber"
+    ));
 }
 
 #[test]
@@ -455,18 +472,13 @@ fn overview_moves_subscription_and_codex_actions_into_balance_card() {
     assert!(app_tsx.contains("id: \"subscription\", label: \"订阅中心\""));
     assert!(app_tsx.contains("onOpenSubscription={() => void actions.goSubscriptionCenter()}"));
     assert!(app_tsx.contains("function SubscriptionCenterScreen"));
-    assert!(app_tsx.contains("src={SUBSCRIPTION_CENTER_EMBED_URL}"));
-    assert!(app_tsx.contains(
-        "{route === \"subscription\" ? <SubscriptionCenterScreen actions={actions} /> : null}"
-    ));
+    assert!(app_tsx.contains("src={SUBSCRIPTION_CENTER_URL}"));
+    assert!(app_tsx.contains("{route === \"subscription\" ? <SubscriptionCenterScreen /> : null}"));
     assert!(!app_tsx.contains("subscription-center-route"));
     assert!(!app_tsx.contains("route === \"subscription\" ? \"contents\" : \"none\""));
-    assert!(app_tsx.contains("const [frameLoaded, setFrameLoaded] = useState(false);"));
-    assert!(app_tsx.contains("onLoad={() => setFrameLoaded(true)}"));
     assert!(!app_tsx.contains("浏览器打开"));
     assert!(!app_tsx.contains("只使用官方订阅入口，不展示其它第三方平台。"));
     assert!(!app_tsx.contains("installCodexFromOverview"));
-    assert!(!app_tsx.contains("onInstallCodex"));
     assert!(app_tsx.contains("onOpenCodex={() => void actions.launch()}"));
     assert!(app_tsx.contains("saveOfficialApiKey"));
     assert!(app_tsx.contains("ensureOfficialReadyForLaunch"));
@@ -478,14 +490,7 @@ fn overview_moves_subscription_and_codex_actions_into_balance_card() {
     assert!(!balance_panel.contains("官方订阅"));
     assert!(balance_panel.contains("className=\"official-balance-action-open\""));
     assert!(balance_panel.contains("className=\"official-balance-action-refresh\""));
-    let balance_panel_index = app_tsx
-        .find("<OfficialBalancePanel")
-        .expect("balance panel");
-    let cli_screen_index = app_tsx
-        .find("function CodexCliScreen")
-        .expect("codex cli screen");
-    assert!(balance_panel_index < cli_screen_index);
-    assert!(app_tsx.contains("id: \"codexCli\", label: \"Codex CLI\""));
+    assert!(app_tsx.contains("<OfficialBalancePanel"));
     assert!(!app_tsx.contains("id: \"zedRemote\", label: \"Zed 远程项目\""));
     assert!(!app_tsx.contains("key={`topbar-${route}`}"));
     assert!(!app_tsx.contains("<section className=\"screen\" key={route}>"));
