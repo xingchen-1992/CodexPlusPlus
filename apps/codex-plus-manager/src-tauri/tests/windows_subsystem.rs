@@ -97,6 +97,14 @@ fn windows_installer_uses_official_setup_filename() {
         .join("scripts/installer/windows/CodexPlusPlus.nsi");
     let windows_installer =
         std::fs::read_to_string(&windows_installer).expect("read windows installer");
+    let install_components = manifest_dir
+        .parent()
+        .and_then(std::path::Path::parent)
+        .and_then(std::path::Path::parent)
+        .unwrap()
+        .join("scripts/installer/windows/InstallComponents.ps1");
+    let install_components =
+        std::fs::read_to_string(&install_components).expect("read component installer");
 
     assert!(windows_installer.contains("CodexPlusOfficial-${VERSION}-windows-x64-setup.exe"));
     assert!(windows_installer.contains("CodexPlusOfficial-${VERSION}-windows-x64-online.exe"));
@@ -126,16 +134,18 @@ fn windows_installer_uses_official_setup_filename() {
     assert!(
         windows_installer.contains("!define NODE_RUNTIME_FILENAME \"node-v24.18.0-win-x64.zip\"")
     );
-    assert!(windows_installer.contains("Section \"安装 Python\""));
     assert!(windows_installer.contains("Section \"安装 Node 运行时\""));
-    assert!(windows_installer.contains("Section \"安装 Codex 应用\""));
-    assert!(windows_installer.contains("taskkill /IM codex-plus-plus-manager.exe /F /T"));
-    assert!(windows_installer.contains("taskkill /IM codex-plus-plus.exe /F /T"));
-    assert!(windows_installer.contains("InstallAllUsers=0"));
-    assert!(windows_installer.contains("PrependPath=1"));
-    assert!(windows_installer.contains("Include_pip=1"));
-    assert!(windows_installer.contains("Invoke-WebRequest -Uri '${CODEX_MSIX_URL}'"));
-    assert!(windows_installer.contains("Invoke-WebRequest -Uri '${PYTHON_INSTALLER_URL}'"));
+    assert!(windows_installer.contains("Section \"并行安装 Codex 应用和 Python\""));
+    assert!(windows_installer.contains("taskkill /IM codex-plus-plus-manager.exe /F"));
+    assert!(windows_installer.contains("taskkill /IM codex-plus-plus.exe /F"));
+    assert!(!windows_installer.contains("taskkill /IM codex-plus-plus-manager.exe /F /T"));
+    assert!(!windows_installer.contains("taskkill /IM codex-plus-plus.exe /F /T"));
+    assert!(install_components.contains("InstallAllUsers=0"));
+    assert!(install_components.contains("PrependPath=1"));
+    assert!(install_components.contains("Include_pip=1"));
+    assert!(windows_installer.contains("-CodexMsixUrl \"${CODEX_MSIX_URL}\""));
+    assert!(windows_installer.contains("-PythonInstallerUrl \"${PYTHON_INSTALLER_URL}\""));
+    assert!(install_components.contains("Invoke-WebRequest -Uri $Url"));
     assert!(windows_installer.contains("Invoke-WebRequest -Uri '${NODE_RUNTIME_URL}'"));
     assert!(windows_installer.contains("!define MUI_FINISHPAGE_RUN_FUNCTION LaunchInstalledApps"));
     assert!(
@@ -154,6 +164,26 @@ fn windows_installer_uses_official_setup_filename() {
     assert!(windows_installer.contains(
         "WriteRegStr HKCU \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CodexOfficialManager\" \"Publisher\" \"官方\""
     ));
+}
+
+#[test]
+fn windows_updater_survives_manager_process_shutdown() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir
+        .parent()
+        .and_then(std::path::Path::parent)
+        .and_then(std::path::Path::parent)
+        .unwrap();
+    let windows_installer = repo_root.join("scripts/installer/windows/CodexPlusPlus.nsi");
+    let windows_installer =
+        std::fs::read_to_string(&windows_installer).expect("read windows installer");
+    let update_rs = repo_root.join("crates/codex-plus-core/src/update.rs");
+    let update_rs = std::fs::read_to_string(&update_rs).expect("read update.rs");
+
+    assert!(windows_installer.contains("taskkill /IM codex-plus-plus-manager.exe /F"));
+    assert!(!windows_installer.contains("taskkill /IM codex-plus-plus-manager.exe /F /T"));
+    assert!(update_rs.contains("DETACHED_PROCESS"));
+    assert!(update_rs.contains("CREATE_NEW_PROCESS_GROUP"));
 }
 
 #[test]

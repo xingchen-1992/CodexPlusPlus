@@ -661,7 +661,10 @@ pub fn launch_installer(path: &Path) -> anyhow::Result<()> {
     {
         use std::os::windows::process::CommandExt;
         std::process::Command::new(path)
-            .creation_flags(crate::windows_integration::CREATE_NO_WINDOW)
+            .creation_flags(
+                crate::windows_integration::DETACHED_PROCESS
+                    | crate::windows_integration::CREATE_NEW_PROCESS_GROUP,
+            )
             .spawn()
             .map(|_| ())
             .map_err(|error| anyhow::anyhow!("启动安装包失败：{error}"))

@@ -46,6 +46,10 @@ use windows::core::{Interface, PCWSTR, PWSTR};
 
 #[cfg(windows)]
 pub const CREATE_NO_WINDOW: u32 = 0x08000000;
+#[cfg(windows)]
+pub const DETACHED_PROCESS: u32 = 0x00000008;
+#[cfg(windows)]
+pub const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
 
 #[cfg(windows)]
 #[derive(Debug, Clone, PartialEq, Eq)]

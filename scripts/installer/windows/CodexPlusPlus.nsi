@@ -58,9 +58,9 @@ Section "安装主程序" SEC_MAIN
   SetOutPath "$INSTDIR\app"
 
   DetailPrint "Closing running Codex manager processes..."
-  nsExec::ExecToLog 'taskkill /IM codex-plus-plus-manager.exe /F /T'
+  nsExec::ExecToLog 'taskkill /IM codex-plus-plus-manager.exe /F'
   Pop $0
-  nsExec::ExecToLog 'taskkill /IM codex-plus-plus.exe /F /T'
+  nsExec::ExecToLog 'taskkill /IM codex-plus-plus.exe /F'
   Pop $0
   !insertmacro RemoveLegacyVisibleEntries
 
