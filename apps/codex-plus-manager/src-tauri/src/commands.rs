@@ -2885,22 +2885,15 @@ fn managed_skill_relative_path(relative_path: &str) -> anyhow::Result<PathBuf> {
 #[tauri::command]
 pub async fn check_update() -> CommandResult<Value> {
     match codex_plus_core::update::check_for_update(codex_plus_core::version::VERSION).await {
-        Ok(update) => {
-            let status = if update.update_available {
-                "ok"
+        Ok(update) => CommandResult {
+            status: "ok".to_string(),
+            message: if update.update_available {
+                "发现可用更新。".to_string()
             } else {
-                "not_checked"
-            };
-            CommandResult {
-                status: status.to_string(),
-                message: if update.update_available {
-                    "发现可用更新。".to_string()
-                } else {
-                    "当前已是最新版本。".to_string()
-                },
-                payload: update_check_payload(update),
-            }
-        }
+                "当前已是最新版本。".to_string()
+            },
+            payload: update_check_payload(update),
+        },
         Err(error) => failed(
             &format!("检查更新失败：{error}"),
             failed_update_check_payload(),
