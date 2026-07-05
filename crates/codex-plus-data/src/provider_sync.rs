@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -30,6 +31,7 @@ pub struct ProviderSyncResult {
     pub sqlite_provider_rows_updated: usize,
     pub sqlite_user_event_rows_updated: usize,
     pub sqlite_cwd_rows_updated: usize,
+    pub sqlite_catalog_rows_updated: usize,
     pub updated_workspace_roots: usize,
     pub encrypted_content_warning: Option<String>,
 }
@@ -68,6 +70,8 @@ struct SessionChange {
     original_session_meta_lines: Vec<String>,
     thread_id: Option<String>,
     cwd: Option<String>,
+    created_at_secs: Option<f64>,
+    source_kind: Option<String>,
     has_user_event: bool,
     rewrite_needed: bool,
     original_mtime: Option<SystemTime>,
@@ -79,9 +83,22 @@ struct RolloutRewrite {
     rewrite_needed: bool,
     thread_id: Option<String>,
     cwd: Option<String>,
+    created_at_secs: Option<f64>,
+    source_kind: Option<String>,
     providers: Vec<String>,
     original_session_meta_lines: Vec<String>,
     session_meta_count: usize,
+}
+
+#[derive(Debug, Clone)]
+struct LocalThreadCatalogEntry {
+    thread_id: String,
+    display_title: String,
+    source_created_at: f64,
+    source_updated_at: f64,
+    cwd: String,
+    source_kind: String,
+    model_provider: String,
 }
 
 #[derive(Debug, Default)]
@@ -102,17 +119,19 @@ struct SqliteUpdateCounts {
     provider_rows: usize,
     user_event_rows: usize,
     cwd_rows: usize,
+    catalog_rows: usize,
 }
 
 impl SqliteUpdateCounts {
     fn total(&self) -> usize {
-        self.provider_rows + self.user_event_rows + self.cwd_rows
+        self.provider_rows + self.user_event_rows + self.cwd_rows + self.catalog_rows
     }
 
     fn add(&mut self, other: Self) {
         self.provider_rows += other.provider_rows;
         self.user_event_rows += other.user_event_rows;
         self.cwd_rows += other.cwd_rows;
+        self.catalog_rows += other.catalog_rows;
     }
 }
 
@@ -183,12 +202,15 @@ pub fn run_provider_sync_with_target(
             .iter()
             .filter_map(|change| Some((change.thread_id.clone()?, change.cwd.clone()?)))
             .collect::<HashMap<_, _>>();
+        let catalog_entries =
+            collect_local_thread_catalog_entries(&home, &collected.changes, &target_provider)?;
         let sqlite_paths = codex_plus_core::codex_sqlite::codex_session_db_paths_from_home(&home);
         let sqlite_update_count = count_sqlite_updates_for_paths(
             &sqlite_paths,
             &target_provider,
             &thread_ids_with_user_events,
             &cwd_by_thread_id,
+            &catalog_entries,
         )?;
         let global_state_update_count =
             count_global_state_updates(&home.join(".codex-global-state.json"))?;
@@ -214,6 +236,7 @@ pub fn run_provider_sync_with_target(
                 &target_provider,
                 &thread_ids_with_user_events,
                 &cwd_by_thread_id,
+                &catalog_entries,
             )?;
             let updated_workspace_roots =
                 apply_global_state_update(&home.join(".codex-global-state.json"))?;
@@ -244,6 +267,7 @@ pub fn run_provider_sync_with_target(
         synced.sqlite_provider_rows_updated = sqlite_updates.provider_rows;
         synced.sqlite_user_event_rows_updated = sqlite_updates.user_event_rows;
         synced.sqlite_cwd_rows_updated = sqlite_updates.cwd_rows;
+        synced.sqlite_catalog_rows_updated = sqlite_updates.catalog_rows;
         synced.updated_workspace_roots = updated_workspace_roots;
         synced.encrypted_content_warning = encrypted_content_warning;
         Ok(synced)
@@ -280,6 +304,7 @@ fn result(
         sqlite_provider_rows_updated: 0,
         sqlite_user_event_rows_updated: 0,
         sqlite_cwd_rows_updated: 0,
+        sqlite_catalog_rows_updated: 0,
         updated_workspace_roots: 0,
         encrypted_content_warning: None,
     }
@@ -518,12 +543,96 @@ fn collect_session_changes(home: &Path, target_provider: &str) -> anyhow::Result
             original_session_meta_lines: rewrite.original_session_meta_lines,
             thread_id: rewrite.thread_id,
             cwd: rewrite.cwd,
+            created_at_secs: rewrite.created_at_secs,
+            source_kind: rewrite.source_kind,
             has_user_event,
             rewrite_needed: rewrite.rewrite_needed,
             original_mtime,
         });
     }
     Ok(collected)
+}
+
+fn collect_local_thread_catalog_entries(
+    home: &Path,
+    changes: &[SessionChange],
+    target_provider: &str,
+) -> anyhow::Result<Vec<LocalThreadCatalogEntry>> {
+    let index = read_session_index(home)?;
+    let mut entries = Vec::new();
+    let mut seen = HashSet::new();
+    for change in changes {
+        let Some(thread_id) = change.thread_id.as_deref() else {
+            continue;
+        };
+        if !seen.insert(thread_id.to_string()) {
+            continue;
+        }
+        let indexed = index.get(thread_id);
+        let created = change
+            .created_at_secs
+            .or_else(|| system_time_secs(change.original_mtime))
+            .unwrap_or_else(|| now_secs() as f64);
+        let updated = indexed
+            .and_then(|item| item.updated_at_secs)
+            .or_else(|| system_time_secs(change.original_mtime))
+            .unwrap_or(created);
+        entries.push(LocalThreadCatalogEntry {
+            thread_id: thread_id.to_string(),
+            display_title: indexed
+                .map(|item| item.title.trim())
+                .filter(|title| !title.is_empty())
+                .unwrap_or(thread_id)
+                .to_string(),
+            source_created_at: created,
+            source_updated_at: updated.max(created),
+            cwd: change.cwd.clone().unwrap_or_default(),
+            source_kind: change
+                .source_kind
+                .clone()
+                .unwrap_or_else(|| "cli".to_string()),
+            model_provider: target_provider.to_string(),
+        });
+    }
+    Ok(entries)
+}
+
+#[derive(Debug, Clone)]
+struct SessionIndexEntry {
+    title: String,
+    updated_at_secs: Option<f64>,
+}
+
+fn read_session_index(home: &Path) -> anyhow::Result<HashMap<String, SessionIndexEntry>> {
+    let path = home.join("session_index.jsonl");
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+    let text = fs::read_to_string(path)?;
+    let mut index = HashMap::new();
+    for line in text.lines() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let Some(id) = value.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        index.insert(
+            id.to_string(),
+            SessionIndexEntry {
+                title: value
+                    .get("thread_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or(id)
+                    .to_string(),
+                updated_at_secs: value
+                    .get("updated_at")
+                    .and_then(Value::as_str)
+                    .and_then(parse_rfc3339_secs),
+            },
+        );
+    }
+    Ok(index)
 }
 
 fn rewrite_rollout_session_meta_providers(
@@ -556,6 +665,19 @@ fn rewrite_rollout_session_meta_providers(
                             .get("cwd")
                             .and_then(Value::as_str)
                             .and_then(to_desktop_workspace_path);
+                    }
+                    if rewrite.created_at_secs.is_none() {
+                        rewrite.created_at_secs = payload
+                            .get("timestamp")
+                            .and_then(Value::as_str)
+                            .and_then(parse_rfc3339_secs);
+                    }
+                    if rewrite.source_kind.is_none() {
+                        rewrite.source_kind = payload
+                            .get("source")
+                            .and_then(Value::as_str)
+                            .filter(|value| !value.trim().is_empty())
+                            .map(ToString::to_string);
                     }
                     let provider = payload
                         .get("model_provider")
@@ -647,6 +769,18 @@ fn split_line_ending(segment: &str) -> (&str, &str) {
     } else {
         (segment, "")
     }
+}
+
+fn parse_rfc3339_secs(value: &str) -> Option<f64> {
+    DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc).timestamp_millis() as f64 / 1000.0)
+}
+
+fn system_time_secs(value: Option<SystemTime>) -> Option<f64> {
+    value
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as f64 / 1000.0)
 }
 
 fn to_desktop_workspace_path(value: &str) -> Option<String> {
@@ -807,18 +941,29 @@ fn sqlite_provider_ids(path: &Path) -> anyhow::Result<Vec<String>> {
         return Ok(Vec::new());
     }
     let db = Connection::open(path)?;
-    let columns = table_columns(&db, "threads")?;
-    if !columns.contains("model_provider") {
-        return Ok(Vec::new());
-    }
-    let mut stmt = db.prepare(
-        "SELECT DISTINCT COALESCE(model_provider, '') FROM threads WHERE COALESCE(model_provider, '') <> ''",
-    )?;
     let mut ids = HashSet::new();
-    for item in stmt.query_map([], |row| row.get::<_, String>(0))? {
-        let id = item?;
-        if is_valid_provider_id_for_discovery(&id) {
-            ids.insert(id);
+    let columns = table_columns(&db, "threads")?;
+    if columns.contains("model_provider") {
+        let mut stmt = db.prepare(
+            "SELECT DISTINCT COALESCE(model_provider, '') FROM threads WHERE COALESCE(model_provider, '') <> ''",
+        )?;
+        for item in stmt.query_map([], |row| row.get::<_, String>(0))? {
+            let id = item?;
+            if is_valid_provider_id_for_discovery(&id) {
+                ids.insert(id);
+            }
+        }
+    }
+    let catalog_columns = table_columns(&db, "local_thread_catalog")?;
+    if catalog_columns.contains("model_provider") {
+        let mut stmt = db.prepare(
+            "SELECT DISTINCT COALESCE(model_provider, '') FROM local_thread_catalog WHERE COALESCE(model_provider, '') <> ''",
+        )?;
+        for item in stmt.query_map([], |row| row.get::<_, String>(0))? {
+            let id = item?;
+            if is_valid_provider_id_for_discovery(&id) {
+                ids.insert(id);
+            }
         }
     }
     Ok(sorted_provider_ids(ids))
@@ -829,38 +974,40 @@ fn count_sqlite_updates(
     target_provider: &str,
     user_event_thread_ids: &HashSet<String>,
     cwd_by_thread_id: &HashMap<String, String>,
+    catalog_entries: &[LocalThreadCatalogEntry],
 ) -> anyhow::Result<usize> {
     if !path.exists() {
         return Ok(0);
     }
     let db = Connection::open(path)?;
     let columns = table_columns(&db, "threads")?;
-    if !columns.contains("model_provider") {
-        return Ok(0);
-    }
-    let mut total: usize = db.query_row(
-        "SELECT COUNT(*) FROM threads WHERE COALESCE(model_provider, '') <> ?1",
-        [target_provider],
-        |row| row.get::<_, i64>(0),
-    )? as usize;
-    if columns.contains("has_user_event") {
-        for thread_id in user_event_thread_ids {
-            total += db.query_row(
-                "SELECT COUNT(*) FROM threads WHERE id = ?1 AND COALESCE(has_user_event, 0) <> 1",
-                [thread_id],
-                |row| row.get::<_, i64>(0),
-            )? as usize;
+    let mut total = 0usize;
+    if columns.contains("model_provider") {
+        total += db.query_row(
+            "SELECT COUNT(*) FROM threads WHERE COALESCE(model_provider, '') <> ?1",
+            [target_provider],
+            |row| row.get::<_, i64>(0),
+        )? as usize;
+        if columns.contains("has_user_event") {
+            for thread_id in user_event_thread_ids {
+                total += db.query_row(
+                    "SELECT COUNT(*) FROM threads WHERE id = ?1 AND COALESCE(has_user_event, 0) <> 1",
+                    [thread_id],
+                    |row| row.get::<_, i64>(0),
+                )? as usize;
+            }
+        }
+        if columns.contains("cwd") {
+            for (thread_id, cwd) in cwd_by_thread_id {
+                total += db.query_row(
+                    "SELECT COUNT(*) FROM threads WHERE id = ?1 AND COALESCE(cwd, '') <> ?2",
+                    (thread_id, cwd),
+                    |row| row.get::<_, i64>(0),
+                )? as usize;
+            }
         }
     }
-    if columns.contains("cwd") {
-        for (thread_id, cwd) in cwd_by_thread_id {
-            total += db.query_row(
-                "SELECT COUNT(*) FROM threads WHERE id = ?1 AND COALESCE(cwd, '') <> ?2",
-                (thread_id, cwd),
-                |row| row.get::<_, i64>(0),
-            )? as usize;
-        }
-    }
+    total += count_local_thread_catalog_updates(&db, catalog_entries)?;
     Ok(total)
 }
 
@@ -869,6 +1016,7 @@ fn count_sqlite_updates_for_paths(
     target_provider: &str,
     user_event_thread_ids: &HashSet<String>,
     cwd_by_thread_id: &HashMap<String, String>,
+    catalog_entries: &[LocalThreadCatalogEntry],
 ) -> anyhow::Result<usize> {
     let mut total = 0;
     for path in paths {
@@ -877,6 +1025,7 @@ fn count_sqlite_updates_for_paths(
             target_provider,
             user_event_thread_ids,
             cwd_by_thread_id,
+            catalog_entries,
         )?;
     }
     Ok(total)
@@ -887,37 +1036,40 @@ fn apply_sqlite_update(
     target_provider: &str,
     user_event_thread_ids: &HashSet<String>,
     cwd_by_thread_id: &HashMap<String, String>,
+    catalog_entries: &[LocalThreadCatalogEntry],
 ) -> anyhow::Result<SqliteUpdateCounts> {
     if !path.exists() {
         return Ok(SqliteUpdateCounts::default());
     }
     let mut db = Connection::open(path)?;
     let columns = table_columns(&db, "threads")?;
-    if !columns.contains("model_provider") {
-        return Ok(SqliteUpdateCounts::default());
-    }
+    let catalog_columns = table_columns(&db, "local_thread_catalog")?;
     let tx = db.transaction()?;
     let mut counts = SqliteUpdateCounts::default();
-    counts.provider_rows = tx.execute(
-        "UPDATE threads SET model_provider = ?1 WHERE COALESCE(model_provider, '') <> ?1",
-        [target_provider],
-    )?;
-    if columns.contains("has_user_event") {
-        for thread_id in user_event_thread_ids {
-            counts.user_event_rows += tx.execute(
-                "UPDATE threads SET has_user_event = 1 WHERE id = ?1 AND COALESCE(has_user_event, 0) <> 1",
-                [thread_id],
-            )?;
+    if columns.contains("model_provider") {
+        counts.provider_rows = tx.execute(
+            "UPDATE threads SET model_provider = ?1 WHERE COALESCE(model_provider, '') <> ?1",
+            [target_provider],
+        )?;
+        if columns.contains("has_user_event") {
+            for thread_id in user_event_thread_ids {
+                counts.user_event_rows += tx.execute(
+                    "UPDATE threads SET has_user_event = 1 WHERE id = ?1 AND COALESCE(has_user_event, 0) <> 1",
+                    [thread_id],
+                )?;
+            }
+        }
+        if columns.contains("cwd") {
+            for (thread_id, cwd) in cwd_by_thread_id {
+                counts.cwd_rows += tx.execute(
+                    "UPDATE threads SET cwd = ?1 WHERE id = ?2 AND COALESCE(cwd, '') <> ?1",
+                    (cwd, thread_id),
+                )?;
+            }
         }
     }
-    if columns.contains("cwd") {
-        for (thread_id, cwd) in cwd_by_thread_id {
-            counts.cwd_rows += tx.execute(
-                "UPDATE threads SET cwd = ?1 WHERE id = ?2 AND COALESCE(cwd, '') <> ?1",
-                (cwd, thread_id),
-            )?;
-        }
-    }
+    counts.catalog_rows =
+        apply_local_thread_catalog_update(&tx, &catalog_columns, catalog_entries)?;
     tx.commit()?;
     Ok(counts)
 }
@@ -927,6 +1079,7 @@ fn apply_sqlite_update_for_paths(
     target_provider: &str,
     user_event_thread_ids: &HashSet<String>,
     cwd_by_thread_id: &HashMap<String, String>,
+    catalog_entries: &[LocalThreadCatalogEntry],
 ) -> anyhow::Result<SqliteUpdateCounts> {
     let mut total = SqliteUpdateCounts::default();
     for path in paths {
@@ -935,9 +1088,138 @@ fn apply_sqlite_update_for_paths(
             target_provider,
             user_event_thread_ids,
             cwd_by_thread_id,
+            catalog_entries,
         )?);
     }
     Ok(total)
+}
+
+fn local_thread_catalog_supported(columns: &HashSet<String>) -> bool {
+    [
+        "host_id",
+        "thread_id",
+        "display_title",
+        "source_created_at",
+        "source_updated_at",
+        "cwd",
+        "source_kind",
+        "model_provider",
+        "observation_sequence",
+        "missing_candidate",
+    ]
+    .iter()
+    .all(|column| columns.contains(*column))
+}
+
+fn count_local_thread_catalog_updates(
+    db: &Connection,
+    entries: &[LocalThreadCatalogEntry],
+) -> anyhow::Result<usize> {
+    if entries.is_empty() {
+        return Ok(0);
+    }
+    let columns = table_columns(db, "local_thread_catalog")?;
+    if !local_thread_catalog_supported(&columns) {
+        return Ok(0);
+    }
+    let mut total = 0usize;
+    let mut stmt = db.prepare(
+        "SELECT COUNT(*)
+         FROM local_thread_catalog
+         WHERE host_id = 'local'
+           AND thread_id = ?1
+           AND display_title = ?2
+           AND source_created_at = ?3
+           AND source_updated_at = ?4
+           AND cwd = ?5
+           AND source_kind = ?6
+           AND model_provider = ?7
+           AND missing_candidate = 0",
+    )?;
+    for entry in entries {
+        let matches: i64 = stmt.query_row(
+            (
+                &entry.thread_id,
+                &entry.display_title,
+                entry.source_created_at,
+                entry.source_updated_at,
+                &entry.cwd,
+                &entry.source_kind,
+                &entry.model_provider,
+            ),
+            |row| row.get(0),
+        )?;
+        if matches == 0 {
+            total += 1;
+        }
+    }
+    Ok(total)
+}
+
+fn apply_local_thread_catalog_update(
+    tx: &rusqlite::Transaction<'_>,
+    columns: &HashSet<String>,
+    entries: &[LocalThreadCatalogEntry],
+) -> anyhow::Result<usize> {
+    if entries.is_empty() || !local_thread_catalog_supported(columns) {
+        return Ok(0);
+    }
+    let observation_sequence = tx
+        .query_row(
+            "SELECT COALESCE(MAX(observation_sequence), 0) FROM local_thread_catalog",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0);
+    let mut rows = 0usize;
+    let mut stmt = tx.prepare(
+        "INSERT INTO local_thread_catalog (
+             host_id,
+             thread_id,
+             display_title,
+             source_created_at,
+             source_updated_at,
+             cwd,
+             source_kind,
+             model_provider,
+             observation_sequence,
+             missing_candidate
+         )
+         VALUES ('local', ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)
+         ON CONFLICT(host_id, thread_id) DO UPDATE SET
+             display_title = excluded.display_title,
+             source_created_at = excluded.source_created_at,
+             source_updated_at = excluded.source_updated_at,
+             cwd = excluded.cwd,
+             source_kind = excluded.source_kind,
+             model_provider = excluded.model_provider,
+             observation_sequence = CASE
+                 WHEN local_thread_catalog.observation_sequence > excluded.observation_sequence
+                 THEN local_thread_catalog.observation_sequence
+                 ELSE excluded.observation_sequence
+             END,
+             missing_candidate = 0
+         WHERE local_thread_catalog.display_title <> excluded.display_title
+            OR local_thread_catalog.source_created_at IS NOT excluded.source_created_at
+            OR local_thread_catalog.source_updated_at IS NOT excluded.source_updated_at
+            OR local_thread_catalog.cwd <> excluded.cwd
+            OR local_thread_catalog.source_kind <> excluded.source_kind
+            OR local_thread_catalog.model_provider <> excluded.model_provider
+            OR local_thread_catalog.missing_candidate <> 0",
+    )?;
+    for entry in entries {
+        rows += stmt.execute((
+            &entry.thread_id,
+            &entry.display_title,
+            entry.source_created_at,
+            entry.source_updated_at,
+            &entry.cwd,
+            &entry.source_kind,
+            &entry.model_provider,
+            observation_sequence,
+        ))?;
+    }
+    Ok(rows)
 }
 
 fn load_global_state(path: &Path) -> anyhow::Result<Map<String, Value>> {

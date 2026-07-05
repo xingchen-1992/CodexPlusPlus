@@ -74,6 +74,34 @@ fn create_state_db_with_providers(path: &Path, rows: &[(&str, &str, i64)]) {
     }
 }
 
+fn create_local_thread_catalog_db(path: &Path) {
+    let db = Connection::open(path).unwrap();
+    db.execute(
+        "CREATE TABLE automation_runs (thread_id TEXT PRIMARY KEY)",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "CREATE TABLE local_thread_catalog (
+            host_id TEXT NOT NULL,
+            thread_id TEXT NOT NULL,
+            display_title TEXT NOT NULL,
+            source_created_at REAL NOT NULL,
+            source_updated_at REAL NOT NULL,
+            cwd TEXT NOT NULL,
+            source_kind TEXT NOT NULL,
+            source_detail TEXT,
+            model_provider TEXT NOT NULL,
+            git_branch TEXT,
+            observation_sequence INTEGER NOT NULL,
+            missing_candidate INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (host_id, thread_id)
+        )",
+        [],
+    )
+    .unwrap();
+}
+
 #[test]
 fn provider_sync_targets_merge_config_rollout_sqlite_and_sort_current_first() {
     let tmp = tempdir().unwrap();
@@ -348,6 +376,63 @@ fn provider_sync_updates_new_codex_sqlite_directory_db() {
     );
     let backup_dir = result.backup_dir.unwrap();
     assert!(backup_dir.join("db/sqlite/codex-dev.db").exists());
+}
+
+#[test]
+fn provider_sync_backfills_codex_app_local_thread_catalog() {
+    let tmp = tempdir().unwrap();
+    let home = tmp.path().join(".codex");
+    let sqlite_dir = home.join("sqlite");
+    fs::create_dir_all(&sqlite_dir).unwrap();
+    fs::write(home.join("config.toml"), "model_provider = \"apigather\"\n").unwrap();
+    fs::write(
+        home.join("session_index.jsonl"),
+        r#"{"id":"thread-1","thread_name":"Recovered Thread","updated_at":"2026-07-05T02:04:52.4110911Z"}"#,
+    )
+    .unwrap();
+    write_rollout(
+        &home.join("sessions/2026/rollout-thread-1.jsonl"),
+        "apigather",
+        "thread-1",
+        "C:/workspace",
+    );
+    let db_path = sqlite_dir.join("codex-dev.db");
+    create_local_thread_catalog_db(&db_path);
+
+    let result = run_provider_sync(Some(&home));
+
+    assert_eq!(result.status, ProviderSyncStatus::Synced);
+    assert_eq!(result.changed_session_files, 0);
+    assert_eq!(result.sqlite_rows_updated, 1);
+    assert_eq!(result.sqlite_catalog_rows_updated, 1);
+    let db = Connection::open(&db_path).unwrap();
+    let row = db
+        .query_row(
+            "SELECT display_title, cwd, source_kind, model_provider, missing_candidate
+             FROM local_thread_catalog
+             WHERE host_id = 'local' AND thread_id = 'thread-1'",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        row,
+        (
+            "Recovered Thread".to_string(),
+            "C:/workspace".to_string(),
+            "cli".to_string(),
+            "apigather".to_string(),
+            0,
+        )
+    );
 }
 
 #[test]

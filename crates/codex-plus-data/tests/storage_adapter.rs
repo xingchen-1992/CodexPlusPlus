@@ -483,6 +483,57 @@ fn list_local_sessions_reads_codex_automation_runs_schema() {
 }
 
 #[test]
+fn list_local_sessions_reads_codex_local_thread_catalog_schema() {
+    let tmp = tempdir().unwrap();
+    let db_path = tmp.path().join("codex-dev.db");
+    let backup = BackupStore::new(tmp.path().join("backups"));
+    let adapter = SQLiteStorageAdapter::new(&db_path, backup);
+    let db = Connection::open(&db_path).unwrap();
+    db.execute(
+        "CREATE TABLE automation_runs (thread_id TEXT PRIMARY KEY)",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "CREATE TABLE local_thread_catalog (
+            host_id TEXT NOT NULL,
+            thread_id TEXT NOT NULL,
+            display_title TEXT NOT NULL,
+            source_created_at REAL NOT NULL,
+            source_updated_at REAL NOT NULL,
+            cwd TEXT NOT NULL,
+            source_kind TEXT NOT NULL,
+            source_detail TEXT,
+            model_provider TEXT NOT NULL,
+            git_branch TEXT,
+            observation_sequence INTEGER NOT NULL,
+            missing_candidate INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (host_id, thread_id)
+        )",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO local_thread_catalog (
+            host_id, thread_id, display_title, source_created_at, source_updated_at,
+            cwd, source_kind, model_provider, observation_sequence, missing_candidate
+        ) VALUES ('local', 't1', 'Catalog Thread', 100.0, 200.0, 'C:/catalog', 'vscode', 'openai', 1, 0)",
+        [],
+    )
+    .unwrap();
+    drop(db);
+
+    let sessions = adapter.list_local_sessions().unwrap();
+
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].id, "t1");
+    assert_eq!(sessions[0].title, "Catalog Thread");
+    assert_eq!(sessions[0].cwd, "C:/catalog");
+    assert_eq!(sessions[0].model_provider, "openai");
+    assert_eq!(sessions[0].updated_at_ms, Some(200000));
+}
+
+#[test]
 fn delete_local_session_removes_codex_automation_run_and_inbox_items() {
     let tmp = tempdir().unwrap();
     let db_path = tmp.path().join("codex-dev.db");

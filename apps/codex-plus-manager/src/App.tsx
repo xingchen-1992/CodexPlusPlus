@@ -279,12 +279,17 @@ type RelayMode = "official" | "mixedApi" | "pureApi" | "aggregate";
 const PROTOCOL_PROXY_BASE_URL = "http://127.0.0.1:57321/v1";
 const CHAT_UPSTREAM_BASE_URL_KEY = "codex_plus_chat_base_url";
 const SCRIPT_MARKET_REPOSITORY_URL = "https://www.leishen-ai.cn/tools/codex-plus/script-market";
-const SUBSCRIPTION_CENTER_URL = "https://www.leishen-ai.cn/user-next/console/subscription?desktop=codex-plus-taiying";
+const SUBSCRIPTION_CENTER_URL =
+  "https://www.leishen-ai.cn/user-next/console/subscription?desktop=codex-plus-taiying&paymentResultMode=inline&redirect=none";
 const SUBSCRIPTION_CENTER_ORIGIN = "https://www.leishen-ai.cn";
+const BLOCKED_SUBSCRIPTION_RETURN_HOSTS = new Set(["ls-qihang.cn", "www.ls-qihang.cn"]);
 const SUPPORT_API_BASE_URL = "https://www.leishen-ai.cn/portal/support";
 const UPDATE_POLL_INTERVAL_MS = 10 * 60 * 1000;
 const UPDATE_BUTTON_TOOLTIP = "更新管理工具，不会影响 Codex 应用当前正常使用。";
 const API_KEY_BACKUP_REMINDER = "请务必保存好 API Key，丢失后无法在本工具中找回。";
+const SUBSCRIPTION_PAYMENT_SUCCESS_MESSAGE = "支付成功，购买额度已增加至当前使用中的 API Key。";
+const SUBSCRIPTION_PAYMENT_SUCCESS_VISIBLE_MS = 3000;
+const SUBSCRIPTION_KEY_SYNC_TIMEOUT_MS = 15000;
 const OFFICIAL_API_KEY_STORAGE_KEY = "codex-plus-official-api-key";
 const OFFICIAL_RELAY_ID = "official";
 const OFFICIAL_RELAY_NAME = "总量包";
@@ -494,6 +499,7 @@ type ProviderSyncPayload = {
   sqliteProviderRowsUpdated?: number;
   sqliteUserEventRowsUpdated?: number;
   sqliteCwdRowsUpdated?: number;
+  sqliteCatalogRowsUpdated?: number;
   updatedWorkspaceRoots?: number;
   encryptedContentWarning?: string | null;
 };
@@ -666,6 +672,8 @@ type OfficialSyncResult = {
   message: string;
 };
 
+type SubscriptionPaymentStatus = "idle" | "paying" | "syncing" | "synced" | "waiting_key";
+
 type Route = "overview" | "subscription" | "support" | "relay" | "mobileControl" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "maintenance" | "about" | "settings";
 type Theme = "dark" | "light";
 
@@ -775,9 +783,15 @@ export function App() {
   const [managedSkillsReady, setManagedSkillsReady] = useState(false);
   const managedSkillsSyncPromiseRef = useRef<Promise<CrsImageInstallResult | null> | null>(null);
   const [officialApiKey, setOfficialApiKey] = useState(() => loadSavedOfficialApiKey());
+  const officialApiKeyRef = useRef(officialApiKey);
   const [officialBalance, setOfficialBalance] = useState<OfficialBalance | null>(null);
   const [officialBalanceMessage, setOfficialBalanceMessage] = useState("输入你的 API Key 后即可读取套餐和总量包余额。");
   const [officialBalanceBusy, setOfficialBalanceBusy] = useState(false);
+  const [subscriptionPaymentUrl, setSubscriptionPaymentUrl] = useState("");
+  const [subscriptionPaymentStatus, setSubscriptionPaymentStatus] = useState<SubscriptionPaymentStatus>("idle");
+  const subscriptionPaymentStatusRef = useRef<SubscriptionPaymentStatus>("idle");
+  const subscriptionSyncTimerRef = useRef<number | null>(null);
+  const subscriptionStatusResetTimerRef = useRef<number | null>(null);
   const [launchProgress, setLaunchProgress] = useState<LaunchProgress>(idleLaunchProgress);
   const launchProgressClearTimerRef = useRef<number | null>(null);
   const [scriptMarket, setScriptMarket] = useState<ScriptMarketResult | null>(null);
@@ -807,6 +821,11 @@ export function App() {
   const [relaySwitching, setRelaySwitching] = useState(false);
 
   const call = <T,>(command: string, args?: Record<string, unknown>) => invoke<T>(command, args);
+
+  const setOfficialApiKeyValue = (value: string) => {
+    officialApiKeyRef.current = value;
+    setOfficialApiKey(value);
+  };
 
   const logDiagnostic = (event: string, detail: Record<string, unknown> = {}) => {
     void invoke("write_diagnostic_event", { event, detail }).catch(() => {});
@@ -1122,11 +1141,15 @@ export function App() {
       return { ok: false, message };
     }
 
-    setOfficialApiKey(normalized);
-    saveOfficialApiKeyToStorage(normalized);
     setOfficialBalanceBusy(true);
     try {
-      setOfficialBalanceMessage("正在写入本机 Codex 配置...");
+      setOfficialBalanceMessage("正在校验 API Key 额度...");
+      const balanceResult = await fetchOfficialBalance(normalized);
+      if (!isSuccessStatus(balanceResult.status)) {
+        throw new Error(balanceResult.message || "API Key 额度校验失败");
+      }
+
+      setOfficialBalanceMessage("API Key 额度校验通过，正在写入本机 Codex 配置...");
       const configureResult = await configureOfficialApiKey(normalized, {
         writeMode: options.writeMode || "always",
       });
@@ -1134,20 +1157,16 @@ export function App() {
         throw new Error(configureResult.message || "本机 Codex 配置失败");
       }
 
+      setOfficialApiKeyValue(normalized);
+      saveOfficialApiKeyToStorage(normalized);
+      setOfficialBalance(balanceResult);
       await refreshSettings(true);
       await refreshOverview(true);
 
       let message = configureResult.message || "本机 Codex 配置完成。";
       if (options.refreshBalance !== false) {
-        setOfficialBalanceMessage("本机配置完成，正在刷新额度...");
-        const balanceResult = await fetchOfficialBalance(normalized);
-        setOfficialBalance(balanceResult);
-        if (isSuccessStatus(balanceResult.status)) {
-          const balanceText = balanceResult.topupBalance?.valueText || balanceResult.planRemainingText || "额度已刷新";
-          message = `${balanceResult.message || "额度刷新完成"}：${balanceText}。${API_KEY_BACKUP_REMINDER}`;
-        } else {
-          message = `本机配置完成，额度暂时无法刷新：${balanceResult.message || "请稍后重试"}`;
-        }
+        const balanceText = balanceResult.topupBalance?.valueText || balanceResult.planRemainingText || "额度已刷新";
+        message = `${balanceResult.message || "额度刷新完成"}：${balanceText}。${API_KEY_BACKUP_REMINDER}`;
       }
 
       setOfficialBalanceMessage(message);
@@ -2059,6 +2078,72 @@ export function App() {
     showNotice(title, result.message, result.status);
   };
 
+  const setSubscriptionPaymentStatusValue = (status: SubscriptionPaymentStatus) => {
+    subscriptionPaymentStatusRef.current = status;
+    setSubscriptionPaymentStatus(status);
+  };
+
+  const clearSubscriptionSyncTimer = () => {
+    if (subscriptionSyncTimerRef.current !== null) {
+      window.clearTimeout(subscriptionSyncTimerRef.current);
+      subscriptionSyncTimerRef.current = null;
+    }
+  };
+
+  const clearSubscriptionStatusResetTimer = () => {
+    if (subscriptionStatusResetTimerRef.current !== null) {
+      window.clearTimeout(subscriptionStatusResetTimerRef.current);
+      subscriptionStatusResetTimerRef.current = null;
+    }
+  };
+
+  const resetSubscriptionPaymentView = () => {
+    clearSubscriptionSyncTimer();
+    clearSubscriptionStatusResetTimer();
+    setSubscriptionPaymentUrl("");
+    setSubscriptionPaymentStatusValue("idle");
+  };
+
+  const scheduleSubscriptionPaymentViewReset = () => {
+    clearSubscriptionStatusResetTimer();
+    subscriptionStatusResetTimerRef.current = window.setTimeout(() => {
+      resetSubscriptionPaymentView();
+      subscriptionStatusResetTimerRef.current = null;
+    }, SUBSCRIPTION_PAYMENT_SUCCESS_VISIBLE_MS);
+  };
+
+  const refreshCurrentOfficialBalanceAfterPayment = async (apiKey: string) => {
+    const normalized = apiKey.trim();
+    if (!normalized) return;
+    setOfficialBalanceBusy(true);
+    try {
+      const balanceResult = await fetchOfficialBalance(normalized);
+      setOfficialBalance(balanceResult);
+      if (isSuccessStatus(balanceResult.status)) {
+        const balanceText = balanceResult.topupBalance?.valueText || balanceResult.planRemainingText || "额度已刷新";
+        setOfficialBalanceMessage(`${SUBSCRIPTION_PAYMENT_SUCCESS_MESSAGE} 当前额度：${balanceText}。`);
+      } else {
+        setOfficialBalanceMessage(`${SUBSCRIPTION_PAYMENT_SUCCESS_MESSAGE} 额度刷新暂未完成：${balanceResult.message || "请稍后手动刷新"}`);
+      }
+    } catch (error) {
+      setOfficialBalanceMessage(`${SUBSCRIPTION_PAYMENT_SUCCESS_MESSAGE} 额度刷新暂未完成：${stringifyError(error)}`);
+    } finally {
+      setOfficialBalanceBusy(false);
+    }
+  };
+
+  const markSubscriptionPaymentSyncing = () => {
+    clearSubscriptionStatusResetTimer();
+    clearSubscriptionSyncTimer();
+    setSubscriptionPaymentStatusValue("syncing");
+    subscriptionSyncTimerRef.current = window.setTimeout(() => {
+      if (subscriptionPaymentStatusRef.current !== "syncing") return;
+      setSubscriptionPaymentStatusValue("waiting_key");
+      showNotice("订阅中心", "支付已完成，但暂未收到 API Key。请稍等片刻，或返回概览手动刷新额度。", "failed");
+      scheduleSubscriptionPaymentViewReset();
+    }, SUBSCRIPTION_KEY_SYNC_TIMEOUT_MS);
+  };
+
   const clearLaunchProgressTimer = () => {
     if (launchProgressClearTimerRef.current !== null) {
       window.clearTimeout(launchProgressClearTimerRef.current);
@@ -2080,6 +2165,10 @@ export function App() {
   };
 
   useEffect(() => {
+    officialApiKeyRef.current = officialApiKey;
+  }, [officialApiKey]);
+
+  useEffect(() => {
     void (async () => {
       const startup = await run(() => call<StartupResult>("startup_options"));
       if (startup?.showUpdate) {
@@ -2097,7 +2186,14 @@ export function App() {
     })();
   }, []);
 
-  useEffect(() => () => clearLaunchProgressTimer(), []);
+  useEffect(
+    () => () => {
+      clearLaunchProgressTimer();
+      clearSubscriptionSyncTimer();
+      clearSubscriptionStatusResetTimer();
+    },
+    [],
+  );
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -2125,16 +2221,62 @@ export function App() {
       if (event.origin !== SUBSCRIPTION_CENTER_ORIGIN || !data || data.source !== "taiying-subscription-center") return;
       if (data.type === "taiying:open-payment-url") {
         const url = String(data.url || "").trim();
-        if (url) void openExternalUrl(url);
+        if (isSubscriptionConsoleReturnUrl(url)) {
+          showNotice("订阅中心", "支付已返回订阅中心，已阻止跳转并继续等待 API Key 同步。", "ok");
+          return;
+        }
+        const paymentUrl = buildDesktopPaymentUrl(url);
+        if (paymentUrl) {
+          clearSubscriptionSyncTimer();
+          clearSubscriptionStatusResetTimer();
+          setSubscriptionPaymentStatusValue("paying");
+          setSubscriptionPaymentUrl(paymentUrl);
+          setRoute("subscription");
+          showNotice("订阅中心", "支付页面已在管理工具内打开。", "accepted");
+        }
+        return;
+      }
+      if (data.type === "taiying:payment-complete") {
+        const currentApiKey = officialApiKeyRef.current.trim();
+        setSubscriptionPaymentUrl("");
+        if (currentApiKey) {
+          clearSubscriptionSyncTimer();
+          setSubscriptionPaymentStatusValue("synced");
+          setOfficialBalanceMessage(`${SUBSCRIPTION_PAYMENT_SUCCESS_MESSAGE} 正在刷新额度...`);
+          showNotice("订阅中心", SUBSCRIPTION_PAYMENT_SUCCESS_MESSAGE, "ok");
+          scheduleSubscriptionPaymentViewReset();
+          void refreshCurrentOfficialBalanceAfterPayment(currentApiKey);
+        } else {
+          markSubscriptionPaymentSyncing();
+          showNotice("订阅中心", "支付成功，正在等待订阅中心生成 API Key。", "ok");
+        }
         return;
       }
       if (data.type === "taiying:api-key-ready") {
         const apiKey = String(data.apiKey || "").trim();
         if (!/^(sk-|cr_)/i.test(apiKey)) return;
-        setOfficialApiKey(apiKey);
-        saveOfficialApiKeyToStorage(apiKey);
+        const currentApiKey = officialApiKeyRef.current.trim();
+        if (currentApiKey && currentApiKey !== apiKey) {
+          showNotice("订阅中心", "订阅中心返回了另一把 API Key，已阻止覆盖概览页当前 API Key。", "failed");
+          return;
+        }
+        setSubscriptionPaymentUrl("");
+        markSubscriptionPaymentSyncing();
         setOfficialBalanceMessage("订阅中心已生成 API Key，正在自动配置并刷新额度。");
-        void saveOfficialApiKey(apiKey, { refreshBalance: true });
+        void (async () => {
+          const result = await saveOfficialApiKey(apiKey, { refreshBalance: true, silent: true });
+          clearSubscriptionSyncTimer();
+          if (result.ok) {
+            setSubscriptionPaymentStatusValue("synced");
+            setOfficialBalanceMessage(SUBSCRIPTION_PAYMENT_SUCCESS_MESSAGE);
+            showNotice("订阅中心", SUBSCRIPTION_PAYMENT_SUCCESS_MESSAGE, "ok");
+            scheduleSubscriptionPaymentViewReset();
+          } else {
+            setSubscriptionPaymentStatusValue("waiting_key");
+            showNotice("订阅中心", `API Key 同步失败：${result.message}`, "failed");
+            scheduleSubscriptionPaymentViewReset();
+          }
+        })();
       }
     };
     window.addEventListener("message", onSubscriptionMessage);
@@ -2394,7 +2536,7 @@ export function App() {
               officialBalanceMessage={officialBalanceMessage}
               launchProgress={launchProgress}
               onOfficialApiKeyChange={(value) => {
-                setOfficialApiKey(value);
+                setOfficialApiKeyValue(value);
                 if (!value.trim()) {
                   saveOfficialApiKeyToStorage("");
                   setOfficialBalance(null);
@@ -2404,7 +2546,14 @@ export function App() {
               actions={actions}
             />
           ) : null}
-          {route === "subscription" ? <SubscriptionCenterScreen /> : null}
+          {route === "subscription" ? (
+            <SubscriptionCenterScreen
+              officialApiKey={officialApiKey}
+              onPaymentClose={resetSubscriptionPaymentView}
+              paymentStatus={subscriptionPaymentStatus}
+              paymentUrl={subscriptionPaymentUrl}
+            />
+          ) : null}
           {route === "relay" ? (
             <RelayScreen
               settings={settings}
@@ -3668,16 +3817,105 @@ function SessionsScreen({
   );
 }
 
-function SubscriptionCenterScreen() {
+function SubscriptionCenterScreen({
+  officialApiKey,
+  onPaymentClose,
+  paymentStatus,
+  paymentUrl,
+}: {
+  officialApiKey: string;
+  onPaymentClose: () => void;
+  paymentStatus: SubscriptionPaymentStatus;
+  paymentUrl: string;
+}) {
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+
+  const syncApiKeyToFrame = useCallback(() => {
+    frameRef.current?.contentWindow?.postMessage(
+      {
+        source: "codex-plus-manager",
+        type: "taiying:current-api-key",
+        apiKey: officialApiKey.trim(),
+        at: new Date().toISOString(),
+      },
+      SUBSCRIPTION_CENTER_ORIGIN,
+    );
+  }, [officialApiKey]);
+
+  const requestApiKeyFromFrame = useCallback(() => {
+    frameRef.current?.contentWindow?.postMessage(
+      {
+        source: "codex-plus-manager",
+        type: "taiying:request-api-key",
+        at: new Date().toISOString(),
+      },
+      SUBSCRIPTION_CENTER_ORIGIN,
+    );
+  }, []);
+
+  useEffect(() => {
+    const onSubscriptionFrameMessage = (event: MessageEvent) => {
+      const data = event.data as Record<string, unknown> | null;
+      if (event.origin !== SUBSCRIPTION_CENTER_ORIGIN || !data || data.source !== "taiying-subscription-center") return;
+      if (data.type === "taiying:request-current-api-key") {
+        syncApiKeyToFrame();
+      }
+    };
+    window.addEventListener("message", onSubscriptionFrameMessage);
+    return () => window.removeEventListener("message", onSubscriptionFrameMessage);
+  }, [syncApiKeyToFrame]);
+
+  useEffect(() => {
+    if (paymentStatus !== "syncing") return;
+    requestApiKeyFromFrame();
+    const timer = window.setInterval(requestApiKeyFromFrame, 3000);
+    return () => window.clearInterval(timer);
+  }, [paymentStatus, requestApiKeyFromFrame]);
+
+  const paymentStatusText =
+    paymentStatus === "syncing"
+      ? "支付成功，正在生成 API Key。"
+      : paymentStatus === "synced"
+        ? SUBSCRIPTION_PAYMENT_SUCCESS_MESSAGE
+        : paymentStatus === "waiting_key"
+          ? "支付成功，但暂未收到 API Key。请稍后返回概览手动刷新额度。"
+          : "";
+  const hideSubscriptionFrame = Boolean(paymentUrl) || ["syncing", "synced"].includes(paymentStatus);
+
   return (
     <Panel className="subscription-center-panel">
       <CardHead title="订阅中心" detail="购买总量包；付款成功后自动同步 API Key 到概览。" />
       <CardContent className="subscription-center-content">
-        <div className="subscription-center-frame-wrap">
+        {paymentStatusText ? (
+          <div className={`subscription-payment-status ${paymentStatus}`}>
+            {paymentStatus === "waiting_key" ? <Info className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+            <span>{paymentStatusText}</span>
+          </div>
+        ) : null}
+        {paymentUrl ? (
+          <div className="subscription-payment-frame-wrap">
+            <div className="subscription-payment-toolbar">
+              <strong>支付页面</strong>
+              <Button aria-label="关闭支付页面" onClick={onPaymentClose} size="icon" type="button" variant="ghost">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <iframe
+              allow="clipboard-read; clipboard-write; payment"
+              className="subscription-payment-frame"
+              sandbox="allow-forms allow-same-origin allow-scripts"
+              src={paymentUrl}
+              title="支付页面"
+            />
+          </div>
+        ) : null}
+        <div className={`subscription-center-frame-wrap ${hideSubscriptionFrame ? "is-hidden" : ""}`}>
           <iframe
             allow="clipboard-read; clipboard-write"
             className="subscription-center-frame"
-            sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
+            onLoad={syncApiKeyToFrame}
+            ref={frameRef}
+            sandbox="allow-forms allow-same-origin allow-scripts"
             src={SUBSCRIPTION_CENTER_URL}
             title="订阅中心"
           />
@@ -4375,7 +4613,7 @@ function SettingsScreen({
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title="Codex 直连网络代理" />
+        <CardHead title="Codex 直连网络代理" detail="控制 Codex App 是否通过官方直连网络访问模型服务。" />
         <CardContent>
           <div className="settings-block">
             <label className="switch-row">
@@ -7837,6 +8075,39 @@ function saveOfficialApiKeyToStorage(apiKey: string) {
     window.localStorage.setItem(OFFICIAL_API_KEY_STORAGE_KEY, apiKey.trim());
   } else {
     window.localStorage.removeItem(OFFICIAL_API_KEY_STORAGE_KEY);
+  }
+}
+
+function isSubscriptionConsoleReturnUrl(value: string): boolean {
+  if (!value.trim()) return false;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const pathname = url.pathname.replace(/\/+$/, "");
+    return BLOCKED_SUBSCRIPTION_RETURN_HOSTS.has(host) && pathname === "/user-next/console/subscription";
+  } catch {
+    return false;
+  }
+}
+
+function buildDesktopPaymentUrl(value: string): string {
+  if (!value.trim() || isSubscriptionConsoleReturnUrl(value)) return "";
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    if (
+      host === "www.leishen-ai.cn" ||
+      host === "leishen-ai.cn" ||
+      host === "ls-qihang.cn" ||
+      host === "www.ls-qihang.cn"
+    ) {
+      url.searchParams.set("desktop", "codex-plus-taiying");
+      url.searchParams.set("paymentResultMode", "inline");
+      url.searchParams.set("redirect", "none");
+    }
+    return url.toString();
+  } catch {
+    return "";
   }
 }
 

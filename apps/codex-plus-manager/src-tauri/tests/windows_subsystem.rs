@@ -265,7 +265,7 @@ fn subscription_center_is_only_mounted_on_subscription_route() {
     )
     .expect("read App.tsx");
 
-    assert!(app_tsx.contains("{route === \"subscription\" ? <SubscriptionCenterScreen /> : null}"));
+    assert!(app_tsx.contains("paymentUrl={subscriptionPaymentUrl}"));
     assert!(!app_tsx.contains("subscription-center-route"));
 }
 
@@ -503,7 +503,7 @@ fn overview_moves_subscription_and_codex_actions_into_balance_card() {
     assert!(app_tsx.contains("onOpenSubscription={() => void actions.goSubscriptionCenter()}"));
     assert!(app_tsx.contains("function SubscriptionCenterScreen"));
     assert!(app_tsx.contains("src={SUBSCRIPTION_CENTER_URL}"));
-    assert!(app_tsx.contains("{route === \"subscription\" ? <SubscriptionCenterScreen /> : null}"));
+    assert!(app_tsx.contains("paymentUrl={subscriptionPaymentUrl}"));
     assert!(!app_tsx.contains("subscription-center-route"));
     assert!(!app_tsx.contains("route === \"subscription\" ? \"contents\" : \"none\""));
     assert!(!app_tsx.contains("浏览器打开"));

@@ -47,6 +47,7 @@ enum SchemaKind {
     GenericSessions,
     CodexThreads,
     CodexAutomationRuns,
+    CodexLocalThreadCatalog,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,6 +95,9 @@ impl SQLiteStorageAdapter {
                 Some(SchemaKind::CodexAutomationRuns) => {
                     self.delete_codex_automation_run(&mut db, session)
                 }
+                Some(SchemaKind::CodexLocalThreadCatalog) => {
+                    self.delete_codex_local_thread_catalog(&mut db, session)
+                }
                 None => Ok(failed(
                     &session.session_id,
                     "Unsupported local storage schema".to_string(),
@@ -111,6 +115,7 @@ impl SQLiteStorageAdapter {
         match schema_kind(&db)? {
             Some(SchemaKind::CodexThreads) => self.list_codex_threads(&db),
             Some(SchemaKind::CodexAutomationRuns) => self.list_codex_automation_runs(&db),
+            Some(SchemaKind::CodexLocalThreadCatalog) => self.list_codex_local_thread_catalog(&db),
             _ => anyhow::bail!("Unsupported local storage schema"),
         }
     }
@@ -184,6 +189,45 @@ impl SQLiteStorageAdapter {
                     .map(|status| status.eq_ignore_ascii_case("archived"))
                     .unwrap_or(false),
                 updated_at_ms,
+                rollout_path: String::new(),
+                db_path: self.db_path.to_string_lossy().to_string(),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    fn list_codex_local_thread_catalog(
+        &self,
+        db: &Connection,
+    ) -> anyhow::Result<Vec<LocalSession>> {
+        let columns = table_columns(db, "local_thread_catalog")?
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let title = optional_column_expression(&columns, "display_title", "''");
+        let cwd = optional_column_expression(&columns, "cwd", "''");
+        let model_provider = optional_column_expression(&columns, "model_provider", "''");
+        let updated_at_ms = if columns.contains("source_updated_at") {
+            "CAST(source_updated_at * 1000 AS INTEGER)"
+        } else if columns.contains("source_created_at") {
+            "CAST(source_created_at * 1000 AS INTEGER)"
+        } else {
+            "NULL"
+        };
+        let sql = format!(
+            "SELECT thread_id, {title}, {cwd}, {model_provider}, {updated_at_ms}
+             FROM local_thread_catalog
+             WHERE COALESCE(thread_id, '') <> ''
+             ORDER BY COALESCE({updated_at_ms}, 0) DESC, thread_id DESC"
+        );
+        let mut stmt = db.prepare(&sql)?;
+        let rows = stmt.query_map([], |row| {
+            Ok(LocalSession {
+                id: row.get(0)?,
+                title: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                cwd: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                model_provider: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                archived: false,
+                updated_at_ms: row.get(4)?,
                 rollout_path: String::new(),
                 db_path: self.db_path.to_string_lossy().to_string(),
             })
@@ -699,6 +743,67 @@ impl SQLiteStorageAdapter {
         }
         Ok(local_deleted(&thread_id, &token, &backup_path))
     }
+
+    fn delete_codex_local_thread_catalog(
+        &self,
+        db: &mut Connection,
+        session: &SessionRef,
+    ) -> anyhow::Result<DeleteResult> {
+        let thread_id = normalize_codex_thread_id(&session.session_id);
+        let mut tables = Map::new();
+        backup_related_rows(
+            db,
+            &mut tables,
+            "local_thread_catalog",
+            "thread_id = ?1",
+            &[&thread_id],
+        )?;
+        backup_related_rows(
+            db,
+            &mut tables,
+            "automation_runs",
+            "thread_id = ?1",
+            &[&thread_id],
+        )?;
+        backup_related_rows(
+            db,
+            &mut tables,
+            "inbox_items",
+            "thread_id = ?1",
+            &[&thread_id],
+        )?;
+        if tables.values().all(|rows| {
+            rows.as_array()
+                .map(|items| items.is_empty())
+                .unwrap_or(true)
+        }) {
+            return Ok(failed(
+                &session.session_id,
+                "Thread not found in local storage".to_string(),
+            ));
+        }
+        let token =
+            self.backup_store
+                .write_backup(&thread_id, &self.db_path, Value::Object(tables))?;
+        let backup_path = self.backup_store.path_for(&token);
+        let delete_result = (|| -> anyhow::Result<()> {
+            let tx = db.transaction()?;
+            delete_related_rows(&tx, "local_thread_catalog", "thread_id = ?1", &[&thread_id])?;
+            delete_related_rows(&tx, "automation_runs", "thread_id = ?1", &[&thread_id])?;
+            delete_related_rows(&tx, "inbox_items", "thread_id = ?1", &[&thread_id])?;
+            tx.commit()?;
+            Ok(())
+        })();
+        if let Err(err) = delete_result {
+            return Ok(failed_with_undo(
+                &thread_id,
+                err.to_string(),
+                &token,
+                Some(&backup_path),
+            ));
+        }
+        Ok(local_deleted(&thread_id, &token, &backup_path))
+    }
 }
 
 fn optional_column_expression<'a>(
@@ -866,6 +971,11 @@ fn schema_kind(db: &Connection) -> anyhow::Result<Option<SchemaKind>> {
     if has_table(db, "threads")? && has_columns(db, "threads", &["id", "title", "rollout_path"])? {
         return Ok(Some(SchemaKind::CodexThreads));
     }
+    if has_table(db, "local_thread_catalog")?
+        && has_columns(db, "local_thread_catalog", &["thread_id", "display_title"])?
+    {
+        return Ok(Some(SchemaKind::CodexLocalThreadCatalog));
+    }
     if has_table(db, "automation_runs")? && has_columns(db, "automation_runs", &["thread_id"])? {
         return Ok(Some(SchemaKind::CodexAutomationRuns));
     }
@@ -925,6 +1035,7 @@ fn validate_restore_tables(tables: &Map<String, Value>) -> anyhow::Result<()> {
         "agent_job_items",
         "automation_runs",
         "inbox_items",
+        "local_thread_catalog",
         "__files",
     ];
     for table in tables.keys() {

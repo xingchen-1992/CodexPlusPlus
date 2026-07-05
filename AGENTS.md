@@ -42,9 +42,17 @@
 - 新版本先修改、验证、提交、打 tag，再通过 GitHub Release 触发 Actions 生成 Windows 安装包。
 - 推送分支、推送 tag、创建 GitHub Release 和上传资产只能使用非交互认证；不得让命令弹出 “Connect to GitHub / Sign in” 等登录窗口。
 - 当前优先发布 Windows 包；macOS 包不要在 Linux 服务器本地强行打包。
-- Actions 产物同步到 `/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 后，再更新 `/home/claude-realy-service/public/tools/codex-plus/latest.json` 和 `/home/claude-realy-service/public/tools/codex-plus/download-latest.json`。
+- Actions 打包和上传 Release assets 不占官网服务器带宽；官网服务器带宽风险来自“服务器拉取 Release 大文件”和“用户集中从官网服务器下载大文件”。
+- 700MB+ offline ZIP 不建议由官网服务器直出，优先放对象存储/CDN；`download-latest.json` 里的 offline ZIP URL 优先指向 CDN。如果 offline ZIP 已放 CDN，不要强行改成 `www.leishen-ai.cn`。
+- 官网服务器 `/home/claude-realy-service` 优先只维护 `latest.json`、`download-latest.json`、`components.json` 等小 JSON，以及必要的 `*-updater.exe`、`*-online.exe` 等小文件。
+- 若临时必须让官网服务器托管大 ZIP，必须避开高峰期、限速串行同步、先进 `.staging`、校验 sha256 和 size 后再发布，并明确“用户下载仍可能打满出口带宽”的风险。
+- 官网服务器禁止无限速 `curl` / `wget` 下载 GitHub Release 大文件；默认同步限速 `2m`，常规最高 `3m`，`6m` 只允许人工确认低峰期临时使用；禁止并发下载多个 Release assets。
+- Actions 产物同步到 `/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 或对象存储/CDN 后，再更新 `/home/claude-realy-service/public/tools/codex-plus/latest.json` 和 `/home/claude-realy-service/public/tools/codex-plus/download-latest.json`。
 - 自动更新源 `latest.json` 只允许暴露轻量 `*-updater.exe`，禁止把完整离线 ZIP 作为管理工具自动更新入口。
 - 官网下载清单使用 `download-latest.json`，可暴露在线安装器 `*-online.exe` 和完整离线 ZIP。离线 ZIP 仍必须包含 `点我双击安装.exe` 与 `RequiredFiles/`。
+- `latest.json`、`download-latest.json`、`components.json` 不得写入任何 token、密码、私钥；如果 `latest.json` 是单文件 bind mount，必须原地覆盖，不要用 `mv` / `os.replace` 换 inode。
+- 同步期间持续检查 `curl -fsS https://www.leishen-ai.cn/health`、`docker compose -p claude-realy-service-home ps`、`docker stats --no-stream`；如果 SSH 卡顿、`/health` 变慢、API 转发受影响，立即停止下载：`pkill -f 'curl .*CodexPlusOfficial' || true`。
+- 不重启 `/home/claude-realy-service`、不执行 `./rebuild-and-deploy.sh`，除非人工明确确认；不要直接 `docker compose up -d claude-relay`。
 - Codex App、Python、Node runtime 必须作为组件按需安装：在线安装器缺哪个下哪个，完整离线包把组件放进 `RequiredFiles/`，管理工具小版本自更新不要重复下载这些大组件。
 - `crs-image`、托管 Skills、Node runtime、Codex App 相关改动必须考虑“干净电脑首次安装即可使用”，不能只验证已有环境的电脑。
 - 管理工具打开 Codex 时只能写入自己负责的配置项，禁止全量覆盖用户在 Codex App 里修改的外观、偏好、功能开关等设置。修改 `~/.codex/config.toml` 时必须保留未知根配置和未知表，只替换 `model`、`model_provider`、`model_providers`、上下文、模型 catalog 等管理工具管辖字段。
