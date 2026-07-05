@@ -730,4 +730,34 @@ mod tests {
             "https://example.test/updater.exe"
         );
     }
+
+    #[test]
+    fn latest_json_with_legacy_setup_alias_still_prefers_updater() {
+        let release = release_from_latest_json_payload(&json!({
+            "version": "v1.0.18-official.14",
+            "url": "https://example.test/releases/v1.0.18-official.14",
+            "assets": [
+                {
+                    "name": "CodexPlusOfficial-1.0.18-official.14-windows-x64-updater.exe",
+                    "url": "https://example.test/updater.exe",
+                    "sha256": "updater-sha"
+                },
+                {
+                    "name": "CodexPlusOfficial-1.0.18-official.14-windows-x64-legacy-setup.exe",
+                    "url": "https://example.test/updater.exe",
+                    "sha256": "updater-sha"
+                }
+            ]
+        }))
+        .unwrap();
+
+        assert_eq!(
+            release.asset_name.as_deref(),
+            Some("CodexPlusOfficial-1.0.18-official.14-windows-x64-updater.exe")
+        );
+        assert_eq!(
+            release.asset_url.as_deref(),
+            Some("https://example.test/updater.exe")
+        );
+    }
 }

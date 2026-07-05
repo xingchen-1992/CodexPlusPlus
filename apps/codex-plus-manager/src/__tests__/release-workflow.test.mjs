@@ -51,6 +51,9 @@ test("release manifests separate automatic update from public downloads", () => 
   assert.match(workflowSource, /asset\.name !== "components\.json"/);
   assert.match(workflowSource, /latestPayload/);
   assert.match(workflowSource, /asset\.purpose === "updater"/);
+  assert.match(workflowSource, /legacyWindowsUpdaterAliases/);
+  assert.match(workflowSource, /-legacy-setup\.exe/);
+  assert.match(workflowSource, /browser_download_url: asset\.browser_download_url/);
   assert.match(workflowSource, /downloadPayload/);
   assert.match(workflowSource, /\["installer", "offline"\]\.includes\(asset\.purpose\)/);
   assert.match(workflowSource, /download-latest\.json/);

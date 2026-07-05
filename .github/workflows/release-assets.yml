@@ -368,6 +368,7 @@ jobs:
                 purpose,
                 size: asset.size,
                 url: asset.browser_download_url,
+                browser_download_url: asset.browser_download_url,
                 ...(sha256 ? { sha256 } : {})
               };
             })
@@ -378,11 +379,21 @@ jobs:
                 || (purposeOrder[left.purpose] ?? 9) - (purposeOrder[right.purpose] ?? 9)
                 || left.name.localeCompare(right.name);
             });
+          const legacyWindowsUpdaterAliases = rawAssets
+            .filter((asset) => asset.platform === "windows" && asset.purpose === "updater")
+            .map((asset) => ({
+              ...asset,
+              name: asset.name.replace(/-updater\.exe$/i, "-legacy-setup.exe"),
+              purpose: "legacy-updater"
+            }));
           const latestPayload = {
             version: `v${version}`,
             url: release.html_url || `https://github.com/${process.env.REPO}/releases/tag/${tag}`,
             body: release.body || "",
-            assets: rawAssets.filter((asset) => asset.purpose === "updater")
+            assets: [
+              ...rawAssets.filter((asset) => asset.purpose === "updater"),
+              ...legacyWindowsUpdaterAliases
+            ]
           };
           const downloadPayload = {
             version: `v${version}`,

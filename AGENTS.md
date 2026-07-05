@@ -48,7 +48,7 @@
 - 若临时必须让官网服务器托管大 ZIP，必须避开高峰期、限速串行同步、先进 `.staging`、校验 sha256 和 size 后再发布，并明确“用户下载仍可能打满出口带宽”的风险。
 - 官网服务器禁止无限速 `curl` / `wget` 下载 GitHub Release 大文件；默认同步限速 `2m`，常规最高 `3m`，`6m` 只允许人工确认低峰期临时使用；禁止并发下载多个 Release assets。
 - Actions 产物同步到 `/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 或对象存储/CDN 后，再更新 `/home/claude-realy-service/public/tools/codex-plus/latest.json` 和 `/home/claude-realy-service/public/tools/codex-plus/download-latest.json`。
-- 自动更新源 `latest.json` 只允许暴露轻量 `*-updater.exe`，禁止把完整离线 ZIP 作为管理工具自动更新入口。
+- 自动更新源 `latest.json` 只允许暴露轻量 `*-updater.exe`，以及为旧客户端兼容而保留的 `*-legacy-setup.exe` 别名；兼容别名也必须指向同一个 updater 小文件，禁止把完整离线 ZIP 作为管理工具自动更新入口。
 - 官网下载清单使用 `download-latest.json`，可暴露在线安装器 `*-online.exe` 和完整离线 ZIP。离线 ZIP 仍必须包含 `点我双击安装.exe` 与 `RequiredFiles/`。
 - `latest.json`、`download-latest.json`、`components.json` 不得写入任何 token、密码、私钥；如果 `latest.json` 是单文件 bind mount，必须原地覆盖，不要用 `mv` / `os.replace` 换 inode。
 - 同步期间持续检查 `curl -fsS https://www.leishen-ai.cn/health`、`docker compose -p claude-realy-service-home ps`、`docker stats --no-stream`；如果 SSH 卡顿、`/health` 变慢、API 转发受影响，立即停止下载：`pkill -f 'curl .*CodexPlusOfficial' || true`。
