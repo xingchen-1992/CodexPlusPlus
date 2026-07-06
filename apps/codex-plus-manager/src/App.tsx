@@ -3831,11 +3831,15 @@ function SubscriptionCenterScreen({
   const frameRef = useRef<HTMLIFrameElement | null>(null);
 
   const syncApiKeyToFrame = useCallback(() => {
+    const apiKey = officialApiKey.trim();
+    const hasApiKey = /^(sk-|cr_)[0-9a-f]{64}$/i.test(apiKey);
     frameRef.current?.contentWindow?.postMessage(
       {
         source: "codex-plus-manager",
         type: "taiying:current-api-key",
-        apiKey: officialApiKey.trim(),
+        apiKey: hasApiKey ? apiKey : "",
+        hasApiKey,
+        apiKeyStatus: hasApiKey ? "present" : "missing",
         at: new Date().toISOString(),
       },
       SUBSCRIPTION_CENTER_ORIGIN,
