@@ -86,6 +86,7 @@ async fn fetches_desktop_summary_from_portal_endpoint() {
     assert_eq!(summary.topup_balance.value_text, "$8.00");
     assert_eq!(request.path, "/portal/desktop/summary");
     assert_eq!(request.authorization, "Bearer cr_live_secret_key");
+    assert_eq!(request.x_api_key, "cr_live_secret_key");
 }
 
 #[tokio::test]
@@ -123,6 +124,29 @@ async fn fetches_desktop_summary_without_system_proxy() {
     assert_eq!(summary.api_key_preview, "sk-****5678");
     assert_eq!(request.path, "/portal/desktop/summary");
     assert_eq!(request.authorization, "Bearer sk-12345678");
+    assert_eq!(request.x_api_key, "sk-12345678");
+}
+
+#[tokio::test]
+async fn surfaces_backend_error_message_for_invalid_key() {
+    let server = spawn_summary_server_with_status(
+        401,
+        json!({
+            "success": false,
+            "message": "API Key 不完整：当前 60 位，完整应为 67 位"
+        }),
+    );
+
+    let error = fetch_desktop_summary(&server.base_url, "sk-short")
+        .await
+        .unwrap_err();
+    let request = server.finish();
+
+    assert_eq!(request.path, "/portal/desktop/summary");
+    assert_eq!(
+        error.to_string(),
+        "API Key 不完整：当前 60 位，完整应为 67 位"
+    );
 }
 
 struct SummaryServer {
@@ -139,9 +163,14 @@ impl SummaryServer {
 struct SummaryRequest {
     path: String,
     authorization: String,
+    x_api_key: String,
 }
 
 fn spawn_summary_server(body: serde_json::Value) -> SummaryServer {
+    spawn_summary_server_with_status(200, body)
+}
+
+fn spawn_summary_server_with_status(status: u16, body: serde_json::Value) -> SummaryServer {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let thread = thread::spawn(move || {
@@ -165,9 +194,20 @@ fn spawn_summary_server(body: serde_json::Value) -> SummaryServer {
             })
             .unwrap_or_default()
             .to_string();
+        let x_api_key = request
+            .lines()
+            .find_map(|line| line.strip_prefix("x-api-key: "))
+            .or_else(|| request.lines().find_map(|line| line.strip_prefix("X-Api-Key: ")))
+            .unwrap_or_default()
+            .to_string();
         let body = body.to_string();
+        let reason = match status {
+            200 => "OK",
+            401 => "Unauthorized",
+            _ => "Status",
+        };
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             body.len(),
             body
         );
@@ -175,6 +215,7 @@ fn spawn_summary_server(body: serde_json::Value) -> SummaryServer {
         SummaryRequest {
             path,
             authorization,
+            x_api_key,
         }
     });
 

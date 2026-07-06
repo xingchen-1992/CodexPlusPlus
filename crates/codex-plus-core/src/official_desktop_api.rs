@@ -33,6 +33,7 @@ pub struct DesktopSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct DesktopSummaryEnvelope {
     success: bool,
+    message: Option<String>,
     data: Option<DesktopSummary>,
 }
 
@@ -70,13 +71,27 @@ async fn fetch_desktop_summary_with_timeout(
     let request = async move {
         let response = crate::http_client::direct_client("CodexPlusOfficial")?
             .get(url)
+            .header("x-api-key", api_key.clone())
             .bearer_auth(api_key)
             .send()
-            .await?
-            .error_for_status()?;
-        let envelope = response.json::<DesktopSummaryEnvelope>().await?;
+            .await?;
+        let status = response.status();
+        let body = response.text().await?;
+        let envelope = serde_json::from_str::<DesktopSummaryEnvelope>(&body)
+            .map_err(|_| anyhow::anyhow!("额度摘要响应解析失败：HTTP {}", status.as_u16()))?;
+        if !status.is_success() {
+            let message = envelope
+                .message
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| format!("额度摘要请求失败：HTTP {}", status.as_u16()));
+            anyhow::bail!("{message}");
+        }
         if !envelope.success {
-            anyhow::bail!("额度摘要请求失败");
+            let message = envelope
+                .message
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "额度摘要请求失败".to_string());
+            anyhow::bail!("{message}");
         }
         envelope
             .data
