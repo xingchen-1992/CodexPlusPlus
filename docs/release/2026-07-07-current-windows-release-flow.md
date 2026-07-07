@@ -14,6 +14,7 @@
 - `latest.json` 只给管理工具自动更新使用，只暴露 `*-updater.exe` 和 legacy-updater 兼容别名。
 - `download-latest.json` 只给官网下载页使用，暴露 `*-online.exe` 和完整离线 ZIP。
 - 官网下载页必须读取 `download-latest.json`，并排除 `updater` / `legacy-updater`。
+- 自动更新用 `*-updater.exe` 也优先放 `https://leishenai.cn/` 下载服务器；`latest.json` 可以继续由官网域名提供，但其中的 updater URL 应指向下载服务器。
 - 700MB+ 离线 ZIP 优先放 `https://leishenai.cn/` 下载服务器或 CDN，不要放 `www.leishen-ai.cn` 官网服务器直出。
 
 当前下载服务器：
@@ -37,10 +38,11 @@ https://www.leishen-ai.cn/tools/codex-plus/
 1. 在 Windows 本机修改代码、跑测试、构建虚拟机测试包。
 2. 虚拟机验证通过后，在 Windows 本机升版本、提交、打 tag、推送分支和 tag。
 3. 用临时 `GH_TOKEN` / `GITHUB_TOKEN` 创建 GitHub Release，让 GitHub Actions 生成正式资产。
-4. 将用户下载用的 `*-online.exe` 和 `*-windows-x64.zip` 上传到 `leishenai.cn` 下载服务器，必须先进 `.staging`，校验 sha256 和 size 后再移动到公开目录。
-5. 更新官网服务器的 `download-latest.json`，让 online/offline URL 指向 `https://leishenai.cn/tools/codex-plus/releases/<version>/...`。
-6. `latest.json` 继续保持自动更新专用，不要把 offline ZIP 或用户下载入口混进去。
-7. 如果 `www.leishen-ai.cn` 有多个 A 记录，必须把 `download-latest.json` 同步到每一个实际承载官网的节点。
+4. 将自动更新用 `*-updater.exe`、用户下载用 `*-online.exe` 和 `*-windows-x64.zip` 上传到 `leishenai.cn` 下载服务器，必须先进 `.staging`，校验 sha256 和 size 后再移动到公开目录。
+5. 更新官网服务器的 `latest.json`，让 updater / legacy-updater URL 指向 `https://leishenai.cn/tools/codex-plus/releases/<version>/...`。
+6. 更新官网服务器的 `download-latest.json`，让 online/offline URL 指向 `https://leishenai.cn/tools/codex-plus/releases/<version>/...`。
+7. `latest.json` 继续保持自动更新专用，不要把 offline ZIP 或用户下载入口混进去。
+8. 如果 `www.leishen-ai.cn` 有多个 A 记录，必须把 `latest.json` 和 `download-latest.json` 同步到每一个实际承载官网的节点。
 
 ## 必查验证
 
@@ -49,6 +51,7 @@ curl -fsS https://www.leishen-ai.cn/health
 curl -fsSL https://www.leishen-ai.cn/tools/codex-plus/latest.json
 curl -fsSL https://www.leishen-ai.cn/tools/codex-plus/download-latest.json
 curl -fsSL https://www.leishen-ai.cn/tools/codex-plus/ | grep -E 'download-latest\.json|updater|legacy-updater'
+curl -I https://leishenai.cn/tools/codex-plus/releases/<version>/CodexPlusOfficial-<version-without-v>-windows-x64-updater.exe
 curl -I https://leishenai.cn/tools/codex-plus/releases/<version>/CodexPlusOfficial-<version-without-v>-windows-x64.zip
 curl -r 0-1048575 -o /dev/null -w "%{http_code} %{size_download} %{speed_download}\n" https://leishenai.cn/tools/codex-plus/releases/<version>/CodexPlusOfficial-<version-without-v>-windows-x64.zip
 ```
@@ -56,8 +59,9 @@ curl -r 0-1048575 -o /dev/null -w "%{http_code} %{size_download} %{speed_downloa
 如果 `nslookup www.leishen-ai.cn` 返回多个 IP，对每个 IP 还要执行：
 
 ```bash
+curl --resolve www.leishen-ai.cn:443:<IP> -fsSL https://www.leishen-ai.cn/tools/codex-plus/latest.json
 curl --resolve www.leishen-ai.cn:443:<IP> -fsSL https://www.leishen-ai.cn/tools/codex-plus/download-latest.json
 curl --resolve www.leishen-ai.cn:443:<IP> -fsSL https://www.leishen-ai.cn/tools/codex-plus/ | grep -E 'download-latest\.json|updater|legacy-updater'
 ```
 
-所有节点都返回新版本、用户下载选择为 `purpose=offline` 或人工确认的 `purpose=installer`，且不得指向 `*-updater.exe`。
+所有节点都返回新版本；`latest.json` 的 updater / legacy-updater 指向 `leishenai.cn`；用户下载选择为 `purpose=offline` 或人工确认的 `purpose=installer`，且不得指向 `*-updater.exe`。
