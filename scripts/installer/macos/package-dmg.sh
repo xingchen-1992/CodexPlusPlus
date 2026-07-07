@@ -14,7 +14,9 @@ ICON_ICNS="$DIST/$ICON_NAME"
 CODEX_APP_SOURCE="${CODEX_APP_SOURCE:-}"
 NODE_RUNTIME_SOURCE="${NODE_RUNTIME_SOURCE:-}"
 
-rm -rf "$DIST"
+mkdir -p "$DIST"
+rm -rf "$STAGE" "$ICON_ICNS" "$DIST/codex-plus-plus.iconset"
+rm -f "$DIST"/*.dmg
 mkdir -p "$STAGE"
 
 prepare_icon() {

@@ -45,6 +45,7 @@
 - 新版本先修改、验证、提交、打 tag，再通过 GitHub Release 触发 Actions 生成 Windows 安装包。
 - 推送分支、推送 tag、创建 GitHub Release 和上传资产只能使用非交互认证；不得让命令弹出 “Connect to GitHub / Sign in” 等登录窗口。
 - 当前正式发布 Windows 和 macOS 包；Windows 包必须在 Windows 本机或 GitHub Actions Windows runner 打包，macOS DMG 必须由 GitHub Actions macOS runner 打包，禁止在 Linux 服务器本地强行打包。
+- macOS DMG 打包时，Node runtime 必须解压到 GitHub runner 临时目录或其他不会被打包脚本清理的位置，再通过 `NODE_RUNTIME_SOURCE` 传给 `scripts/installer/macos/package-dmg.sh`。打包脚本只能清理 `dist/macos/stage`、旧 `.dmg` 和临时图标文件，禁止重新使用 `rm -rf "$DIST"`，避免把刚解压的 Node / Codex App 源目录删除。
 - Actions 打包和上传 Release assets 不占官网服务器带宽；官网服务器带宽风险来自“服务器拉取 Release 大文件”和“用户集中从官网服务器下载大文件”。
 - 700MB+ offline ZIP 不建议由官网服务器直出，优先放对象存储/CDN 或 `https://leishenai.cn/` 下载服务器；`download-latest.json` 里的 offline ZIP URL 优先指向 CDN/下载服务器。如果 offline ZIP 已放 CDN 或 `leishenai.cn`，不要强行改成 `www.leishen-ai.cn`。
 - 官网服务器 `/home/claude-realy-service` 优先只维护 `latest.json`、`download-latest.json`、`components.json` 等小 JSON；下载 payload 优先由 `https://leishenai.cn/` 承载，包括 Windows 自动更新用 `*-updater.exe`、macOS DMG 和用户下载用 `*-online.exe` / offline ZIP。

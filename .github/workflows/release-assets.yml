@@ -421,15 +421,16 @@ jobs:
             echo "Downloaded Node runtime is unexpectedly small: $size bytes" >&2
             exit 1
           fi
-          rm -rf dist/macos/node
-          mkdir -p dist/macos/node/extracted
-          tar -xzf "$tarball" -C dist/macos/node/extracted
-          node_root="$(find dist/macos/node/extracted -maxdepth 1 -type d -name "node-${NODE_RUNTIME_VERSION}-darwin-${{ matrix.node_arch }}" -print -quit)"
+          node_extract="$RUNNER_TEMP/codex-plus-node-${{ matrix.arch }}"
+          rm -rf "$node_extract"
+          mkdir -p "$node_extract"
+          tar -xzf "$tarball" -C "$node_extract"
+          node_root="$(find "$node_extract" -maxdepth 1 -type d -name "node-${NODE_RUNTIME_VERSION}-darwin-${{ matrix.node_arch }}" -print -quit)"
           if [ -z "$node_root" ] || [ ! -x "$node_root/bin/node" ]; then
             echo "Extracted Node runtime is missing bin/node" >&2
             exit 1
           fi
-          echo "NODE_RUNTIME_SOURCE=$PWD/$node_root" >> "$GITHUB_ENV"
+          echo "NODE_RUNTIME_SOURCE=$node_root" >> "$GITHUB_ENV"
 
       - name: Build macOS DMG
         shell: bash

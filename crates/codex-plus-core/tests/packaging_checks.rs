@@ -135,6 +135,9 @@ fn macos_dmg_includes_applications_shortcut_for_drag_install() {
     assert!(script.contains("NODE_RUNTIME_SOURCE"));
     assert!(script.contains("NODE_RUNTIME_SOURCE not set; skipping bundled Node runtime."));
     assert!(script.contains("bundled Node runtime is missing bin/node"));
+    assert!(script.contains("rm -rf \"$STAGE\""));
+    assert!(script.contains("rm -f \"$DIST\"/*.dmg"));
+    assert!(!script.contains("rm -rf \"$DIST\""));
 }
 
 #[test]

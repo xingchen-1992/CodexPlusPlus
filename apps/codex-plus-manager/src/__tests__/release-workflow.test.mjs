@@ -95,6 +95,7 @@ test("release workflow bundles a managed Node runtime for clean computers", () =
   assert.match(workflowSource, /Cache Node macOS runtime/);
   assert.match(workflowSource, /Download Node macOS runtime/);
   assert.match(workflowSource, /node-\$\{NODE_RUNTIME_VERSION\}-darwin-\$\{\{ matrix\.node_arch \}\}\.tar\.gz/);
-  assert.match(workflowSource, /NODE_RUNTIME_SOURCE=\$PWD\/\$node_root/);
+  assert.match(workflowSource, /node_extract="\$RUNNER_TEMP\/codex-plus-node-\$\{\{ matrix\.arch \}\}"/);
+  assert.match(workflowSource, /NODE_RUNTIME_SOURCE=\$node_root/);
   assert.match(workflowSource, /test -x "\$app\/Contents\/Resources\/node\/bin\/node"/);
 });
