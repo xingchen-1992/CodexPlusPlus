@@ -14,6 +14,8 @@ test("subscription center embeds the desktop payment page and bridges payment ev
   assert.match(appSource, /taiying:open-payment-url/);
   assert.match(appSource, /taiying:api-key-ready/);
   assert.match(appSource, /taiying:current-api-key/);
+  assert.match(appSource, /hasApiKey/);
+  assert.match(appSource, /apiKeyStatus: hasApiKey \? "present" : "missing"/);
   assert.match(appSource, /taiying:request-current-api-key/);
   assert.match(appSource, /ls-qihang\.cn/);
   assert.match(appSource, /isSubscriptionConsoleReturnUrl\(url\)/);

@@ -291,6 +291,7 @@ const SUBSCRIPTION_PAYMENT_SUCCESS_MESSAGE = "支付成功，购买额度已增�
 const SUBSCRIPTION_PAYMENT_SUCCESS_VISIBLE_MS = 3000;
 const SUBSCRIPTION_KEY_SYNC_TIMEOUT_MS = 15000;
 const OFFICIAL_API_KEY_STORAGE_KEY = "codex-plus-official-api-key";
+const OFFICIAL_API_KEY_PATTERN = /^(sk-|cr_)[0-9a-f]{64}$/i;
 const OFFICIAL_RELAY_ID = "official";
 const OFFICIAL_RELAY_NAME = "总量包";
 const OFFICIAL_BASE_URL = "https://www.leishen-ai.cn/openai";
@@ -1132,13 +1133,23 @@ export function App() {
     apiKey: string,
     options: OfficialSyncOptions = {},
   ): Promise<OfficialSyncResult> => {
-    const normalized = apiKey.trim();
+    const normalized = sanitizeOfficialApiKeyInput(apiKey);
+    if (normalized !== apiKey) {
+      setOfficialApiKeyValue(normalized);
+    }
     if (!normalized) {
       const message = "请先在订阅中心购买额度，或在账户额度填写 API Key。";
       setOfficialBalance(null);
       setOfficialBalanceMessage(message);
       if (!options.silent) showNotice("账户额度", message, "failed");
       return { ok: false, message };
+    }
+    const formatError = validateOfficialApiKeyFormat(normalized);
+    if (formatError) {
+      setOfficialBalance(null);
+      setOfficialBalanceMessage(formatError);
+      if (!options.silent) showNotice("账户额度", formatError, "failed");
+      return { ok: false, message: formatError };
     }
 
     setOfficialBalanceBusy(true);
@@ -2536,8 +2547,9 @@ export function App() {
               officialBalanceMessage={officialBalanceMessage}
               launchProgress={launchProgress}
               onOfficialApiKeyChange={(value) => {
-                setOfficialApiKeyValue(value);
-                if (!value.trim()) {
+                const normalized = sanitizeOfficialApiKeyInput(value);
+                setOfficialApiKeyValue(normalized);
+                if (!normalized) {
                   saveOfficialApiKeyToStorage("");
                   setOfficialBalance(null);
                   setOfficialBalanceMessage("输入你的 API Key 后即可读取套餐和总量包余额。");
@@ -3831,11 +3843,15 @@ function SubscriptionCenterScreen({
   const frameRef = useRef<HTMLIFrameElement | null>(null);
 
   const syncApiKeyToFrame = useCallback(() => {
+    const apiKey = sanitizeOfficialApiKeyInput(officialApiKey);
+    const hasApiKey = OFFICIAL_API_KEY_PATTERN.test(apiKey);
     frameRef.current?.contentWindow?.postMessage(
       {
         source: "codex-plus-manager",
         type: "taiying:current-api-key",
-        apiKey: officialApiKey.trim(),
+        apiKey: hasApiKey ? apiKey : "",
+        hasApiKey,
+        apiKeyStatus: hasApiKey ? "present" : "missing",
         at: new Date().toISOString(),
       },
       SUBSCRIPTION_CENTER_ORIGIN,
@@ -8066,16 +8082,45 @@ function loadInitialTheme(): Theme {
 
 function loadSavedOfficialApiKey(): string {
   if (typeof window === "undefined") return "";
-  return window.localStorage.getItem(OFFICIAL_API_KEY_STORAGE_KEY) ?? "";
+  return sanitizeOfficialApiKeyInput(window.localStorage.getItem(OFFICIAL_API_KEY_STORAGE_KEY) ?? "");
 }
 
 function saveOfficialApiKeyToStorage(apiKey: string) {
   if (typeof window === "undefined") return;
-  if (apiKey.trim()) {
-    window.localStorage.setItem(OFFICIAL_API_KEY_STORAGE_KEY, apiKey.trim());
+  const normalized = sanitizeOfficialApiKeyInput(apiKey);
+  if (normalized) {
+    window.localStorage.setItem(OFFICIAL_API_KEY_STORAGE_KEY, normalized);
   } else {
     window.localStorage.removeItem(OFFICIAL_API_KEY_STORAGE_KEY);
   }
+}
+
+function sanitizeOfficialApiKeyInput(value: string): string {
+  const raw = String(value || "")
+    .trim()
+    .replace(/^Bearer\s+/i, "")
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "");
+  if (!raw) return "";
+  const compact = raw.replace(/\s+/g, "");
+  const match = compact.match(/(?:sk-|cr_)[0-9a-f]+/i);
+  return match?.[0] ?? compact;
+}
+
+function validateOfficialApiKeyFormat(apiKey: string): string | null {
+  const normalized = sanitizeOfficialApiKeyInput(apiKey);
+  if (!normalized) return null;
+  if (!/^(sk-|cr_)/i.test(normalized)) {
+    return "API Key 格式不对：请粘贴 sk- 或 cr_ 开头的完整密钥。";
+  }
+  const secret = normalized.slice(3);
+  if (!/^[0-9a-f]+$/i.test(secret)) {
+    return "API Key 格式不对：sk-/cr_ 后面只能是 64 位十六进制字符。";
+  }
+  if (secret.length !== 64) {
+    return `API Key 不完整：当前 ${normalized.length} 位，完整应为 67 位（sk-/cr_ + 64 位）。请从用户侧复制完整 key 后再粘贴。`;
+  }
+  return null;
 }
 
 function isSubscriptionConsoleReturnUrl(value: string): boolean {
