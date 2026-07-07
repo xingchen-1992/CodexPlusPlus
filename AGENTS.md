@@ -39,9 +39,12 @@
 
 ## 官方管理工具发布约定
 
+- 正式发版必须在 Windows 本机 `H:\迅雷下载\codex管理应用\CodexPlusPlus` 发起；Linux 服务器 `/home/codex-plus-leishen` 只能用于查看历史代码、同步功能差异和维护官网 JSON，不允许作为正式发版机器。
+- 禁止在 Linux 服务器上执行正式发版链路：不要在 `/home/codex-plus-leishen` 里升版本、打 tag、创建 GitHub Release、运行 `cargo build --release` 打 Windows 包、运行 NSIS、压 Windows ZIP 或上传 Release assets。
+- 服务器上如发现需要同步的功能，先用 `git log` / `git diff` 查清楚改动，再回到 Windows 本机合并、测试、打包、提交、tag、发 GitHub Release。
 - 新版本先修改、验证、提交、打 tag，再通过 GitHub Release 触发 Actions 生成 Windows 安装包。
 - 推送分支、推送 tag、创建 GitHub Release 和上传资产只能使用非交互认证；不得让命令弹出 “Connect to GitHub / Sign in” 等登录窗口。
-- 当前优先发布 Windows 包；macOS 包不要在 Linux 服务器本地强行打包。
+- 当前优先发布 Windows 包；Windows 包必须在 Windows 本机或 GitHub Actions Windows runner 打包，macOS 包不要在 Linux 服务器本地强行打包。
 - Actions 打包和上传 Release assets 不占官网服务器带宽；官网服务器带宽风险来自“服务器拉取 Release 大文件”和“用户集中从官网服务器下载大文件”。
 - 700MB+ offline ZIP 不建议由官网服务器直出，优先放对象存储/CDN 或 `https://leishenai.cn/` 下载服务器；`download-latest.json` 里的 offline ZIP URL 优先指向 CDN/下载服务器。如果 offline ZIP 已放 CDN 或 `leishenai.cn`，不要强行改成 `www.leishen-ai.cn`。
 - 官网服务器 `/home/claude-realy-service` 优先只维护 `latest.json`、`download-latest.json`、`components.json` 等小 JSON，以及必要的 `*-updater.exe`、`*-online.exe` 等小文件。
