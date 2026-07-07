@@ -50,7 +50,10 @@
 - Actions 产物同步到 `/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 或对象存储/CDN 后，再更新 `/home/claude-realy-service/public/tools/codex-plus/latest.json` 和 `/home/claude-realy-service/public/tools/codex-plus/download-latest.json`。
 - 自动更新源 `latest.json` 只允许暴露轻量 `*-updater.exe`，以及为旧客户端兼容而保留的 `*-legacy-setup.exe` 别名；兼容别名也必须指向同一个 updater 小文件，禁止把完整离线 ZIP 作为管理工具自动更新入口。
 - 官网下载清单使用 `download-latest.json`，可暴露在线安装器 `*-online.exe` 和完整离线 ZIP。离线 ZIP 仍必须包含 `点我双击安装.exe` 与 `RequiredFiles/`。
+- 官网下载页 `/tools/codex-plus/index.html` 必须读取 `download-latest.json`，并显式排除 `purpose=updater` / `purpose=legacy-updater`；用户可见下载按钮不得链接到 `*-updater.exe`。
 - `latest.json`、`download-latest.json`、`components.json` 不得写入任何 token、密码、私钥；如果 `latest.json` 是单文件 bind mount，必须原地覆盖，不要用 `mv` / `os.replace` 换 inode。
+- 同步官网前后必须执行 `nslookup www.leishen-ai.cn`。如果域名返回多个 A 记录，必须把 `index.html`、`latest.json`、`download-latest.json`、`components.json`、`*-updater.exe`、`*-online.exe` 同步到每一个实际承载官网的节点，或先确认 DNS 已移除旧节点；任一 IP 仍返回旧版都不能宣布发版完成。
+- 多 A 记录场景必须用 `curl --resolve www.leishen-ai.cn:443:<IP>` 逐个验证 `latest.json`、`download-latest.json`、下载页源码、updater/online 响应头，确认所有节点版本和下载逻辑一致。
 - 同步期间持续检查 `curl -fsS https://www.leishen-ai.cn/health`、`docker compose -p claude-realy-service-home ps`、`docker stats --no-stream`；如果 SSH 卡顿、`/health` 变慢、API 转发受影响，立即停止下载：`pkill -f 'curl .*CodexPlusOfficial' || true`。
 - 不重启 `/home/claude-realy-service`、不执行 `./rebuild-and-deploy.sh`，除非人工明确确认；不要直接 `docker compose up -d claude-relay`。
 - Codex App、Python、Node runtime 必须作为组件按需安装：在线安装器缺哪个下哪个，完整离线包把组件放进 `RequiredFiles/`，管理工具小版本自更新不要重复下载这些大组件。
