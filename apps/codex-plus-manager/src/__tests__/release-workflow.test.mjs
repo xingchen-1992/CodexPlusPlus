@@ -104,7 +104,9 @@ test("release workflow bundles a managed Node runtime for clean computers", () =
 
 test("release workflow bundles official Codex app into macOS DMGs", () => {
   assert.match(workflowSource, /codex_app_url: https:\/\/codexapp\.agentsmirror\.com\/latest\/mac-arm64/);
-  assert.match(workflowSource, /codex_app_url: https:\/\/codexapp\.agentsmirror\.com\/latest\/mac-x64/);
+  assert.match(workflowSource, /codex_app_url: https:\/\/codexapp\.agentsmirror\.com\/latest\/mac-intel/);
+  assert.match(workflowSource, /https:\/\/codexapp\.agentsmirror\.com\/latest\/mac-x64/);
+  assert.match(workflowSource, /Failed to download Codex macOS app from all configured URLs/);
   assert.match(workflowSource, /Cache Codex macOS app DMG/);
   assert.match(workflowSource, /Download Codex macOS app/);
   assert.match(workflowSource, /hdiutil attach "\$dmg"/);

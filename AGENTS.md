@@ -45,6 +45,7 @@
 - 新版本先修改、验证、提交、打 tag，再通过 GitHub Release 触发 Actions 生成 Windows 安装包。
 - 推送分支、推送 tag、创建 GitHub Release 和上传资产只能使用非交互认证；不得让命令弹出 “Connect to GitHub / Sign in” 等登录窗口。
 - 当前正式发布 Windows 和 macOS 包；Windows 包必须在 Windows 本机或 GitHub Actions Windows runner 打包，macOS DMG 必须由 GitHub Actions macOS runner 打包，禁止在 Linux 服务器本地强行打包。
+- 正式对外发版必须保持 Windows 和 macOS 同一个版本号；某个平台 CI 失败或版本已半发布时，不能覆盖远端 tag，必须升新版本重新发布。
 - macOS DMG 打包时，Node runtime 和官方 Codex App 都必须解压/挂载到 GitHub runner 临时目录或其他不会被打包脚本清理的位置，再分别通过 `NODE_RUNTIME_SOURCE`、`CODEX_APP_SOURCE` 传给 `scripts/installer/macos/package-dmg.sh`。打包脚本只能清理 `dist/macos/stage`、旧 `.dmg` 和临时图标文件，禁止重新使用 `rm -rf "$DIST"`，避免把刚解压的 Node / Codex App 源目录删除。
 - macOS DMG 必须同时内置 `Contents/Resources/node/bin/node` 和官方 `Codex.app`，Actions 验证必须检查两者存在且可执行；不能只因为 DMG 生成成功就认为 macOS 包可用。
 - Actions 打包和上传 Release assets 不占官网服务器带宽；官网服务器带宽风险来自“服务器拉取 Release 大文件”和“用户集中从官网服务器下载大文件”。
@@ -63,6 +64,7 @@
 - `latest.json`、`download-latest.json`、`components.json` 不得写入任何 token、密码、私钥；如果 `latest.json` 是单文件 bind mount，必须原地覆盖，不要用 `mv` / `os.replace` 换 inode。
 - 同步官网前后必须执行 `nslookup www.leishen-ai.cn`。如果域名返回多个 A 记录，必须把 `index.html`、`latest.json`、`download-latest.json`、`components.json`、`*-updater.exe`、`*-online.exe` 同步到每一个实际承载官网的节点，或先确认 DNS 已移除旧节点；任一 IP 仍返回旧版都不能宣布发版完成。
 - 多 A 记录场景必须用 `curl --resolve www.leishen-ai.cn:443:<IP>` 逐个验证 `latest.json`、`download-latest.json`、下载页源码、updater/online 响应头，确认所有节点版本和下载逻辑一致。
+- 多 A 记录场景也必须逐 IP 验证客服链路：每个实际承载官网的节点都要能访问 Chatwoot。没有本机 `chatwoot-support` / `rails:3000` 的节点，不得把 `CHATWOOT_SUPPORT_INTERNAL_BASE_URL` 保持为 `http://rails:3000`；应改为 `https://support.leishen-ai.cn` 等明确可达地址，或部署同网络内带 `rails` 别名的轻量反代，并确认 `/portal/support/conversation` 不再出现 `getaddrinfo EAI_AGAIN rails`。
 - 同步期间持续检查 `curl -fsS https://www.leishen-ai.cn/health`、`docker compose -p claude-realy-service-home ps`、`docker stats --no-stream`；如果 SSH 卡顿、`/health` 变慢、API 转发受影响，立即停止下载：`pkill -f 'curl .*CodexPlusOfficial' || true`。
 - 不重启 `/home/claude-realy-service`、不执行 `./rebuild-and-deploy.sh`，除非人工明确确认；不要直接 `docker compose up -d claude-relay`。
 - Codex App、Python、Node runtime 必须作为组件按需安装：在线安装器缺哪个下哪个，完整离线包把组件放进 `RequiredFiles/`，管理工具小版本自更新不要重复下载这些大组件。
