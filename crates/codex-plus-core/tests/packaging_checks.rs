@@ -132,6 +132,9 @@ fn macos_dmg_includes_applications_shortcut_for_drag_install() {
     assert!(script.contains("CODEX_APP_SOURCE not set; skipping bundled official Codex app."));
     assert!(script.contains("CODEX_APP_SOURCE does not exist"));
     assert!(script.contains("cp -R \"$CODEX_APP_SOURCE\""));
+    assert!(script.contains("NODE_RUNTIME_SOURCE"));
+    assert!(script.contains("NODE_RUNTIME_SOURCE not set; skipping bundled Node runtime."));
+    assert!(script.contains("bundled Node runtime is missing bin/node"));
 }
 
 #[test]

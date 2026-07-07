@@ -51,21 +51,27 @@ test("release manifests separate automatic update from public downloads", () => 
   assert.match(workflowSource, /asset\.name !== "components\.json"/);
   assert.match(workflowSource, /latestPayload/);
   assert.match(workflowSource, /asset\.purpose === "updater"/);
+  assert.match(workflowSource, /asset\.platform === "macos" && asset\.purpose === "installer"/);
   assert.match(workflowSource, /legacyWindowsUpdaterAliases/);
   assert.match(workflowSource, /-legacy-setup\.exe/);
   assert.match(workflowSource, /browser_download_url: asset\.browser_download_url/);
   assert.match(workflowSource, /downloadPayload/);
   assert.match(workflowSource, /\["installer", "offline"\]\.includes\(asset\.purpose\)/);
+  assert.match(workflowSource, /lower\.endsWith\("\.dmg"\)[\s\S]*\? "installer"/);
   assert.match(workflowSource, /download-latest\.json/);
   assert.match(workflowSource, /components\.json/);
 });
 
-test("release workflow only builds Windows assets for now", () => {
+test("release workflow builds Windows and macOS release assets", () => {
   assert.match(workflowSource, /windows-installer:/);
-  assert.doesNotMatch(workflowSource, /^  macos-dmg:/m);
-  assert.doesNotMatch(workflowSource, /macos-15-intel/);
+  assert.match(workflowSource, /^  macos-dmg:/m);
+  assert.match(workflowSource, /macos-15-intel/);
+  assert.match(workflowSource, /macos-14/);
+  assert.match(workflowSource, /Build macOS DMG/);
+  assert.match(workflowSource, /package-dmg\.sh "\$version" "\$\{\{ matrix\.arch \}\}"/);
+  assert.match(workflowSource, /dist\/macos\/\*\.dmg/);
   assert.match(workflowSource, /needs:\s*\n\s*- windows-installer/);
-  assert.doesNotMatch(workflowSource, /- macos-dmg/);
+  assert.match(workflowSource, /needs:\s*\n\s*- windows-installer\s*\n\s*- macos-dmg/);
 });
 
 test("release workflow caches heavyweight dependencies and official app downloads", () => {
@@ -86,4 +92,9 @@ test("release workflow bundles a managed Node runtime for clean computers", () =
   assert.match(workflowSource, /dist\/windows\/package\/node-\$\{env:NODE_RUNTIME_VERSION\}-win-x64\.zip/);
   assert.match(workflowSource, /dist\/windows\/app\/resources\/node/);
   assert.match(workflowSource, /Embedded Node runtime is missing node\.exe/);
+  assert.match(workflowSource, /Cache Node macOS runtime/);
+  assert.match(workflowSource, /Download Node macOS runtime/);
+  assert.match(workflowSource, /node-\$\{NODE_RUNTIME_VERSION\}-darwin-\$\{\{ matrix\.node_arch \}\}\.tar\.gz/);
+  assert.match(workflowSource, /NODE_RUNTIME_SOURCE=\$PWD\/\$node_root/);
+  assert.match(workflowSource, /test -x "\$app\/Contents\/Resources\/node\/bin\/node"/);
 });

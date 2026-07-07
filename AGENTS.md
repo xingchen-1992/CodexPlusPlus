@@ -40,23 +40,23 @@
 ## 官方管理工具发布约定
 
 - 正式发版必须在 Windows 本机 `H:\迅雷下载\codex管理应用\CodexPlusPlus` 发起；Linux 服务器 `/home/codex-plus-leishen` 只能用于查看历史代码、同步功能差异和维护官网 JSON，不允许作为正式发版机器。
-- 禁止在 Linux 服务器上执行正式发版链路：不要在 `/home/codex-plus-leishen` 里升版本、打 tag、创建 GitHub Release、运行 `cargo build --release` 打 Windows 包、运行 NSIS、压 Windows ZIP 或上传 Release assets。
+- 禁止在 Linux 服务器上执行正式发版链路：不要在 `/home/codex-plus-leishen` 里升版本、打 tag、创建 GitHub Release、运行 `cargo build --release` 打 Windows/macOS 包、运行 NSIS、压 Windows ZIP/DMG 或上传 Release assets。
 - 服务器上如发现需要同步的功能，先用 `git log` / `git diff` 查清楚改动，再回到 Windows 本机合并、测试、打包、提交、tag、发 GitHub Release。
 - 新版本先修改、验证、提交、打 tag，再通过 GitHub Release 触发 Actions 生成 Windows 安装包。
 - 推送分支、推送 tag、创建 GitHub Release 和上传资产只能使用非交互认证；不得让命令弹出 “Connect to GitHub / Sign in” 等登录窗口。
-- 当前优先发布 Windows 包；Windows 包必须在 Windows 本机或 GitHub Actions Windows runner 打包，macOS 包不要在 Linux 服务器本地强行打包。
+- 当前正式发布 Windows 和 macOS 包；Windows 包必须在 Windows 本机或 GitHub Actions Windows runner 打包，macOS DMG 必须由 GitHub Actions macOS runner 打包，禁止在 Linux 服务器本地强行打包。
 - Actions 打包和上传 Release assets 不占官网服务器带宽；官网服务器带宽风险来自“服务器拉取 Release 大文件”和“用户集中从官网服务器下载大文件”。
 - 700MB+ offline ZIP 不建议由官网服务器直出，优先放对象存储/CDN 或 `https://leishenai.cn/` 下载服务器；`download-latest.json` 里的 offline ZIP URL 优先指向 CDN/下载服务器。如果 offline ZIP 已放 CDN 或 `leishenai.cn`，不要强行改成 `www.leishen-ai.cn`。
-- 官网服务器 `/home/claude-realy-service` 优先只维护 `latest.json`、`download-latest.json`、`components.json` 等小 JSON；下载 payload 优先由 `https://leishenai.cn/` 承载，包括自动更新用 `*-updater.exe` 和用户下载用 `*-online.exe` / offline ZIP。
+- 官网服务器 `/home/claude-realy-service` 优先只维护 `latest.json`、`download-latest.json`、`components.json` 等小 JSON；下载 payload 优先由 `https://leishenai.cn/` 承载，包括 Windows 自动更新用 `*-updater.exe`、macOS DMG 和用户下载用 `*-online.exe` / offline ZIP。
 - 当前下载加速服务器为 `39.105.46.156`，域名 `https://leishenai.cn/`，Nginx 根目录 `/home/admin/design-site`，下载资产路径 `/home/admin/design-site/tools/codex-plus/releases/<version>/`。
-- 上传到 `leishenai.cn` 的 updater、online、大 ZIP 和安装器必须先进 `.staging`，校验 sha256 和 size 后再发布到公开目录；发布后用 `curl -I` 和 1MB Range 请求验证 HTTPS、`Content-Length`、下载链路。
+- 上传到 `leishenai.cn` 的 updater、macOS DMG、online、大 ZIP 和安装器必须先进 `.staging`，校验 sha256 和 size 后再发布到公开目录；发布后用 `curl -I` 和 1MB Range 请求验证 HTTPS、`Content-Length`、下载链路。
 - 若临时必须让官网服务器托管大 ZIP，必须避开高峰期、限速串行同步、先进 `.staging`、校验 sha256 和 size 后再发布，并明确“用户下载仍可能打满出口带宽”的风险。
 - 官网服务器禁止无限速 `curl` / `wget` 下载 GitHub Release 大文件；默认同步限速 `2m`，常规最高 `3m`，`6m` 只允许人工确认低峰期临时使用；禁止并发下载多个 Release assets。
 - Actions 产物同步到 `/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 或对象存储/CDN 后，再更新 `/home/claude-realy-service/public/tools/codex-plus/latest.json` 和 `/home/claude-realy-service/public/tools/codex-plus/download-latest.json`。
-- 自动更新源 `latest.json` 只允许暴露轻量 `*-updater.exe`，以及为旧客户端兼容而保留的 `*-legacy-setup.exe` 别名；兼容别名也必须指向同一个 updater 小文件，禁止把完整离线 ZIP 作为管理工具自动更新入口。
-- 官网下载清单使用 `download-latest.json`，可暴露在线安装器 `*-online.exe` 和完整离线 ZIP。离线 ZIP 仍必须包含 `点我双击安装.exe` 与 `RequiredFiles/`。
+- 自动更新源 `latest.json` 只允许暴露 Windows 轻量 `*-updater.exe`、为旧客户端兼容而保留的 `*-legacy-setup.exe` 别名，以及 macOS DMG；兼容别名也必须指向同一个 updater 小文件，禁止把 Windows 完整离线 ZIP 作为管理工具自动更新入口。
+- 官网下载清单使用 `download-latest.json`，可暴露 Windows 在线安装器 `*-online.exe`、完整离线 ZIP 和 macOS DMG。Windows 离线 ZIP 仍必须包含 `点我双击安装.exe` 与 `RequiredFiles/`。
 - 官网下载页 `/tools/codex-plus/index.html` 必须读取 `download-latest.json`，并显式排除 `purpose=updater` / `purpose=legacy-updater`；用户可见下载按钮不得链接到 `*-updater.exe`。
-- `latest.json` 的 updater / legacy-updater URL 优先指向 `https://leishenai.cn/tools/codex-plus/releases/<version>/...`；`download-latest.json` 的用户下载 URL 也可指向同一下载服务器。`latest.json` 仍是管理工具自动更新专用，不要因为迁移用户下载大包而把 updater 入口混入官网下载页。
+- `latest.json` 的 Windows updater / legacy-updater 和 macOS DMG URL 优先指向 `https://leishenai.cn/tools/codex-plus/releases/<version>/...`；`download-latest.json` 的用户下载 URL 也可指向同一下载服务器。`latest.json` 仍是管理工具自动更新专用，不要因为迁移用户下载大包而把 updater 入口混入官网下载页。
 - `latest.json`、`download-latest.json`、`components.json` 不得写入任何 token、密码、私钥；如果 `latest.json` 是单文件 bind mount，必须原地覆盖，不要用 `mv` / `os.replace` 换 inode。
 - 同步官网前后必须执行 `nslookup www.leishen-ai.cn`。如果域名返回多个 A 记录，必须把 `index.html`、`latest.json`、`download-latest.json`、`components.json`、`*-updater.exe`、`*-online.exe` 同步到每一个实际承载官网的节点，或先确认 DNS 已移除旧节点；任一 IP 仍返回旧版都不能宣布发版完成。
 - 多 A 记录场景必须用 `curl --resolve www.leishen-ai.cn:443:<IP>` 逐个验证 `latest.json`、`download-latest.json`、下载页源码、updater/online 响应头，确认所有节点版本和下载逻辑一致。

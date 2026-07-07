@@ -322,7 +322,7 @@ fn official_macos_packager_hides_silent_launcher_but_not_manager_and_uses_dmg_fi
 }
 
 #[test]
-fn github_release_workflow_builds_componentized_windows_assets_for_now() {
+fn github_release_workflow_builds_componentized_windows_and_macos_assets() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let workflow = manifest_dir
         .parent()
@@ -339,8 +339,12 @@ fn github_release_workflow_builds_componentized_windows_assets_for_now() {
     assert!(workflow.contains("CodexPlusOfficial-${version}-windows-x64.zip"));
     assert!(workflow.contains("/DUPDATE_ONLY=1"));
     assert!(workflow.contains("/DONLINE_COMPONENTS=1"));
-    assert!(!workflow.contains("macos-15-intel"));
-    assert!(!workflow.contains("macos-14"));
+    assert!(workflow.contains("macos-dmg:"));
+    assert!(workflow.contains("macos-15-intel"));
+    assert!(workflow.contains("macos-14"));
+    assert!(workflow.contains("dist/macos/*.dmg"));
+    assert!(workflow.contains("NODE_RUNTIME_SOURCE"));
+    assert!(workflow.contains("Contents/Resources/node/bin/node"));
 }
 
 #[test]
