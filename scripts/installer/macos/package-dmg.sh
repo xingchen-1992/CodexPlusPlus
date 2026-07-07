@@ -97,6 +97,9 @@ sign_app() {
   local app_dir="$1"
   local executable
   executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_dir/Contents/Info.plist")"
+  find "$app_dir/Contents/Resources" -maxdepth 2 -type d -name "*.app" -print0 | while IFS= read -r -d '' nested_app; do
+    codesign --force --sign - --deep "$nested_app"
+  done
   find "$app_dir/Contents/MacOS" -type f -perm -111 ! -name "$executable" -print0 | while IFS= read -r -d '' sidecar; do
     codesign --force --sign - "$sidecar"
   done
@@ -140,10 +143,21 @@ bundle_codex_app_if_present() {
   local resources="$STAGE/Codex官方管理工具.app/Contents/Resources"
   rm -rf "$resources/Codex" "$resources/Codex.app" "$resources/OpenAI Codex.app" "$resources/OpenAI.Codex.app"
   if [[ "$CODEX_APP_SOURCE" == *.app ]]; then
-    cp -R "$CODEX_APP_SOURCE" "$resources/$(basename "$CODEX_APP_SOURCE")"
+    local bundled_app="$resources/$(basename "$CODEX_APP_SOURCE")"
+    cp -R "$CODEX_APP_SOURCE" "$bundled_app"
+    local executable
+    executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundled_app/Contents/Info.plist")"
+    if [ -z "$executable" ] || [ ! -x "$bundled_app/Contents/MacOS/$executable" ]; then
+      echo "error: bundled official Codex app is missing its executable" >&2
+      return 1
+    fi
   else
     mkdir -p "$resources/Codex"
     cp -R "$CODEX_APP_SOURCE"/. "$resources/Codex/"
+    if [ ! -x "$resources/Codex/Codex" ] && [ ! -x "$resources/Codex/codex" ]; then
+      echo "error: bundled official Codex directory is missing Codex executable" >&2
+      return 1
+    fi
   fi
 }
 

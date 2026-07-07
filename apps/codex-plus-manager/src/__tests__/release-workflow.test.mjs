@@ -54,7 +54,9 @@ test("release manifests separate automatic update from public downloads", () => 
   assert.match(workflowSource, /asset\.platform === "macos" && asset\.purpose === "installer"/);
   assert.match(workflowSource, /legacyWindowsUpdaterAliases/);
   assert.match(workflowSource, /-legacy-setup\.exe/);
-  assert.match(workflowSource, /browser_download_url: asset\.browser_download_url/);
+  assert.match(workflowSource, /browser_download_url: url/);
+  assert.match(workflowSource, /PUBLIC_DOWNLOAD_BASE_URL: https:\/\/leishenai\.cn\/tools\/codex-plus\/releases/);
+  assert.match(workflowSource, /publicAssetUrl\(name\) \|\| asset\.browser_download_url/);
   assert.match(workflowSource, /downloadPayload/);
   assert.match(workflowSource, /\["installer", "offline"\]\.includes\(asset\.purpose\)/);
   assert.match(workflowSource, /lower\.endsWith\("\.dmg"\)[\s\S]*\? "installer"/);
@@ -98,4 +100,19 @@ test("release workflow bundles a managed Node runtime for clean computers", () =
   assert.match(workflowSource, /node_extract="\$RUNNER_TEMP\/codex-plus-node-\$\{\{ matrix\.arch \}\}"/);
   assert.match(workflowSource, /NODE_RUNTIME_SOURCE=\$node_root/);
   assert.match(workflowSource, /test -x "\$app\/Contents\/Resources\/node\/bin\/node"/);
+});
+
+test("release workflow bundles official Codex app into macOS DMGs", () => {
+  assert.match(workflowSource, /codex_app_url: https:\/\/codexapp\.agentsmirror\.com\/latest\/mac-arm64/);
+  assert.match(workflowSource, /codex_app_url: https:\/\/codexapp\.agentsmirror\.com\/latest\/mac-x64/);
+  assert.match(workflowSource, /Cache Codex macOS app DMG/);
+  assert.match(workflowSource, /Download Codex macOS app/);
+  assert.match(workflowSource, /hdiutil attach "\$dmg"/);
+  assert.match(workflowSource, /ditto "\$codex_app" "\$source_dir\/\$app_name"/);
+  assert.match(workflowSource, /CODEX_APP_SOURCE=\$source_dir\/\$app_name/);
+  assert.match(workflowSource, /CODEX_APP_SOURCE="\$CODEX_APP_SOURCE"/);
+  assert.match(workflowSource, /bundled_codex="\$\(find "\$app\/Contents\/Resources"/);
+  assert.match(workflowSource, /test -x "\$bundled_codex\/Contents\/MacOS\/\$bundled_executable"/);
+  assert.match(workflowSource, /codex-app-macos-arm64/);
+  assert.match(workflowSource, /node-runtime-macos-arm64/);
 });

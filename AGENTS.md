@@ -45,15 +45,17 @@
 - 新版本先修改、验证、提交、打 tag，再通过 GitHub Release 触发 Actions 生成 Windows 安装包。
 - 推送分支、推送 tag、创建 GitHub Release 和上传资产只能使用非交互认证；不得让命令弹出 “Connect to GitHub / Sign in” 等登录窗口。
 - 当前正式发布 Windows 和 macOS 包；Windows 包必须在 Windows 本机或 GitHub Actions Windows runner 打包，macOS DMG 必须由 GitHub Actions macOS runner 打包，禁止在 Linux 服务器本地强行打包。
-- macOS DMG 打包时，Node runtime 必须解压到 GitHub runner 临时目录或其他不会被打包脚本清理的位置，再通过 `NODE_RUNTIME_SOURCE` 传给 `scripts/installer/macos/package-dmg.sh`。打包脚本只能清理 `dist/macos/stage`、旧 `.dmg` 和临时图标文件，禁止重新使用 `rm -rf "$DIST"`，避免把刚解压的 Node / Codex App 源目录删除。
+- macOS DMG 打包时，Node runtime 和官方 Codex App 都必须解压/挂载到 GitHub runner 临时目录或其他不会被打包脚本清理的位置，再分别通过 `NODE_RUNTIME_SOURCE`、`CODEX_APP_SOURCE` 传给 `scripts/installer/macos/package-dmg.sh`。打包脚本只能清理 `dist/macos/stage`、旧 `.dmg` 和临时图标文件，禁止重新使用 `rm -rf "$DIST"`，避免把刚解压的 Node / Codex App 源目录删除。
+- macOS DMG 必须同时内置 `Contents/Resources/node/bin/node` 和官方 `Codex.app`，Actions 验证必须检查两者存在且可执行；不能只因为 DMG 生成成功就认为 macOS 包可用。
 - Actions 打包和上传 Release assets 不占官网服务器带宽；官网服务器带宽风险来自“服务器拉取 Release 大文件”和“用户集中从官网服务器下载大文件”。
 - 700MB+ offline ZIP 不建议由官网服务器直出，优先放对象存储/CDN 或 `https://leishenai.cn/` 下载服务器；`download-latest.json` 里的 offline ZIP URL 优先指向 CDN/下载服务器。如果 offline ZIP 已放 CDN 或 `leishenai.cn`，不要强行改成 `www.leishen-ai.cn`。
 - 官网服务器 `/home/claude-realy-service` 优先只维护 `latest.json`、`download-latest.json`、`components.json` 等小 JSON；下载 payload 优先由 `https://leishenai.cn/` 承载，包括 Windows 自动更新用 `*-updater.exe`、macOS DMG 和用户下载用 `*-online.exe` / offline ZIP。
 - 当前下载加速服务器为 `39.105.46.156`，域名 `https://leishenai.cn/`，Nginx 根目录 `/home/admin/design-site`，下载资产路径 `/home/admin/design-site/tools/codex-plus/releases/<version>/`。
 - 上传到 `leishenai.cn` 的 updater、macOS DMG、online、大 ZIP 和安装器必须先进 `.staging`，校验 sha256 和 size 后再发布到公开目录；发布后用 `curl -I` 和 1MB Range 请求验证 HTTPS、`Content-Length`、下载链路。
+- 新下载服务器 `https://leishenai.cn/tools/codex-plus/latest.json`、`download-latest.json`、`components.json` 必须和旧官网 JSON 同步到同一版本；如果新服务器清单仍是旧版本，禁止把客户端默认更新源切到新服务器，也不能宣布发版完成。
 - 若临时必须让官网服务器托管大 ZIP，必须避开高峰期、限速串行同步、先进 `.staging`、校验 sha256 和 size 后再发布，并明确“用户下载仍可能打满出口带宽”的风险。
 - 官网服务器禁止无限速 `curl` / `wget` 下载 GitHub Release 大文件；默认同步限速 `2m`，常规最高 `3m`，`6m` 只允许人工确认低峰期临时使用；禁止并发下载多个 Release assets。
-- Actions 产物同步到 `/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 或对象存储/CDN 后，再更新 `/home/claude-realy-service/public/tools/codex-plus/latest.json` 和 `/home/claude-realy-service/public/tools/codex-plus/download-latest.json`。
+- Actions 产物同步到 `https://leishenai.cn/tools/codex-plus/releases/<version>/`、`/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 或对象存储/CDN 后，再更新新下载服务器和官网每个节点的 `latest.json`、`download-latest.json`、`components.json`。
 - 自动更新源 `latest.json` 只允许暴露 Windows 轻量 `*-updater.exe`、为旧客户端兼容而保留的 `*-legacy-setup.exe` 别名，以及 macOS DMG；兼容别名也必须指向同一个 updater 小文件，禁止把 Windows 完整离线 ZIP 作为管理工具自动更新入口。
 - 官网下载清单使用 `download-latest.json`，可暴露 Windows 在线安装器 `*-online.exe`、完整离线 ZIP 和 macOS DMG。Windows 离线 ZIP 仍必须包含 `点我双击安装.exe` 与 `RequiredFiles/`。
 - 官网下载页 `/tools/codex-plus/index.html` 必须读取 `download-latest.json`，并显式排除 `purpose=updater` / `purpose=legacy-updater`；用户可见下载按钮不得链接到 `*-updater.exe`。

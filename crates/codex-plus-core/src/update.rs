@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-pub const DEFAULT_LATEST_JSON_URL: &str = "https://www.leishen-ai.cn/tools/codex-plus/latest.json";
+pub const DEFAULT_LATEST_JSON_URL: &str = "https://leishenai.cn/tools/codex-plus/latest.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReleaseAsset {

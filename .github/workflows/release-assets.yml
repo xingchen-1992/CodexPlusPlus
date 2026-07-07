@@ -329,16 +329,19 @@ jobs:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
       NODE_RUNTIME_VERSION: "v24.18.0"
+      CODEX_MACOS_APP_CACHE_KEY: "2026-07-07"
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x64
             node_arch: x64
+            codex_app_url: https://codexapp.agentsmirror.com/latest/mac-x64
             runner: macos-15-intel
             target: x86_64-apple-darwin
           - arch: arm64
             node_arch: arm64
+            codex_app_url: https://codexapp.agentsmirror.com/latest/mac-arm64
             runner: macos-14
             target: aarch64-apple-darwin
     steps:
@@ -432,6 +435,55 @@ jobs:
           fi
           echo "NODE_RUNTIME_SOURCE=$node_root" >> "$GITHUB_ENV"
 
+      - name: Cache Codex macOS app DMG
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/codex-plus-release/macos/CodexOfficialApp-${{ matrix.arch }}.dmg
+          key: ${{ runner.os }}-codex-macos-${{ matrix.arch }}-${{ env.CODEX_MACOS_APP_CACHE_KEY }}
+
+      - name: Download Codex macOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/macos/package ~/.cache/codex-plus-release/macos
+          dmg="dist/macos/package/CodexOfficialApp-${{ matrix.arch }}.dmg"
+          cache="$HOME/.cache/codex-plus-release/macos/CodexOfficialApp-${{ matrix.arch }}.dmg"
+          if [ -f "$cache" ]; then
+            cp "$cache" "$dmg"
+          else
+            curl -L --retry 3 --retry-delay 10 --fail -o "$dmg" "${{ matrix.codex_app_url }}"
+            cp "$dmg" "$cache"
+          fi
+          size="$(stat -f '%z' "$dmg")"
+          if [ "$size" -lt 80000000 ]; then
+            echo "Downloaded Codex macOS app DMG is unexpectedly small: $size bytes" >&2
+            exit 1
+          fi
+          mount_dir="$RUNNER_TEMP/codex-app-${{ matrix.arch }}-mount"
+          source_dir="$RUNNER_TEMP/codex-app-${{ matrix.arch }}-source"
+          rm -rf "$mount_dir" "$source_dir"
+          mkdir -p "$mount_dir" "$source_dir"
+          hdiutil attach "$dmg" -mountpoint "$mount_dir" -nobrowse -readonly
+          cleanup() {
+            hdiutil detach "$mount_dir" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          codex_app="$(find "$mount_dir" -maxdepth 1 -type d -name "*.app" -print -quit)"
+          if [ -z "$codex_app" ]; then
+            echo "Mounted Codex macOS DMG does not contain an app bundle" >&2
+            exit 1
+          fi
+          app_name="$(basename "$codex_app")"
+          ditto "$codex_app" "$source_dir/$app_name"
+          cleanup
+          trap - EXIT
+          executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$source_dir/$app_name/Contents/Info.plist")"
+          if [ -z "$executable" ] || [ ! -x "$source_dir/$app_name/Contents/MacOS/$executable" ]; then
+            echo "Extracted Codex macOS app is missing its bundle executable" >&2
+            exit 1
+          fi
+          echo "CODEX_APP_SOURCE=$source_dir/$app_name" >> "$GITHUB_ENV"
+
       - name: Build macOS DMG
         shell: bash
         run: |
@@ -440,6 +492,7 @@ jobs:
           version="${version#v}"
           version="${version#V}"
           BINARY_DIR="$PWD/target/${{ matrix.target }}/release" \
+          CODEX_APP_SOURCE="$CODEX_APP_SOURCE" \
           NODE_RUNTIME_SOURCE="$NODE_RUNTIME_SOURCE" \
           bash scripts/installer/macos/package-dmg.sh "$version" "${{ matrix.arch }}"
 
@@ -456,6 +509,10 @@ jobs:
           test -x "$app/Contents/MacOS/$executable"
           test -x "$app/Contents/MacOS/codex-plus-plus"
           test -x "$app/Contents/Resources/node/bin/node"
+          bundled_codex="$(find "$app/Contents/Resources" -maxdepth 1 -type d -name "*.app" -print -quit)"
+          test -n "$bundled_codex"
+          bundled_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundled_codex/Contents/Info.plist")"
+          test -x "$bundled_codex/Contents/MacOS/$bundled_executable"
           plutil -lint "$app/Contents/Info.plist" >/dev/null
           codesign -dv "$app" >/dev/null 2>&1
           hdiutil verify dist/macos/*.dmg
@@ -478,6 +535,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           TAG: ${{ github.event.release.tag_name }}
+          PUBLIC_DOWNLOAD_BASE_URL: https://leishenai.cn/tools/codex-plus/releases
+          CODEX_WINDOWS_X64_MSIX_URL: https://codexapp.agentsmirror.com/latest/win-x64
+          CODEX_MACOS_ARM64_DMG_URL: https://codexapp.agentsmirror.com/latest/mac-arm64
+          CODEX_MACOS_X64_DMG_URL: https://codexapp.agentsmirror.com/latest/mac-x64
+          NODE_RUNTIME_VERSION: v24.18.0
+          NODE_MACOS_ARM64_TAR_URL: https://nodejs.org/dist/v24.18.0/node-v24.18.0-darwin-arm64.tar.gz
+          NODE_MACOS_X64_TAR_URL: https://nodejs.org/dist/v24.18.0/node-v24.18.0-darwin-x64.tar.gz
         shell: bash
         run: |
           set -euo pipefail
@@ -487,6 +551,10 @@ jobs:
           const release = JSON.parse(fs.readFileSync("release.json", "utf8"));
           const tag = release.tag_name || process.env.TAG;
           const version = tag.replace(/^v/i, "");
+          const publicDownloadBaseUrl = String(process.env.PUBLIC_DOWNLOAD_BASE_URL || "").replace(/\/+$/, "");
+          const publicAssetUrl = (assetName) => publicDownloadBaseUrl
+            ? `${publicDownloadBaseUrl}/${tag}/${assetName}`
+            : undefined;
           const rawAssets = (release.assets || [])
             .filter((asset) => asset.name !== "latest.json")
             .filter((asset) => asset.name !== "download-latest.json")
@@ -496,6 +564,7 @@ jobs:
               const digest = typeof asset.digest === "string" ? asset.digest : "";
               const sha256 = digest.toLowerCase().startsWith("sha256:") ? digest.slice("sha256:".length) : undefined;
               const name = asset.name;
+              const url = publicAssetUrl(name) || asset.browser_download_url;
               const platform = name.toLowerCase().includes("macos") || name.toLowerCase().endsWith(".dmg") ? "macos" : "windows";
               const arch = name.toLowerCase().includes("arm64") || name.toLowerCase().includes("aarch64") ? "arm64" : "x64";
               const purpose = lower.endsWith("-updater.exe")
@@ -515,8 +584,8 @@ jobs:
                 arch,
                 purpose,
                 size: asset.size,
-                url: asset.browser_download_url,
-                browser_download_url: asset.browser_download_url,
+                url,
+                browser_download_url: url,
                 ...(sha256 ? { sha256 } : {})
               };
             })
@@ -573,6 +642,34 @@ jobs:
                 platform: "windows",
                 arch: "x64",
                 url: process.env.NODE_WINDOWS_X64_ZIP_URL || "https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip"
+              },
+              {
+                id: "codex-app-macos-arm64",
+                name: "Codex-mac-arm64.dmg",
+                platform: "macos",
+                arch: "arm64",
+                url: process.env.CODEX_MACOS_ARM64_DMG_URL || "https://codexapp.agentsmirror.com/latest/mac-arm64"
+              },
+              {
+                id: "codex-app-macos-x64",
+                name: "Codex-mac-x64.dmg",
+                platform: "macos",
+                arch: "x64",
+                url: process.env.CODEX_MACOS_X64_DMG_URL || "https://codexapp.agentsmirror.com/latest/mac-x64"
+              },
+              {
+                id: "node-runtime-macos-arm64",
+                name: "node-v24.18.0-darwin-arm64.tar.gz",
+                platform: "macos",
+                arch: "arm64",
+                url: process.env.NODE_MACOS_ARM64_TAR_URL || "https://nodejs.org/dist/v24.18.0/node-v24.18.0-darwin-arm64.tar.gz"
+              },
+              {
+                id: "node-runtime-macos-x64",
+                name: "node-v24.18.0-darwin-x64.tar.gz",
+                platform: "macos",
+                arch: "x64",
+                url: process.env.NODE_MACOS_X64_TAR_URL || "https://nodejs.org/dist/v24.18.0/node-v24.18.0-darwin-x64.tar.gz"
               }
             ]
           };

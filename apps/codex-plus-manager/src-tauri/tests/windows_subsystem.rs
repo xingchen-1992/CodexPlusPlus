@@ -345,6 +345,14 @@ fn github_release_workflow_builds_componentized_windows_and_macos_assets() {
     assert!(workflow.contains("dist/macos/*.dmg"));
     assert!(workflow.contains("NODE_RUNTIME_SOURCE"));
     assert!(workflow.contains("Contents/Resources/node/bin/node"));
+    assert!(workflow.contains("Download Codex macOS app"));
+    assert!(workflow.contains("CODEX_APP_SOURCE=\"$CODEX_APP_SOURCE\""));
+    assert!(workflow.contains("bundled_codex=\"$(find \"$app/Contents/Resources\""));
+    assert!(
+        workflow
+            .contains("PUBLIC_DOWNLOAD_BASE_URL: https://leishenai.cn/tools/codex-plus/releases")
+    );
+    assert!(workflow.contains("codex-app-macos-arm64"));
 }
 
 #[test]

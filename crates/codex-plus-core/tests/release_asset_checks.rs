@@ -13,7 +13,7 @@ use std::path::PathBuf;
 fn default_update_source_uses_official_latest_json() {
     assert_eq!(
         DEFAULT_LATEST_JSON_URL,
-        "https://www.leishen-ai.cn/tools/codex-plus/latest.json"
+        "https://leishenai.cn/tools/codex-plus/latest.json"
     );
     assert!(
         !DEFAULT_LATEST_JSON_URL
