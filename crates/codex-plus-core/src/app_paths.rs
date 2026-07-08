@@ -173,7 +173,7 @@ fn bundled_codex_candidates_from_exe_dir(dir: &Path) -> Vec<PathBuf> {
         dir.join("OpenAI Codex.app"),
         dir.join("OpenAI.Codex.app"),
     ]);
-    if let Some(contents) = dir.parent().and_then(|parent| parent.parent())
+    if let Some(contents) = dir.parent()
         && contents.file_name().and_then(OsStr::to_str) == Some("Contents")
     {
         let resources = contents.join("Resources");
@@ -279,6 +279,9 @@ pub fn normalize_codex_app_path(path: &Path) -> Option<PathBuf> {
 
 pub fn build_codex_executable(app_dir: &Path) -> PathBuf {
     if app_dir.extension() == Some(OsStr::new("app")) {
+        if let Some(executable) = macos_bundle_executable_name(app_dir) {
+            return app_dir.join("Contents").join("MacOS").join(executable);
+        }
         return app_dir.join("Contents").join("MacOS").join("Codex");
     }
     let upper = app_dir.join("Codex.exe");
@@ -351,6 +354,11 @@ fn macos_app_version(app_dir: &Path) -> Option<String> {
     let plist = std::fs::read_to_string(app_dir.join("Contents").join("Info.plist")).ok()?;
     plist_string_value(&plist, "CFBundleShortVersionString")
         .or_else(|| plist_string_value(&plist, "CFBundleVersion"))
+}
+
+fn macos_bundle_executable_name(app_dir: &Path) -> Option<String> {
+    let plist = std::fs::read_to_string(app_dir.join("Contents").join("Info.plist")).ok()?;
+    plist_string_value(&plist, "CFBundleExecutable")
 }
 
 fn plist_string_value(plist: &str, key: &str) -> Option<String> {

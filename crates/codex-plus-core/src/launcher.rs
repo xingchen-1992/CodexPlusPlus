@@ -4079,7 +4079,6 @@ pub fn build_macos_open_command(
     let mut command = vec![
         "open".to_string(),
         "-W".to_string(),
-        "-a".to_string(),
         app_dir.to_string_lossy().to_string(),
         "--args".to_string(),
     ];
@@ -4096,7 +4095,6 @@ pub fn build_macos_open_command_with_native_menu_inspector(
     let mut command = vec![
         "open".to_string(),
         "-W".to_string(),
-        "-a".to_string(),
         app_dir.to_string_lossy().to_string(),
         "--args".to_string(),
     ];
@@ -4150,8 +4148,14 @@ async fn run_macos_cleanup_command(
 }
 
 fn macos_app_dir_from_open_command(command: &[String]) -> Option<PathBuf> {
-    let app_index = command.iter().position(|part| part == "-a")?;
-    command.get(app_index + 1).map(PathBuf::from)
+    command
+        .iter()
+        .find(|part| part.ends_with(".app"))
+        .map(PathBuf::from)
+        .or_else(|| {
+            let app_index = command.iter().position(|part| part == "-a")?;
+            command.get(app_index + 1).map(PathBuf::from)
+        })
 }
 
 async fn is_macos_app_running(app_dir: &Path) -> bool {

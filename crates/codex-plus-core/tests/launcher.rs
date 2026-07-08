@@ -207,6 +207,32 @@ fn app_paths_build_macos_bundle_executable() {
 }
 
 #[test]
+fn app_paths_build_macos_bundle_executable_from_plist() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = temp.path().join("OpenAI Codex.app");
+    let contents = app.join("Contents");
+    let macos = contents.join("MacOS");
+    std::fs::create_dir_all(&macos).unwrap();
+    std::fs::write(
+        contents.join("Info.plist"),
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>Codex Desktop</string>
+</dict>
+</plist>
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        build_codex_executable(&app),
+        app.join("Contents").join("MacOS").join("Codex Desktop")
+    );
+}
+
+#[test]
 fn app_paths_normalizes_executable_and_package_paths() {
     let temp = tempfile::tempdir().unwrap();
     let portable = temp.path().join("CodexPortable");
@@ -243,6 +269,45 @@ fn app_paths_find_bundled_codex_next_to_manager_executable() {
     let codex_app = temp.path().join("app").join("Codex").join("app");
     std::fs::create_dir_all(&codex_app).unwrap();
     std::fs::write(codex_app.join("Codex.exe"), "").unwrap();
+
+    assert_eq!(
+        find_bundled_codex_app_dir_from_exe(&manager).as_deref(),
+        Some(codex_app.as_path())
+    );
+}
+
+#[test]
+fn app_paths_find_bundled_macos_codex_app_with_plist_executable() {
+    let temp = tempfile::tempdir().unwrap();
+    let manager = temp
+        .path()
+        .join("Codex官方管理工具.app")
+        .join("Contents")
+        .join("MacOS")
+        .join("CodexPlusPlusManager");
+    let codex_app = temp
+        .path()
+        .join("Codex官方管理工具.app")
+        .join("Contents")
+        .join("Resources")
+        .join("OpenAI Codex.app");
+    let codex_macos = codex_app.join("Contents").join("MacOS");
+    std::fs::create_dir_all(manager.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(&codex_macos).unwrap();
+    std::fs::write(&manager, "").unwrap();
+    std::fs::write(
+        codex_app.join("Contents").join("Info.plist"),
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>Codex Desktop</string>
+</dict>
+</plist>
+"#,
+    )
+    .unwrap();
+    std::fs::write(codex_macos.join("Codex Desktop"), "").unwrap();
 
     assert_eq!(
         find_bundled_codex_app_dir_from_exe(&manager).as_deref(),
@@ -517,8 +582,9 @@ fn launcher_macos_open_command_waits_for_app_exit() {
     let command = build_macos_open_command(Path::new("/Applications/Codex.app"), 9229, &[]);
 
     assert_eq!(command[0], "open");
-    assert!(command.contains(&"-W".to_string()));
-    assert!(command.contains(&"-a".to_string()));
+    assert_eq!(command[1], "-W");
+    assert_eq!(command[2], "/Applications/Codex.app");
+    assert!(!command.contains(&"-a".to_string()));
     assert!(command.contains(&"--args".to_string()));
     assert!(command.contains(&"--remote-debugging-port=9229".to_string()));
 }
