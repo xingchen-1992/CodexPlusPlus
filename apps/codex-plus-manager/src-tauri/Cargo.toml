@@ -24,6 +24,7 @@ serde_json.workspace = true
 tauri = { version = "2", features = ["custom-protocol", "tray-icon"] }
 tauri-plugin-dialog = "2"
 tokio.workspace = true
+zip.workspace = true
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

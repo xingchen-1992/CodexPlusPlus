@@ -1308,7 +1308,7 @@ export function App() {
       return false;
     }
     if (!managedSkillsReady) {
-      updateLaunchProgress("syncing", 58, "正在同步 crs-image、内置 Node 和 6 个托管 Skills...");
+      updateLaunchProgress("syncing", 58, "正在同步 crs-image、内置 Node 和 10 个托管 Skills...");
       const managedSkills = await ensureManagedSkillsForCodex({ silent: false });
       if (!managedSkills) {
         const message = "托管 Skills 安装或同步失败，请先在工具与插件页面修复后再打开 Codex。";
@@ -6345,6 +6345,10 @@ const MANAGED_SKILLS: ManagedSkillDefinition[] = [
   { id: "slide-image-to-editable-pptx", title: "Slide Image - Editable PPTX" },
   { id: "markitdown", title: "Markitdown" },
   { id: "spreadsheets", title: "Spreadsheets" },
+  { id: "intouch-knowledgebase", title: "Intouch KnowledgeBase" },
+  { id: "web-image", title: "WEB Image" },
+  { id: "china-lawyer-service", title: "China Lawyer Service" },
+  { id: "codeximage-to-editable-ppt-v1", title: "Codex Image to Editable PPT V1" },
 ];
 const LEGACY_MANAGED_SKILL_IDS = ["ppt-master", "slide-image-editable-pptx"];
 const MANAGED_SKILL_IDS = new Set([...MANAGED_SKILLS.map((skill) => skill.id), ...LEGACY_MANAGED_SKILL_IDS]);

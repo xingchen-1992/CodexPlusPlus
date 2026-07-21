@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{Cursor, Read};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -175,6 +176,36 @@ const MANAGED_SKILL_SOURCES: &[ManagedSkillSource] = &[
         }],
     },
 ];
+const MANAGED_SKILL_ARCHIVE_SOURCES: &[ManagedSkillArchiveSource] = &[
+    ManagedSkillArchiveSource {
+        id: "intouch-knowledgebase",
+        title: "Intouch KnowledgeBase",
+        url: "bundled://managed-skills/intouch-knowledgebase-full-codex.zip",
+        required_marker: "name: intouch-knowledgebase",
+        archive: include_bytes!("../managed-skills/intouch-knowledgebase-full-codex.zip"),
+    },
+    ManagedSkillArchiveSource {
+        id: "web-image",
+        title: "WEB Image",
+        url: "bundled://managed-skills/web-image.zip",
+        required_marker: "name: web-image",
+        archive: include_bytes!("../managed-skills/web-image.zip"),
+    },
+    ManagedSkillArchiveSource {
+        id: "china-lawyer-service",
+        title: "China Lawyer Service",
+        url: "bundled://managed-skills/china-lawyer-service.zip",
+        required_marker: "name: china-lawyer-service",
+        archive: include_bytes!("../managed-skills/china-lawyer-service.zip"),
+    },
+    ManagedSkillArchiveSource {
+        id: "codeximage-to-editable-ppt-v1",
+        title: "Codex Image to Editable PPT V1",
+        url: "bundled://managed-skills/codeximage-to-editable-ppt-v1.zip",
+        required_marker: "name: codeximage-to-editable-ppt-v1",
+        archive: include_bytes!("../managed-skills/codeximage-to-editable-ppt-v1.zip"),
+    },
+];
 const CODEX_WINDOWS_INSTALL_COMMAND: &str = "winget install --id 9PLM9XGG6VKS --exact --source msstore --accept-source-agreements --accept-package-agreements --silent --disable-interactivity";
 const CODEX_OFFICIAL_INSTALL_URL: &str = "https://developers.openai.com/codex/app";
 const CODEX_WINDOWS_STORE_URL: &str =
@@ -204,9 +235,23 @@ struct ManagedSkillFileSource {
     contents: &'static [u8],
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ManagedSkillArchiveSource {
+    id: &'static str,
+    title: &'static str,
+    url: &'static str,
+    required_marker: &'static str,
+    archive: &'static [u8],
+}
+
 #[derive(Debug, Clone)]
 struct ManagedSkillDocument {
     source: ManagedSkillSource,
+}
+
+#[derive(Debug, Clone)]
+struct ManagedSkillArchiveDocument {
+    source: ManagedSkillArchiveSource,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2736,10 +2781,13 @@ pub fn postinstall_prewarm_blocking() -> bool {
 fn postinstall_install_managed_codex_assets() -> anyhow::Result<bool> {
     let paths = default_crs_image_install_paths();
     let managed_skill_documents = bundled_managed_skill_documents()?;
+    let managed_skill_archives = bundled_managed_skill_archives()?;
     let managed_updated =
         install_managed_skill_documents(&paths.codex_home, &managed_skill_documents)?;
+    let archive_updated =
+        install_managed_skill_archives(&paths.codex_home, &managed_skill_archives)?;
     let crs_image = install_crs_image_files_for_paths(&paths, CRS_IMAGE_CLIENT, CRS_IMAGE_SKILL)?;
-    Ok(managed_updated || crs_image.updated)
+    Ok(managed_updated || archive_updated || crs_image.updated)
 }
 
 fn postinstall_repair_plugin_marketplace() -> anyhow::Result<bool> {
@@ -2795,6 +2843,12 @@ pub async fn install_crs_image_skill() -> CommandResult<CrsImageInstallPayload> 
             return failed(&format!("读取内置 Skills 失败：{error}"), placeholder);
         }
     };
+    let managed_skill_archives = match bundled_managed_skill_archives() {
+        Ok(archives) => archives,
+        Err(error) => {
+            return failed(&format!("读取内置 Skills 压缩包失败：{error}"), placeholder);
+        }
+    };
     let managed_install_result =
         match install_managed_skill_documents(&paths.codex_home, &managed_skill_documents) {
             Ok(updated) => updated,
@@ -2802,10 +2856,17 @@ pub async fn install_crs_image_skill() -> CommandResult<CrsImageInstallPayload> 
                 return failed(&format!("安装托管 Skills 失败：{error}"), placeholder);
             }
         };
+    let managed_archive_install_result =
+        match install_managed_skill_archives(&paths.codex_home, &managed_skill_archives) {
+            Ok(updated) => updated,
+            Err(error) => {
+                return failed(&format!("安装托管 Skills 压缩包失败：{error}"), placeholder);
+            }
+        };
 
     match install_crs_image_files_for_paths(&paths, CRS_IMAGE_CLIENT, CRS_IMAGE_SKILL) {
         Ok(mut payload) => {
-            payload.updated |= managed_install_result;
+            payload.updated |= managed_install_result || managed_archive_install_result;
             let action = if payload.updated {
                 "托管 Skills 已自动安装/更新"
             } else {
@@ -2831,6 +2892,15 @@ fn bundled_managed_skill_documents() -> anyhow::Result<Vec<ManagedSkillDocument>
     Ok(documents)
 }
 
+fn bundled_managed_skill_archives() -> anyhow::Result<Vec<ManagedSkillArchiveDocument>> {
+    let mut documents = Vec::with_capacity(MANAGED_SKILL_ARCHIVE_SOURCES.len());
+    for source in MANAGED_SKILL_ARCHIVE_SOURCES {
+        validate_managed_skill_archive(source)?;
+        documents.push(ManagedSkillArchiveDocument { source: *source });
+    }
+    Ok(documents)
+}
+
 fn validate_managed_skill_document(source: &ManagedSkillSource) -> anyhow::Result<()> {
     if !source.url.starts_with("bundled://managed-skills/") {
         anyhow::bail!("{} Skill 内置来源不符合预期", source.title);
@@ -2852,6 +2922,40 @@ fn validate_managed_skill_document(source: &ManagedSkillSource) -> anyhow::Resul
     Ok(())
 }
 
+fn validate_managed_skill_archive(source: &ManagedSkillArchiveSource) -> anyhow::Result<()> {
+    if !source.url.starts_with("bundled://managed-skills/") {
+        anyhow::bail!("{} Skill 内置压缩包来源不符合预期", source.title);
+    }
+    let mut archive = open_managed_skill_archive(source)?;
+    let mut found_skill_document = false;
+    for index in 0..archive.len() {
+        let mut file = archive
+            .by_index(index)
+            .with_context(|| format!("读取 {} Skill 压缩包条目失败", source.title))?;
+        let Some(relative_path) = managed_skill_archive_relative_path(source, file.name())
+            .with_context(|| format!("{} Skill 压缩包文件路径不符合预期", source.title))?
+        else {
+            continue;
+        };
+        if file.is_dir() {
+            continue;
+        }
+        if relative_path == Path::new("SKILL.md") {
+            let mut contents = String::new();
+            file.read_to_string(&mut contents)
+                .with_context(|| format!("{} Skill 文档不是有效 UTF-8", source.title))?;
+            if !contents.contains(source.required_marker) {
+                anyhow::bail!("{} Skill 文档内容不符合预期", source.title);
+            }
+            found_skill_document = true;
+        }
+    }
+    if !found_skill_document {
+        anyhow::bail!("{} Skill 压缩包缺少 SKILL.md", source.title);
+    }
+    Ok(())
+}
+
 fn install_managed_skill_documents(
     codex_home: &Path,
     documents: &[ManagedSkillDocument],
@@ -2868,6 +2972,43 @@ fn install_managed_skill_documents(
     Ok(updated)
 }
 
+fn install_managed_skill_archives(
+    codex_home: &Path,
+    documents: &[ManagedSkillArchiveDocument],
+) -> anyhow::Result<bool> {
+    let mut updated = false;
+    for document in documents {
+        let skill_dir = codex_home.join("skills").join(document.source.id);
+        let mut archive = open_managed_skill_archive(&document.source)?;
+        for index in 0..archive.len() {
+            let mut file = archive
+                .by_index(index)
+                .with_context(|| format!("读取 {} Skill 压缩包条目失败", document.source.title))?;
+            let Some(relative_path) =
+                managed_skill_archive_relative_path(&document.source, file.name())?
+            else {
+                continue;
+            };
+            if file.is_dir() {
+                continue;
+            }
+            let target_path = skill_dir.join(relative_path);
+            let mut contents = Vec::new();
+            file.read_to_end(&mut contents)
+                .with_context(|| format!("读取 {} Skill 压缩包内容失败", document.source.title))?;
+            updated |= write_binary_file_if_changed(&target_path, &contents)?;
+        }
+    }
+    Ok(updated)
+}
+
+fn open_managed_skill_archive(
+    source: &ManagedSkillArchiveSource,
+) -> anyhow::Result<zip::ZipArchive<Cursor<&'static [u8]>>> {
+    zip::ZipArchive::new(Cursor::new(source.archive))
+        .with_context(|| format!("{} Skill 内置压缩包无效", source.title))
+}
+
 fn managed_skill_relative_path(relative_path: &str) -> anyhow::Result<PathBuf> {
     let path = Path::new(relative_path);
     if relative_path.is_empty() || path.is_absolute() {
@@ -2880,6 +3021,46 @@ fn managed_skill_relative_path(relative_path: &str) -> anyhow::Result<PathBuf> {
         anyhow::bail!("托管 Skill 文件路径包含不安全片段：{relative_path}");
     }
     Ok(path.to_path_buf())
+}
+
+fn managed_skill_archive_relative_path(
+    source: &ManagedSkillArchiveSource,
+    entry_name: &str,
+) -> anyhow::Result<Option<PathBuf>> {
+    if entry_name.is_empty() {
+        return Ok(None);
+    }
+    if entry_name.contains('\\') {
+        anyhow::bail!("托管 Skill 压缩包文件路径不能包含反斜杠：{entry_name}");
+    }
+    let path = Path::new(entry_name);
+    if path.is_absolute() {
+        anyhow::bail!("托管 Skill 压缩包文件路径必须是相对路径：{entry_name}");
+    }
+    let mut components = path.components();
+    let Some(first) = components.next() else {
+        return Ok(None);
+    };
+    match first {
+        std::path::Component::Normal(name) if name.to_string_lossy() == source.id => {}
+        _ => anyhow::bail!(
+            "{} Skill 压缩包文件必须位于根目录 {}/ 下：{}",
+            source.title,
+            source.id,
+            entry_name
+        ),
+    }
+    let mut relative = PathBuf::new();
+    for component in components {
+        match component {
+            std::path::Component::Normal(name) => relative.push(name),
+            _ => anyhow::bail!("托管 Skill 压缩包文件路径包含不安全片段：{entry_name}"),
+        }
+    }
+    if relative.as_os_str().is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(relative))
 }
 
 #[tauri::command]
@@ -5498,6 +5679,66 @@ mod tests {
         );
 
         let second = install_managed_skill_documents(temp.path(), &documents).unwrap();
+        assert!(!second);
+    }
+
+    #[test]
+    fn install_managed_skill_archives_writes_zipped_skills() {
+        let temp = tempfile::tempdir().unwrap();
+        let documents = bundled_managed_skill_archives().unwrap();
+
+        let updated = install_managed_skill_archives(temp.path(), &documents).unwrap();
+        assert!(updated);
+
+        let skills_dir = temp.path().join("skills");
+        assert!(
+            std::fs::read_to_string(skills_dir.join("intouch-knowledgebase").join("SKILL.md"))
+                .unwrap()
+                .contains("name: intouch-knowledgebase")
+        );
+        assert!(
+            std::fs::read(
+                skills_dir
+                    .join("intouch-knowledgebase")
+                    .join("references")
+                    .join("knowledge-governance-manifest.csv")
+            )
+            .unwrap()
+            .len()
+                > 1024
+        );
+        assert!(
+            std::fs::read_to_string(
+                skills_dir
+                    .join("web-image")
+                    .join("references")
+                    .join("prompt-compiler.md")
+            )
+            .unwrap()
+            .contains("prompt")
+        );
+        assert!(
+            std::fs::read_to_string(
+                skills_dir
+                    .join("china-lawyer-service")
+                    .join("references")
+                    .join("05-authoritative-links.md")
+            )
+            .unwrap()
+            .contains("官方")
+        );
+        assert!(
+            std::fs::read_to_string(
+                skills_dir
+                    .join("codeximage-to-editable-ppt-v1")
+                    .join("scripts")
+                    .join("run_batches.py")
+            )
+            .unwrap()
+            .contains("argparse")
+        );
+
+        let second = install_managed_skill_archives(temp.path(), &documents).unwrap();
         assert!(!second);
     }
 

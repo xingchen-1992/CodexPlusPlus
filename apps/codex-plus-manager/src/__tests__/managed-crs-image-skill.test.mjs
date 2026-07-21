@@ -24,7 +24,17 @@ test("managed skill UI stays simple and has no separate update controls", () => 
   }
   assert.match(appSource, /const MANAGED_SKILLS/);
   assert.match(appSource, /id: CRS_IMAGE_SKILL_ID/);
-  for (const id of ["humanizer-zh", "ppt-magic", "slide-image-to-editable-pptx", "markitdown", "spreadsheets"]) {
+  for (const id of [
+    "humanizer-zh",
+    "ppt-magic",
+    "slide-image-to-editable-pptx",
+    "markitdown",
+    "spreadsheets",
+    "intouch-knowledgebase",
+    "web-image",
+    "china-lawyer-service",
+    "codeximage-to-editable-ppt-v1",
+  ]) {
     assert.match(appSource, new RegExp(`id: "${id}"`));
   }
   assert.match(appSource, /LEGACY_MANAGED_SKILL_IDS = \["ppt-master", "slide-image-editable-pptx"\]/);
@@ -44,7 +54,7 @@ test("opening or restarting Codex syncs managed skills and plugin marketplace fi
   const ready = appSource.match(/const ensureOfficialReadyForLaunch[\s\S]*?return true;\n\s*};/);
   assert.ok(ready, "ensureOfficialReadyForLaunch should exist");
   assert.match(ready[0], /await ensureManagedSkillsForCodex\(\{ silent: false \}\)/);
-  assert.match(ready[0], /正在同步 crs-image、内置 Node 和 6 个托管 Skills/);
+  assert.match(ready[0], /正在同步 crs-image、内置 Node 和 10 个托管 Skills/);
   assert.match(ready[0], /crs-image 和托管 Skills 已就绪，跳过重复同步/);
   assert.match(ready[0], /正在同步 OpenAI 插件市场，确保更多 Skills 和 Plugins 可见/);
   assert.match(ready[0], /await ensurePluginMarketplaceReadyForCodex\(\{ silent: true \}\)/);
@@ -101,10 +111,21 @@ test("installer prewarms managed skills and plugin marketplace before first laun
 
 test("managed skills are installed from bundled resources and hidden from manual editing", () => {
   assert.match(commandsSource, /MANAGED_SKILL_SOURCES/);
+  assert.match(commandsSource, /MANAGED_SKILL_ARCHIVE_SOURCES/);
   for (const id of ["crs-image", "humanizer-zh", "ppt-magic", "slide-image-to-editable-pptx", "markitdown", "spreadsheets"]) {
     assert.match(commandsSource, new RegExp(`id: "${id}"`));
     assert.match(commandsSource, new RegExp(`bundled://managed-skills/${id}/SKILL\\.md`));
   }
+  for (const id of ["intouch-knowledgebase", "web-image", "china-lawyer-service", "codeximage-to-editable-ppt-v1"]) {
+    assert.match(commandsSource, new RegExp(`id: "${id}"`));
+    assert.match(commandsSource, new RegExp(`required_marker: "name: ${id}"`));
+  }
+  assert.match(commandsSource, /include_bytes!\("\.\.\/managed-skills\/intouch-knowledgebase-full-codex\.zip"\)/);
+  assert.match(commandsSource, /include_bytes!\("\.\.\/managed-skills\/web-image\.zip"\)/);
+  assert.match(commandsSource, /include_bytes!\("\.\.\/managed-skills\/china-lawyer-service\.zip"\)/);
+  assert.match(commandsSource, /include_bytes!\("\.\.\/managed-skills\/codeximage-to-editable-ppt-v1\.zip"\)/);
+  assert.match(commandsSource, /install_managed_skill_archives/);
+  assert.match(commandsSource, /managed_skill_archive_relative_path/);
   for (const id of ["humanizer-zh", "ppt-magic", "slide-image-to-editable-pptx", "markitdown", "spreadsheets"]) {
     assert.match(commandsSource, new RegExp(`include_bytes!\\("\\.\\./managed-skills/${id}/SKILL\\.md"\\)`));
   }
@@ -133,8 +154,13 @@ test("managed skills are installed before crs-image client setup can fail", () =
     command[0].indexOf("install_managed_skill_documents") < command[0].indexOf("install_crs_image_files_for_paths"),
     "managed skills should be written before installing the crs-image client",
   );
+  assert.ok(
+    command[0].indexOf("install_managed_skill_archives") < command[0].indexOf("install_crs_image_files_for_paths"),
+    "managed skill archives should be written before installing the crs-image client",
+  );
   assert.equal(command[0].includes("script_market::download_script"), false);
   assert.match(command[0], /managed_install_result/);
+  assert.match(command[0], /managed_archive_install_result/);
 });
 
 test("managed skills install adds local command directories to the user environment", () => {
