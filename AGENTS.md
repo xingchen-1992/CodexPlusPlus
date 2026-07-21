@@ -57,8 +57,10 @@
 - 若临时必须让官网服务器托管大 ZIP，必须避开高峰期、限速串行同步、先进 `.staging`、校验 sha256 和 size 后再发布，并明确“用户下载仍可能打满出口带宽”的风险。
 - 官网服务器禁止无限速 `curl` / `wget` 下载 GitHub Release 大文件；默认同步限速 `2m`，常规最高 `3m`，`6m` 只允许人工确认低峰期临时使用；禁止并发下载多个 Release assets。
 - Actions 产物同步到 `https://leishenai.cn/tools/codex-plus/releases/<version>/`、`/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 或对象存储/CDN 后，再更新新下载服务器和官网每个节点的 `latest.json`、`download-latest.json`、`components.json`。
+- 升级内置官方 Codex Desktop / Codex App 时，必须同时 bump `.github/workflows/release-assets.yml` 里的 `CODEX_WINDOWS_X64_MSIX_CACHE_KEY` 和 `CODEX_MACOS_APP_CACHE_KEY`，让 Windows `CodexOfficialApp-x64.msix` 与 macOS 官方 DMG 都重新下载；不要只更新其中一个平台。
 - 自动更新源 `latest.json` 只允许暴露 Windows 轻量 `*-updater.exe`、为旧客户端兼容而保留的 `*-legacy-setup.exe` 别名，以及 macOS DMG；兼容别名也必须指向同一个 updater 小文件，禁止把 Windows 完整离线 ZIP 作为管理工具自动更新入口。
 - 官网下载清单使用 `download-latest.json`，可暴露 Windows 在线安装器 `*-online.exe`、完整离线 ZIP 和 macOS DMG。Windows 离线 ZIP 仍必须包含 `点我双击安装.exe` 与 `RequiredFiles/`。
+- macOS 官网下载当前为临时策略：`download-latest.json` 和官网下载页两个 mac 卡片暂时只提供官方 Codex 的 `arm64` / `x64` DMG（`Codex-mac-arm64.dmg`、`Codex-mac-x64.dmg`）。对外 URL 优先指向 `https://leishenai.cn/tools/codex-plus/releases/<version>/Codex-mac-*.dmg` 这类下载服务器镜像文件；镜像文件内容来自官方 Codex 安装包，不要再把 `CodexPlusOfficial-*-macos-*.dmg` 暴露给普通用户下载，直到 Apple 签名/公证链路补齐后再恢复。
 - 官网下载页 `/tools/codex-plus/index.html` 必须读取 `download-latest.json`，并显式排除 `purpose=updater` / `purpose=legacy-updater`；用户可见下载按钮不得链接到 `*-updater.exe`。
 - `latest.json` 的 Windows updater / legacy-updater 和 macOS DMG URL 优先指向 `https://leishenai.cn/tools/codex-plus/releases/<version>/...`；`download-latest.json` 的用户下载 URL 也可指向同一下载服务器。`latest.json` 仍是管理工具自动更新专用，不要因为迁移用户下载大包而把 updater 入口混入官网下载页。
 - `latest.json`、`download-latest.json`、`components.json` 不得写入任何 token、密码、私钥；如果 `latest.json` 是单文件 bind mount，必须原地覆盖，不要用 `mv` / `os.replace` 换 inode。

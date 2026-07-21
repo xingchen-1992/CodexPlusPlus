@@ -58,7 +58,14 @@ test("release manifests separate automatic update from public downloads", () => 
   assert.match(workflowSource, /PUBLIC_DOWNLOAD_BASE_URL: https:\/\/leishenai\.cn\/tools\/codex-plus\/releases/);
   assert.match(workflowSource, /publicAssetUrl\(name\) \|\| asset\.browser_download_url/);
   assert.match(workflowSource, /downloadPayload/);
-  assert.match(workflowSource, /\["installer", "offline"\]\.includes\(asset\.purpose\)/);
+  assert.match(workflowSource, /publicMacDownloadAssets/);
+  assert.match(workflowSource, /asset\.platform === "windows" && \["installer", "offline"\]\.includes\(asset\.purpose\)/);
+  assert.match(workflowSource, /name: "Codex-mac-arm64\.dmg"/);
+  assert.match(workflowSource, /name: "Codex-mac-x64\.dmg"/);
+  assert.match(workflowSource, /publicAssetUrl\("Codex-mac-arm64\.dmg"\)/);
+  assert.match(workflowSource, /publicAssetUrl\("Codex-mac-x64\.dmg"\)/);
+  assert.match(workflowSource, /CODEX_MACOS_ARM64_DMG_URL/);
+  assert.match(workflowSource, /CODEX_MACOS_X64_DMG_URL/);
   assert.match(workflowSource, /lower\.endsWith\("\.dmg"\)[\s\S]*\? "installer"/);
   assert.match(workflowSource, /download-latest\.json/);
   assert.match(workflowSource, /components\.json/);
@@ -83,6 +90,10 @@ test("release workflow caches heavyweight dependencies and official app download
   assert.match(workflowSource, /Cache Rust build artifacts/);
   assert.match(workflowSource, /mozilla-actions\/sccache-action/);
   assert.match(workflowSource, /Cache Codex Windows MSIX/);
+  assert.match(workflowSource, /CODEX_WINDOWS_X64_MSIX_CACHE_KEY/);
+  assert.match(workflowSource, /codex-windows-msix-\$\{\{ env\.CODEX_WINDOWS_X64_MSIX_CACHE_KEY \}\}/);
+  assert.match(workflowSource, /CODEX_MACOS_APP_CACHE_KEY/);
+  assert.match(workflowSource, /codex-macos-\$\{\{ matrix\.arch \}\}-\$\{\{ env\.CODEX_MACOS_APP_CACHE_KEY \}\}/);
   assert.match(workflowSource, /npm ci --prefer-offline --no-audit --no-fund/);
   assert.equal(workflowSource.includes("npm install --package-lock=false"), false);
 });

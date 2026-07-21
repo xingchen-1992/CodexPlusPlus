@@ -13,11 +13,16 @@ const launcherAppSource = fs.readFileSync(
 );
 const commandsSource = fs.readFileSync(new URL("../../src-tauri/src/commands.rs", import.meta.url), "utf8");
 
-test("script page is visible and remote market failure is non-blocking", () => {
+test("mobile control and script pages are hidden from sidebar", () => {
   const routes = appSource.match(/const routes:[\s\S]*?=\s*\[([\s\S]*?)\];/);
   assert.ok(routes, "routes should exist");
-  assert.equal(routes[1].includes('id: "userScripts"'), true);
-  assert.equal(routes[1].includes('label: "脚本"'), true);
+  assert.equal(routes[1].includes('id: "mobileControl"'), false);
+  assert.equal(routes[1].includes('label: "手机控制"'), false);
+  assert.equal(routes[1].includes('id: "userScripts"'), false);
+  assert.equal(routes[1].includes('label: "脚本"'), false);
+});
+
+test("script page internals remain non-blocking while the sidebar entry is hidden", () => {
   assert.match(appSource, /route === "userScripts"/);
   assert.match(appSource, /function UserScriptsScreen/);
   assert.match(commandsSource, /unavailable_script_market_payload/);

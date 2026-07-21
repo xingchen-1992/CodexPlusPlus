@@ -15,7 +15,7 @@ jobs:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
       CODEX_WINDOWS_X64_MSIX_URL: "https://codexapp.agentsmirror.com/latest/win-x64"
-      CODEX_WINDOWS_X64_MSIX_CACHE_KEY: "2026-06-30"
+      CODEX_WINDOWS_X64_MSIX_CACHE_KEY: "2026-07-21"
       NODE_RUNTIME_VERSION: "v24.18.0"
       NODE_WINDOWS_X64_ZIP_URL: "https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip"
       PYTHON_WINDOWS_X64_INSTALLER_URL: "https://www.python.org/ftp/python/3.13.14/python-3.13.14-amd64.exe"
@@ -329,7 +329,7 @@ jobs:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
       NODE_RUNTIME_VERSION: "v24.18.0"
-      CODEX_MACOS_APP_CACHE_KEY: "2026-07-07-2"
+      CODEX_MACOS_APP_CACHE_KEY: "2026-07-21"
     strategy:
       fail-fast: false
       matrix:
@@ -623,6 +623,29 @@ jobs:
               name: asset.name.replace(/-updater\.exe$/i, "-legacy-setup.exe"),
               purpose: "legacy-updater"
             }));
+          const publicMacDownloadAssets = [
+            {
+              name: "Codex-mac-arm64.dmg",
+              platform: "macos",
+              arch: "arm64",
+              purpose: "installer",
+              url: publicAssetUrl("Codex-mac-arm64.dmg")
+                || process.env.CODEX_MACOS_ARM64_DMG_URL
+                || "https://codexapp.agentsmirror.com/latest/mac-arm64"
+            },
+            {
+              name: "Codex-mac-x64.dmg",
+              platform: "macos",
+              arch: "x64",
+              purpose: "installer",
+              url: publicAssetUrl("Codex-mac-x64.dmg")
+                || process.env.CODEX_MACOS_X64_DMG_URL
+                || "https://codexapp.agentsmirror.com/latest/mac-intel"
+            }
+          ].map((asset) => ({
+            ...asset,
+            browser_download_url: asset.url
+          }));
           const latestPayload = {
             version: `v${version}`,
             url: release.html_url || `https://github.com/${process.env.REPO}/releases/tag/${tag}`,
@@ -637,7 +660,12 @@ jobs:
             version: `v${version}`,
             url: release.html_url || `https://github.com/${process.env.REPO}/releases/tag/${tag}`,
             body: release.body || "",
-            assets: rawAssets.filter((asset) => ["installer", "offline"].includes(asset.purpose))
+            assets: [
+              ...rawAssets.filter(
+                (asset) => asset.platform === "windows" && ["installer", "offline"].includes(asset.purpose)
+              ),
+              ...publicMacDownloadAssets
+            ]
           };
           const componentsPayload = {
             version: `v${version}`,
