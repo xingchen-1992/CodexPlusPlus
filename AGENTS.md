@@ -58,11 +58,12 @@
 - 官网服务器禁止无限速 `curl` / `wget` 下载 GitHub Release 大文件；默认同步限速 `2m`，常规最高 `3m`，`6m` 只允许人工确认低峰期临时使用；禁止并发下载多个 Release assets。
 - Actions 产物同步到 `https://leishenai.cn/tools/codex-plus/releases/<version>/`、`/home/claude-realy-service/public/tools/codex-plus/releases/<version>/` 或对象存储/CDN 后，再更新新下载服务器和官网每个节点的 `latest.json`、`download-latest.json`、`components.json`。
 - 升级内置官方 Codex Desktop / Codex App 时，必须同时 bump `.github/workflows/release-assets.yml` 里的 `CODEX_WINDOWS_X64_MSIX_CACHE_KEY` 和 `CODEX_MACOS_APP_CACHE_KEY`，让 Windows `CodexOfficialApp-x64.msix` 与 macOS 官方 DMG 都重新下载；不要只更新其中一个平台。
-- 自动更新源 `latest.json` 只允许暴露 Windows 轻量 `*-updater.exe`、为旧客户端兼容而保留的 `*-legacy-setup.exe` 别名，以及 macOS DMG；兼容别名也必须指向同一个 updater 小文件，禁止把 Windows 完整离线 ZIP 作为管理工具自动更新入口。
+- 自动更新源 `latest.json` 只允许暴露 Windows 轻量 `*-updater.exe`、为旧客户端兼容而保留的 `*-legacy-setup.exe` 别名，以及已签名/已验证并完成同步的 macOS 管理工具 DMG；兼容别名也必须指向同一个 updater 小文件，禁止把 Windows 完整离线 ZIP 作为管理工具自动更新入口。
+- Apple 签名/公证链路未补齐，或本轮未能同步有效 `CodexPlusOfficial-*-macos-*.dmg` 时，`latest.json` 可以临时只包含 Windows updater / legacy-updater；禁止把未签名、未验证、无法访问或不存在的 macOS DMG 写入自动更新清单。此时必须在发版记录说明 macOS 管理工具自动更新暂停，官网下载 mac 卡片仍只使用官方 Codex DMG。
 - 官网下载清单使用 `download-latest.json`，可暴露 Windows 在线安装器 `*-online.exe`、完整离线 ZIP 和 macOS DMG。Windows 离线 ZIP 仍必须包含 `点我双击安装.exe` 与 `RequiredFiles/`。
 - macOS 官网下载当前为临时策略：`download-latest.json` 和官网下载页两个 mac 卡片暂时只提供官方 Codex 的 `arm64` / `x64` DMG（`Codex-mac-arm64.dmg`、`Codex-mac-x64.dmg`）。对外 URL 优先指向 `https://leishenai.cn/tools/codex-plus/releases/<version>/Codex-mac-*.dmg` 这类下载服务器镜像文件；镜像文件内容来自官方 Codex 安装包，不要再把 `CodexPlusOfficial-*-macos-*.dmg` 暴露给普通用户下载，直到 Apple 签名/公证链路补齐后再恢复。
 - 官网下载页 `/tools/codex-plus/index.html` 必须读取 `download-latest.json`，并显式排除 `purpose=updater` / `purpose=legacy-updater`；用户可见下载按钮不得链接到 `*-updater.exe`。
-- `latest.json` 的 Windows updater / legacy-updater 和 macOS DMG URL 优先指向 `https://leishenai.cn/tools/codex-plus/releases/<version>/...`；`download-latest.json` 的用户下载 URL 也可指向同一下载服务器。`latest.json` 仍是管理工具自动更新专用，不要因为迁移用户下载大包而把 updater 入口混入官网下载页。
+- `latest.json` 的 Windows updater / legacy-updater，以及可发布时的 macOS 管理工具 DMG URL，优先指向 `https://leishenai.cn/tools/codex-plus/releases/<version>/...`；`download-latest.json` 的用户下载 URL 也可指向同一下载服务器。`latest.json` 仍是管理工具自动更新专用，不要因为迁移用户下载大包而把 updater 入口混入官网下载页。
 - `latest.json`、`download-latest.json`、`components.json` 不得写入任何 token、密码、私钥；如果 `latest.json` 是单文件 bind mount，必须原地覆盖，不要用 `mv` / `os.replace` 换 inode。
 - 同步官网前后必须执行 `nslookup www.leishen-ai.cn`。如果域名返回多个 A 记录，必须把 `index.html`、`latest.json`、`download-latest.json`、`components.json`、`*-updater.exe`、`*-online.exe` 同步到每一个实际承载官网的节点，或先确认 DNS 已移除旧节点；任一 IP 仍返回旧版都不能宣布发版完成。
 - 多 A 记录场景必须用 `curl --resolve www.leishen-ai.cn:443:<IP>` 逐个验证 `latest.json`、`download-latest.json`、下载页源码、updater/online 响应头，确认所有节点版本和下载逻辑一致。
